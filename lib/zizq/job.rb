@@ -33,6 +33,35 @@ module Zizq
       base.extend(ClassMethods)
     end
 
+    # Default dispatcher for Zizq jobs.
+    #
+    # Resolves the job class from the type string, deserializes the
+    # payload, and calls `#perform`. Any object that responds to
+    # `#dispatch(job)` can replace this as a custom dispatcher via
+    # `Zizq.configure { |c| c.dispatcher = MyDispatcher.new }`.
+    #
+    # The contract is simple: return normally → ack, raise → nack.
+    #
+    # @rbs job: Resources::Job
+    # @rbs return: void
+    def self.dispatch(job)
+      job_class = Object.const_get(job.type)
+
+      unless job_class.is_a?(Class) && job_class.include?(Zizq::Job)
+        raise "#{job.type} does not include Zizq::Job"
+      end
+
+      zizq_job_class = job_class #: Zizq::job_class
+      instance = zizq_job_class.new
+      instance.set_zizq_job(job)
+
+      args, kwargs = zizq_job_class.zizq_deserialize(
+        job.payload || { "args" => [], "kwargs" => {} }
+      )
+
+      instance.perform(*args, **kwargs)
+    end
+
     module ClassMethods
       # @rbs!
       #   # The class name, provided by Module (invisible to steep without this).

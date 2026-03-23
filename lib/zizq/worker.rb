@@ -316,43 +316,16 @@ module Zizq
 
     # Process a single job.
     #
-    # Resolves the job class and validates it, instantiates it, sets job
-    # metadata, deserializes the payload, calls #perform, then reports success
-    # or failure.
+    # Delegates to the configured dispatcher (default: `Zizq::Job.dispatch`)
+    # and reports success or failure.
     def dispatch(job, worker_id) #: (Resources::Job, String?) -> void
       job_id, job_type = job.id, job.type
-
-      # Resolve the job class from the type string and validate that it
-      # includes Zizq::Job. Any autoloading will naturally occur.
-      job_class = begin
-        Object.const_get(job_type)
-      rescue NameError => error
-        logger.error { "Job #{job_type} (#{job_id}) not found: #{error.message}" }
-        push_nack(job_id, error)
-        return
-      end
-
-      unless job_class.is_a?(Class) && job_class.include?(Zizq::Job)
-        logger.error { "Job #{job_type} (#{job_id}) does not include Zizq::Job" }
-        push_nack(job_id, RuntimeError.new("#{job_type} does not include Zizq::Job"))
-        return
-      end
-
-      # We've manually type checked this.
-      zizq_job_class = job_class #: Zizq::job_class
-
-      job_instance = zizq_job_class.new
-      job_instance.set_zizq_job(job)
 
       begin
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         begin
-          args, kwargs = zizq_job_class.zizq_deserialize(
-            job.payload || { "args" => [], "kwargs" => {} }
-          )
-
-          job_instance.perform(*args, **kwargs)
+          Zizq.configuration.dispatcher.dispatch(job)
         ensure
           finish_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           elapsed_time = finish_time - start_time

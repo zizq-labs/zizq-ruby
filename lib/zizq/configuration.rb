@@ -42,11 +42,16 @@ module Zizq
     # Note: Mutual TLS support requires a Zizq Pro license on the server.
     attr_accessor :tls #: Zizq::tls_options?
 
+    # Job dispatcher. Any object that responds to `#dispatch(job)`.
+    # Defaults to `Zizq::Job` which resolves job classes by name.
+    attr_accessor :dispatcher #: Zizq::dispatcher
+
     def initialize #: () -> void
       @url = "http://localhost:7890"
       @format = :msgpack
       @logger = Logger.new($stdout, level: Logger::INFO)
       @tls = nil
+      @dispatcher = Zizq::Job
     end
 
     # Validates that required configuration is present.

@@ -327,4 +327,55 @@ class TestWorker < Minitest::Test
     wid = worker.send(:resolve_worker_id, 0, 0)
     assert_nil wid
   end
+
+  def test_dispatches_via_custom_dispatcher
+    dispatched_jobs = []
+
+    custom_dispatcher = Object.new
+    custom_dispatcher.define_singleton_method(:dispatch) do |job|
+      dispatched_jobs << job
+    end
+
+    Zizq.configure do |c|
+      c.url = URL
+      c.format = :json
+      c.dispatcher = custom_dispatcher
+    end
+
+    payload = { "args" => [42], "kwargs" => {} }
+    job1 = { "id" => "j1", "type" => "RecordingJob", "queue" => "test",
+             "priority" => 100, "attempts" => 0, "payload" => payload }
+
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
+      .to_return(
+        { status: 200, body: "#{JSON.generate(job1)}\n",
+          headers: { "Content-Type" => "application/x-ndjson" } },
+        { status: 200, body: "",
+          headers: { "Content-Type" => "application/x-ndjson" } }
+      )
+
+    ack_stub = stub_request(:post, "#{URL}/jobs/success")
+      .to_return(status: 204)
+
+    worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
+                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+
+    t = Thread.new { worker.run }
+
+    deadline = Time.now + 5
+    sleep 0.05 while dispatched_jobs.empty? && Time.now < deadline
+
+    worker.shutdown
+    t.join(5)
+
+    # Custom dispatcher was called, not the default Zizq::Job.dispatch.
+    assert_equal 1, dispatched_jobs.size
+    assert_equal "j1", dispatched_jobs.first.id
+
+    # Job was still acked (dispatcher returned without raising).
+    assert_requested(ack_stub, at_least_times: 1)
+
+    # RecordingJob.perform was NOT called (custom dispatcher didn't call it).
+    assert_empty RecordingJob.results
+  end
 end

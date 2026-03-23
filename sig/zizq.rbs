@@ -22,6 +22,14 @@ module Zizq
   # TLS options for connecting over HTTPS. Values are PEM strings or file paths.
   type tls_options = { ?ca: String, ?client_cert: String, ?client_key: String }
 
+  # Any object that can dispatch a job. Must respond to #dispatch(job).
+  interface _Dispatcher
+    def dispatch: (Resources::Job) -> void
+  end
+
+  # Type alias for dispatcher configuration.
+  type dispatcher = _Dispatcher
+
   # Structural type for a class that includes Zizq::Job.
   #
   # When a class includes Zizq::Job, the `included` callback extends
