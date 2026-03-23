@@ -399,4 +399,177 @@ class TestJob < Minitest::Test
       Zizq.enqueue_bulk { |b| b.enqueue(String) }
     end
   end
+
+  # --- zizq_unique ---
+
+  def test_unique_is_false_by_default
+    refute DefaultQueueJob.zizq_unique
+  end
+
+  def test_unique_can_be_enabled
+    klass = Class.new { include Zizq::Job; zizq_unique true }
+    assert klass.zizq_unique
+  end
+
+  def test_unique_with_scope
+    klass = Class.new { include Zizq::Job; zizq_unique true, scope: :active }
+    assert klass.zizq_unique
+    assert_equal :active, klass.zizq_unique_scope
+  end
+
+  def test_unique_without_scope_has_nil_scope
+    klass = Class.new { include Zizq::Job; zizq_unique true }
+    assert_nil klass.zizq_unique_scope
+  end
+
+  def test_unique_can_be_disabled_with_false
+    klass = Class.new { include Zizq::Job; zizq_unique true, scope: :active }
+    klass.zizq_unique false
+    refute klass.zizq_unique
+  end
+
+  # --- zizq_unique_key ---
+
+  def test_unique_key_is_deterministic
+    key1 = SendEmailJob.zizq_unique_key(42, template: "welcome")
+    key2 = SendEmailJob.zizq_unique_key(42, template: "welcome")
+    assert_equal key1, key2
+  end
+
+  def test_unique_key_differs_for_different_args
+    key1 = SendEmailJob.zizq_unique_key(42, template: "welcome")
+    key2 = SendEmailJob.zizq_unique_key(43, template: "welcome")
+    refute_equal key1, key2
+  end
+
+  def test_unique_key_differs_for_different_kwargs
+    key1 = SendEmailJob.zizq_unique_key(42, template: "welcome")
+    key2 = SendEmailJob.zizq_unique_key(42, template: "farewell")
+    refute_equal key1, key2
+  end
+
+  def test_unique_key_includes_class_name
+    key = SendEmailJob.zizq_unique_key(42)
+    assert key.start_with?("SendEmailJob:"), "expected key to start with class name, got: #{key}"
+  end
+
+  def test_unique_key_different_classes_do_not_collide
+    key1 = SendEmailJob.zizq_unique_key(42)
+    key2 = DefaultQueueJob.zizq_unique_key(42)
+    refute_equal key1, key2
+  end
+
+  def test_unique_key_is_deterministic_regardless_of_kwarg_order
+    key1 = DefaultQueueJob.zizq_unique_key(a: 1, b: 2)
+    key2 = DefaultQueueJob.zizq_unique_key(b: 2, a: 1)
+    assert_equal key1, key2
+  end
+
+  def test_unique_key_normalizes_nested_hashes
+    key1 = DefaultQueueJob.zizq_unique_key(data: { z: 1, a: 2 })
+    key2 = DefaultQueueJob.zizq_unique_key(data: { a: 2, z: 1 })
+    assert_equal key1, key2
+  end
+
+  def test_unique_key_super_with_fewer_args
+    klass = Class.new do
+      include Zizq::Job
+      def self.name = "CustomJob"
+      def self.zizq_unique_key(user_id, template:)
+        super(user_id) # ignore template
+      end
+    end
+
+    key1 = klass.zizq_unique_key(42, template: "welcome")
+    key2 = klass.zizq_unique_key(42, template: "farewell")
+    assert_equal key1, key2
+  end
+
+  # --- Zizq.enqueue with unique jobs ---
+
+  def test_enqueue_sends_unique_key_and_while
+    klass = Class.new do
+      include Zizq::Job
+      def self.name = "UniqueTestJob"
+      zizq_queue "default"
+      zizq_unique true, scope: :active
+    end
+
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["unique_key"]&.start_with?("UniqueTestJob:") &&
+          body["unique_while"] == "active"
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(klass)
+  end
+
+  def test_enqueue_sends_unique_key_without_scope_when_no_scope_set
+    klass = Class.new do
+      include Zizq::Job
+      def self.name = "UniqueNoScopeJob"
+      zizq_unique true
+    end
+
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["unique_key"]&.start_with?("UniqueNoScopeJob:") &&
+          !body.key?("unique_while")
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(klass)
+  end
+
+  def test_enqueue_does_not_send_unique_fields_without_dsl
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        !body.key?("unique_key") && !body.key?("unique_while")
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(DefaultQueueJob)
+  end
+
+  def test_enqueue_duplicate_returns_job_with_duplicate_flag
+    stub_request(:post, "#{URL}/jobs")
+      .to_return(status: 200,
+                 body: JSON.generate({ "id" => "existing", "duplicate" => true }),
+                 headers: { "Content-Type" => "application/json" })
+
+    klass = Class.new do
+      include Zizq::Job
+      def self.name = "DupJob"
+      zizq_unique true
+    end
+
+    result = Zizq.enqueue(klass)
+    assert_equal "existing", result.id
+    assert result.duplicate?
+  end
+
+  def test_enqueue_unique_key_override_via_block
+    klass = Class.new do
+      include Zizq::Job
+      def self.name = "OverrideKeyJob"
+      zizq_unique true
+    end
+
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["unique_key"] == "custom-key"
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(klass) { |o| o.unique_key = "custom-key" }
+  end
 end

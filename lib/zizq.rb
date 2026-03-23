@@ -205,6 +205,15 @@ module Zizq
       # handles the conversion to the server's millisecond format.
       params[:ready_at] = Time.now.to_f + opts.delay.to_f if opts.delay
 
+      # Unique jobs: key and scope are populated by zizq_enqueue_options.
+      # The block can override opts.unique_key and opts.unique_while.
+      #
+      # Requires a pro license on the server.
+      if opts.unique_key
+        params[:unique_key] = opts.unique_key
+        params[:unique_while] = opts.unique_while.to_s if opts.unique_while
+      end
+
       params
     end
   end

@@ -4,6 +4,9 @@
 # rbs_inline: enabled
 # frozen_string_literal: true
 
+require "digest"
+require "json"
+
 module Zizq
   # Mixin which all valid job classes must include.
   #
@@ -31,6 +34,10 @@ module Zizq
     end
 
     module ClassMethods
+      # @rbs!
+      #   # The class name, provided by Module (invisible to steep without this).
+      #   def name: () -> String?
+
       # Declare the default queue for this job class.
       #
       # If not called, defaults to "default". Jobs enqueued for this class will
@@ -127,6 +134,60 @@ module Zizq
         end
       end
 
+      # Declare uniqueness for this job class.
+      #
+      # Requires a pro license.
+      #
+      # When enabled, duplicate jobs with the same unique key are rejected
+      # at enqueue time. The optional scope controls how long the
+      # uniqueness guard lasts:
+      #
+      #   :queued  — unique while "scheduled" or "ready" (server default)
+      #   :active  — unique while "scheduled", "ready", or "in_flight"
+      #   :exists  — unique until the job is reaped by the server
+      #
+      # Examples:
+      #
+      #   zizq_unique true                   # unique, server default scope
+      #   zizq_unique true, scope: :active   # unique while active
+      #   zizq_unique false                  # disable (e.g. in a subclass)
+      #
+      def zizq_unique(unique = nil, scope: nil) #: (?bool?, ?scope: Zizq::unique_scope?) -> bool
+        if unique.nil?
+          @zizq_unique || false
+        else
+          @zizq_unique = !!unique
+          @zizq_unique_scope = scope
+          @zizq_unique
+        end
+      end
+
+      # Declare or read the uniqueness scope for this job class.
+      #
+      # Usually set via `zizq_unique true, scope: :active` but can also
+      # be set independently.
+      def zizq_unique_scope(scope = nil) #: (?Zizq::unique_scope?) -> Zizq::unique_scope?
+        if scope
+          @zizq_unique_scope = scope
+        else
+          @zizq_unique_scope
+        end
+      end
+
+      # Compute the unique key for a job with the given arguments.
+      #
+      # The default implementation uses the class name and hashes the
+      # normalized serialized payload. Override this method to customize
+      # uniqueness — for example, to ignore certain arguments:
+      #
+      #   def self.zizq_unique_key(user_id, template:)
+      #     super(user_id)  # unique per user, ignoring template
+      #   end
+      def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
+        payload = normalize_payload(zizq_serialize(*args, **kwargs))
+        "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+      end
+
       # Serialize positional and keyword arguments for the `#perform` method
       # into a payload hash suitable for sending to the server.
       #
@@ -179,12 +240,29 @@ module Zizq
       #   end
       def zizq_enqueue_options(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueOptions
         EnqueueOptions.new(
-          queue:       zizq_queue,
-          priority:    zizq_priority,
-          retry_limit: zizq_retry_limit,
-          backoff:     zizq_backoff,
-          retention:   zizq_retention
+          queue:        zizq_queue,
+          priority:     zizq_priority,
+          retry_limit:  zizq_retry_limit,
+          backoff:      zizq_backoff,
+          retention:    zizq_retention,
+          unique_while: zizq_unique ? zizq_unique_scope : nil,
+          unique_key:   zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
         )
+      end
+
+      private
+
+      # Deep-sort all Hash keys so that serialization is deterministic
+      # regardless of insertion order or JSON library.
+      def normalize_payload(obj) #: (untyped) -> untyped
+        case obj
+        when Hash
+          obj.sort_by { |k, _| k.to_s }.map { |k, v| [k, normalize_payload(v)] }.to_h
+        when Array
+          obj.map { |v| normalize_payload(v) }
+        else
+          obj
+        end
       end
     end
 

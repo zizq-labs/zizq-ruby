@@ -24,6 +24,9 @@ module Zizq
       def failed_at     = ms_to_seconds(@data["failed_at"])     #: () -> Float?
       def completed_at  = ms_to_seconds(@data["completed_at"])  #: () -> Float?
       def retry_limit   = @data["retry_limit"] #: () -> Integer?
+      def unique_key    = @data["unique_key"]  #: () -> String?
+      def unique_while  = @data["unique_while"]&.to_sym #: () -> Zizq::unique_scope?
+      def duplicate?    = @data["duplicate"] == true #: () -> bool
 
       # Backoff configuration converted from the wire format (ms) to the
       # Ruby-idiomatic format (seconds), matching the Zizq::backoff type.

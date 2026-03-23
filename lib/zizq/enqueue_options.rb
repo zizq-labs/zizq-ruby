@@ -22,6 +22,8 @@ module Zizq
     attr_accessor :retry_limit #: Integer?
     attr_accessor :backoff #: Zizq::backoff?
     attr_accessor :retention #: Zizq::retention?
+    attr_accessor :unique_key #: String?
+    attr_accessor :unique_while #: Zizq::unique_scope?
 
     # @rbs queue: String
     # @rbs priority: Integer?
@@ -30,16 +32,27 @@ module Zizq
     # @rbs retry_limit: Integer?
     # @rbs backoff: Zizq::backoff?
     # @rbs retention: Zizq::retention?
+    # @rbs unique_key: String?
+    # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: void
-    def initialize(queue:, priority: nil, delay: nil, ready_at: nil,
-                   retry_limit: nil, backoff: nil, retention: nil)
-      @queue       = queue
-      @priority    = priority
-      @delay       = delay
-      @ready_at    = ready_at
-      @retry_limit = retry_limit
-      @backoff     = backoff
-      @retention   = retention
+    def initialize(queue:,
+                   priority: nil,
+                   delay: nil,
+                   ready_at: nil,
+                   retry_limit: nil,
+                   backoff: nil,
+                   retention: nil,
+                   unique_key: nil,
+                   unique_while: nil)
+      @queue        = queue
+      @priority     = priority
+      @delay        = delay
+      @ready_at     = ready_at
+      @retry_limit  = retry_limit
+      @backoff      = backoff
+      @retention    = retention
+      @unique_key   = unique_key
+      @unique_while = unique_while
     end
   end
 end

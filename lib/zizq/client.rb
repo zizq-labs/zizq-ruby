@@ -116,10 +116,21 @@ module Zizq
     # @rbs priority: Integer?
     # @rbs ready_at: Float?
     # @rbs retry_limit: Integer?
-    # @rbs backoff: Hash[Symbol, untyped]?
-    # @rbs retention: Hash[Symbol, untyped]?
+    # @rbs backoff: Zizq::backoff?
+    # @rbs retention: Zizq::retention?
+    # @rbs unique_key: String?
+    # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: Resources::Job
-    def enqueue(type:, queue:, payload:, priority: nil, ready_at: nil, retry_limit: nil, backoff: nil, retention: nil)
+    def enqueue(type:,
+                queue:,
+                payload:,
+                priority: nil,
+                ready_at: nil,
+                retry_limit: nil,
+                backoff: nil,
+                retention: nil,
+                unique_key: nil,
+                unique_while: nil)
       body = { type:, queue:, payload: } #: Hash[Symbol, untyped]
       body[:priority] = priority if priority
       # ready_at is fractional seconds in Ruby; the server expects ms.
@@ -127,9 +138,11 @@ module Zizq
       body[:retry_limit] = retry_limit if retry_limit
       body[:backoff] = backoff if backoff
       body[:retention] = retention if retention
+      body[:unique_key] = unique_key if unique_key
+      body[:unique_while] = unique_while.to_s if unique_while
 
       response = post("/jobs", body)
-      data = handle_response!(response, expected: 201)
+      data = handle_response!(response, expected: [200, 201])
       Resources::Job.new(self, data)
     end
 
@@ -144,19 +157,23 @@ module Zizq
     # @rbs jobs: Array[Hash[Symbol, untyped]]
     # @rbs return: Array[Resources::Job]
     def enqueue_bulk(jobs:)
-      body = { jobs: jobs.map { |j|
-        wire = { type: j[:type], queue: j[:queue], payload: j[:payload] } #: Hash[Symbol, untyped]
-        wire[:priority] = j[:priority] if j[:priority]
-        # ready_at is fractional seconds in Ruby; the server expects ms.
-        wire[:ready_at] = (j[:ready_at].to_f * 1000).to_i if j[:ready_at]
-        wire[:retry_limit] = j[:retry_limit] if j[:retry_limit]
-        wire[:backoff] = j[:backoff] if j[:backoff]
-        wire[:retention] = j[:retention] if j[:retention]
-        wire
-      }}
+      body = {
+        jobs: jobs.map do |job|
+          wire = { type: job[:type], queue: job[:queue], payload: job[:payload] } #: Hash[Symbol, untyped]
+          wire[:priority] = job[:priority] if job[:priority]
+          # ready_at is fractional seconds in Ruby; the server expects ms.
+          wire[:ready_at] = (job[:ready_at].to_f * 1000).to_i if job[:ready_at]
+          wire[:retry_limit] = job[:retry_limit] if job[:retry_limit]
+          wire[:backoff] = job[:backoff] if job[:backoff]
+          wire[:retention] = job[:retention] if job[:retention]
+          wire[:unique_key] = job[:unique_key] if job[:unique_key]
+          wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
+          wire
+        end
+      }
 
       response = post("/jobs/bulk", body)
-      data = handle_response!(response, expected: 201)
+      data = handle_response!(response, expected: [200, 201])
       data["jobs"].map { |j| Resources::Job.new(self, j) }
     end
 
@@ -617,10 +634,11 @@ module Zizq
     end
 
     # Check response status and decode body, raising on errors.
-    def handle_response!(response, expected:) #: (RawResponse, expected: Integer) -> Hash[String, untyped]?
+    def handle_response!(response, expected:) #: (RawResponse, expected: Integer | Array[Integer]) -> Hash[String, untyped]?
       status = response.status
+      expected_statuses = Array(expected)
 
-      if status == expected
+      if expected_statuses.include?(status)
         return nil if status == 204
         decode_body(response.body)
       else
