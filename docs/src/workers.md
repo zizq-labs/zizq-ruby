@@ -76,6 +76,9 @@ I, [2026-03-25T17:51:05.293738 #1390456]  INFO -- : Zizq producer thread stopped
 I, [2026-03-25T17:51:05.294013 #1390456]  INFO -- : Zizq worker stopped
 ```
 
+If a second `INT` or `TERM` signal is sent to the worker process while waiting
+for a clean shutdown, the worker will immediately exit with exit code `1`.
+
 In the case of an unclean shutdown, any in-flight jobs are automatically
 returned to the queue by the Zizq server and another worker will naturally
 receive those jobs. There is no risk of job loss in the case of an unclean

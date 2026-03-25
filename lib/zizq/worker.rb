@@ -186,7 +186,14 @@ module Zizq
 
     def install_signal_handlers #: () -> void
       %w[INT TERM].each do |signal|
-        Signal.trap(signal) { shutdown }
+        Signal.trap(signal) do
+          if @lifecycle.running?
+            shutdown
+          else
+            # Second signal during graceful shutdown — force exit.
+            exit!(1)
+          end
+        end
       end
     end
 
