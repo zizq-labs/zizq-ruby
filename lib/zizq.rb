@@ -120,6 +120,60 @@ module Zizq
       client.enqueue(**build_enqueue_params(job_class, *args, **kwargs, &block))
     end
 
+    # Enqueue a job by providing raw inputs to the Zizq server.
+    #
+    # This is for advanced use cases such as enqueueing jobs for consumption in
+    # other programming languages.
+    #
+    #   Zizq.enqueue_raw(
+    #     queue: "emails",
+    #     type: "send_email",
+    #     payload: {user_id: 42, template: "welcome"}
+    #   )
+    #
+    # If using this method to enqueue a job that is intended for consumption in
+    # the Ruby client itself a custom dispatcher implementation is likely
+    # required:
+    #
+    #   Zizq.configure do |c|
+    #     c.dispatcher = MyDispatcher.new
+    #   end
+    #
+    # @rbs queue: String
+    # @rbs type: String
+    # @rbs payload: Hash[String | Symbol, untyped]
+    # @rbs priority: Integer?
+    # @rbs ready_at: Float?
+    # @rbs retry_limit: Integer?
+    # @rbs backoff: Zizq::backoff?
+    # @rbs retention: Zizq::retention?
+    # @rbs unique_key: String?
+    # @rbs unique_while: Zizq::unique_scope?
+    # @rbs return: Resources::Job
+    def enqueue_raw(queue:,
+                    type:,
+                    payload:,
+                    priority: nil,
+                    ready_at: nil,
+                    retry_limit: nil,
+                    backoff: nil,
+                    retention: nil,
+                    unique_key: nil,
+                    unique_while: nil)
+      client.enqueue(
+        queue:,
+        type:,
+        payload:,
+        priority:,
+        ready_at:,
+        retry_limit:,
+        backoff:,
+        retention:,
+        unique_key:,
+        unique_while:
+      )
+    end
+
     # Enqueue multiple jobs atomically in a single bulk request.
     #
     # This can significantly imprive throughput when many jobs need to be
@@ -174,7 +228,7 @@ module Zizq
 
       payload = zizq_job_class.zizq_serialize(*args, **kwargs)
 
-      params = { type:, queue: opts.queue, payload: } #: Hash[Symbol, untyped]
+      params = { queue: opts.queue, type:, payload: } #: Hash[Symbol, untyped]
       params[:priority] = opts.priority if opts.priority
       params[:ready_at] = opts.ready_at if opts.ready_at
       params[:retry_limit] = opts.retry_limit if opts.retry_limit

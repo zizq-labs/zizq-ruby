@@ -110,8 +110,8 @@ module Zizq
     #
     # Returns a resource instance of the new job wrapping the API response.
     #
-    # @rbs type: String
     # @rbs queue: String
+    # @rbs type: String
     # @rbs payload: Hash[String | Symbol, untyped]
     # @rbs priority: Integer?
     # @rbs ready_at: Float?
@@ -121,8 +121,8 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: Resources::Job
-    def enqueue(type:,
-                queue:,
+    def enqueue(queue:,
+                type:,
                 payload:,
                 priority: nil,
                 ready_at: nil,
@@ -131,7 +131,7 @@ module Zizq
                 retention: nil,
                 unique_key: nil,
                 unique_while: nil)
-      body = { type:, queue:, payload: } #: Hash[Symbol, untyped]
+      body = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       body[:priority] = priority if priority
       # ready_at is fractional seconds in Ruby; the server expects ms.
       body[:ready_at] = (ready_at.to_f * 1000).to_i if ready_at

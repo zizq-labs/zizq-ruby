@@ -27,13 +27,13 @@ class TestClient < Minitest::Test
 
     stub_request(:post, "#{URL}/jobs")
       .with(
-        body: JSON.generate({ type: "SendEmail", queue: "emails", payload: { user_id: 42 } }),
+        body: JSON.generate({ queue: "emails", type: "SendEmail", payload: { user_id: 42 } }),
         headers: { "Content-Type" => "application/json", "Accept" => "application/json" }
       )
       .to_return(status: 201, body: JSON.generate(job_response),
                  headers: { "Content-Type" => "application/json" })
 
-    result = @json_client.enqueue(type: "SendEmail", queue: "emails", payload: { user_id: 42 })
+    result = @json_client.enqueue(queue: "emails", type: "SendEmail", payload: { user_id: 42 })
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "abc123", result.id
     assert_equal "SendEmail", result.type
@@ -46,13 +46,13 @@ class TestClient < Minitest::Test
 
     stub_request(:post, "#{URL}/jobs")
       .with(
-        body: MessagePack.pack({ type: "SendEmail", queue: "emails", payload: { user_id: 42 } }),
+        body: MessagePack.pack({ queue: "emails", type: "SendEmail", payload: { user_id: 42 } }),
         headers: { "Content-Type" => "application/msgpack", "Accept" => "application/msgpack" }
       )
       .to_return(status: 201, body: MessagePack.pack(job_response),
                  headers: { "Content-Type" => "application/msgpack" })
 
-    result = @msgpack_client.enqueue(type: "SendEmail", queue: "emails", payload: { user_id: 42 })
+    result = @msgpack_client.enqueue(queue: "emails", type: "SendEmail", payload: { user_id: 42 })
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "abc123", result.id
   end

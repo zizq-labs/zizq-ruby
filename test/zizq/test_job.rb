@@ -572,4 +572,126 @@ class TestJob < Minitest::Test
 
     Zizq.enqueue(klass) { |o| o.unique_key = "custom-key" }
   end
+
+  # --- Zizq.enqueue_raw ---
+
+  def test_enqueue_raw_sends_type_queue_and_payload
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["queue"] == "emails" &&
+          body["type"] == "send_email" &&
+          body["payload"] == { "user_id" => 42 }
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = Zizq.enqueue_raw(queue: "emails", type: "send_email", payload: { user_id: 42 })
+    assert_equal "x", result.id
+  end
+
+  def test_enqueue_raw_passes_optional_fields
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["priority"] == 10 &&
+          body["retry_limit"] == 3 &&
+          body["unique_key"] == "my-key" &&
+          body["unique_while"] == "active"
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_raw(
+      queue: "q",
+      type: "task",
+      payload: {},
+      priority: 10,
+      retry_limit: 3,
+      unique_key: "my-key",
+      unique_while: :active
+    )
+  end
+
+  def test_enqueue_raw_does_not_send_nil_fields
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body.keys.sort == %w[payload queue type]
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_raw(queue: "q", type: "task", payload: {})
+  end
+
+  def test_enqueue_raw_handles_duplicate_response
+    stub_request(:post, "#{URL}/jobs")
+      .to_return(status: 200,
+                 body: JSON.generate({ "id" => "existing", "duplicate" => true }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = Zizq.enqueue_raw(queue: "q", type: "task", payload: {}, unique_key: "k")
+    assert_equal "existing", result.id
+    assert result.duplicate?
+  end
+
+  # --- Zizq.enqueue_bulk with enqueue_raw ---
+
+  def test_enqueue_bulk_with_raw_jobs
+    jobs_response = { "jobs" => [
+      { "id" => "j1", "type" => "send_email", "queue" => "emails", "status" => "ready" },
+      { "id" => "j2", "type" => "generate_report", "queue" => "reports", "status" => "ready" }
+    ] }
+
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"].size == 2 &&
+          body["jobs"][0]["type"] == "send_email" &&
+          body["jobs"][0]["queue"] == "emails" &&
+          body["jobs"][0]["payload"] == { "user_id" => 42 } &&
+          body["jobs"][1]["type"] == "generate_report" &&
+          body["jobs"][1]["queue"] == "reports"
+      }
+      .to_return(status: 201, body: JSON.generate(jobs_response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = Zizq.enqueue_bulk do |b|
+      b.enqueue_raw(queue: "emails", type: "send_email", payload: { user_id: 42 })
+      b.enqueue_raw(queue: "reports", type: "generate_report", payload: { id: 7 })
+    end
+
+    assert_equal 2, result.size
+    assert_equal "j1", result[0].id
+    assert_equal "j2", result[1].id
+  end
+
+  def test_enqueue_bulk_mixed_raw_and_job_class
+    jobs_response = { "jobs" => [
+      { "id" => "j1", "type" => "SendEmailJob", "queue" => "emails", "status" => "ready" },
+      { "id" => "j2", "type" => "process_payment", "queue" => "payments", "status" => "ready" }
+    ] }
+
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"].size == 2 &&
+          body["jobs"][0]["type"] == "SendEmailJob" &&
+          body["jobs"][0]["queue"] == "emails" &&
+          body["jobs"][1]["type"] == "process_payment" &&
+          body["jobs"][1]["queue"] == "payments"
+      }
+      .to_return(status: 201, body: JSON.generate(jobs_response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = Zizq.enqueue_bulk do |b|
+      b.enqueue(SendEmailJob, 42, template: "welcome")
+      b.enqueue_raw(queue: "payments", type: "process_payment", payload: { amount: 99 })
+    end
+
+    assert_equal 2, result.size
+    assert_equal "j1", result[0].id
+    assert_equal "j2", result[1].id
+  end
 end

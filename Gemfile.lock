@@ -117,6 +117,9 @@ GEM
       stringio
     public_suffix (7.0.2)
     racc (1.8.1)
+    rack (3.2.5)
+    rackup (2.3.1)
+      rack (>= 3)
     rainbow (3.1.1)
     rake (13.3.1)
     rb-fsevent (0.11.2)
@@ -170,6 +173,8 @@ GEM
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
+    webrick (1.9.2)
+    yard (0.9.38)
 
 PLATFORMS
   aarch64-linux-gnu
@@ -188,11 +193,15 @@ DEPENDENCIES
   async (~> 2.0)
   irb (~> 1.17.0)
   minitest (~> 5.0)
+  rack
+  rackup
   rake (~> 13.0)
   rbs-inline (~> 0.10)
   steep (~> 1.9)
   vernier (~> 1.0)
   webmock (~> 3.0)
+  webrick
+  yard
   zizq!
 
 BUNDLED WITH

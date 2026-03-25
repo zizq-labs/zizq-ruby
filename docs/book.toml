@@ -1,0 +1,18 @@
+[book]
+title = "Zizq Ruby Client"
+authors = ["Chris Corbyn"]
+description = "Zizq Ruby Client Documentation — The lightweight job queue server"
+language = "en"
+src = "src"
+
+[build]
+build-dir = "../target/docs"
+
+[output.html]
+site-url = "/docs/clients/ruby/"
+additional-css = ["src/zizq_docs.css"]
+default-theme = "light"
+preferred-dark-theme = "light"
+
+[output.html.print]
+enable = false
