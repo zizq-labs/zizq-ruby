@@ -12,15 +12,17 @@ require_relative "zizq/configuration"
 autoload :MessagePack, "msgpack"
 
 module Zizq
-  autoload :AckProcessor,   "zizq/ack_processor"
-  autoload :Backoff,        "zizq/backoff"
-  autoload :BulkEnqueue,    "zizq/bulk_enqueue"
-  autoload :Client,         "zizq/client"
-  autoload :EnqueueOptions, "zizq/enqueue_options"
-  autoload :Job,            "zizq/job"
-  autoload :Lifecycle,      "zizq/lifecycle"
-  autoload :Resources,      "zizq/resources"
-  autoload :Worker,         "zizq/worker"
+  autoload :AckProcessor,    "zizq/ack_processor"
+  autoload :ActiveJobConfig, "zizq/active_job_config"
+  autoload :Backoff,         "zizq/backoff"
+  autoload :BulkEnqueue,     "zizq/bulk_enqueue"
+  autoload :Client,          "zizq/client"
+  autoload :EnqueueOptions,  "zizq/enqueue_options"
+  autoload :Job,             "zizq/job"
+  autoload :JobConfig,       "zizq/job_config"
+  autoload :Lifecycle,       "zizq/lifecycle"
+  autoload :Resources,       "zizq/resources"
+  autoload :Worker,          "zizq/worker"
 
   @client_mutex = Mutex.new
 

@@ -3,6 +3,9 @@
 target :lib do
   signature "sig"
   check "lib"
+  # The ActiveJob adapter depends on types from activejob which we don't
+  # ship RBS for. Exclude it from type checking.
+  ignore "lib/active_job"
 
   library "logger"
   library "json"

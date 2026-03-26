@@ -13,6 +13,7 @@ group :development, :test do
   # Testing
   gem "minitest", "~> 5.0"
   gem "webmock", "~> 3.0"
+  gem "activejob", ">= 7.0"
   # RBS types
   gem "rbs-inline", "~> 0.10"
   gem "steep", "~> 1.9"
