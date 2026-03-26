@@ -175,19 +175,21 @@ module Zizq
       "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
     end
 
-    # Build a `Zizq::EnqueueOptions` instance from the class-level job config.
+    # Build a `Zizq::EnqueueRequest` from the class-level job config.
     #
     # Subclasses can override this to implement dynamic logic such as
     # priority based on arguments:
     #
-    #   def self.zizq_enqueue_options(user_id, template:)
-    #     opts = super
-    #     opts.priority = 0 if template == "urgent"
-    #     opts
+    #   def self.zizq_enqueue_request(user_id, template:)
+    #     req = super
+    #     req.priority = 0 if template == "urgent"
+    #     req
     #   end
-    def zizq_enqueue_options(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueOptions
-      EnqueueOptions.new(
+    def zizq_enqueue_request(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueRequest
+      EnqueueRequest.new(
+        type:         name || raise(ArgumentError, "Cannot enqueue anonymous class"),
         queue:        zizq_queue,
+        payload:      zizq_serialize(*args, **kwargs),
         priority:     zizq_priority,
         retry_limit:  zizq_retry_limit,
         backoff:      zizq_backoff,

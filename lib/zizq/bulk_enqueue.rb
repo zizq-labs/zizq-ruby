@@ -13,60 +13,40 @@ module Zizq
   #     b.enqueue(MyApp::OtherJob, 42, x: 7)
   #   end
   class BulkEnqueue
-    attr_reader :jobs #: Array[Hash[Symbol, untyped]]
+    attr_reader :requests #: Array[EnqueueRequest]
 
     def initialize #: () -> void
-      @jobs = [] #: Array[Hash[Symbol, untyped]]
+      @requests = [] #: Array[EnqueueRequest]
     end
 
-    # Collect params for a single job. Accepts the same arguments as
+    # Collect a job class enqueue. Accepts the same arguments as
     # `Zizq.enqueue`.
     #
     # @rbs job_class: Class & Zizq::job_class
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
-    # @rbs &block: ?(EnqueueOptions) -> void
+    # @rbs &block: ?(EnqueueRequest) -> void
     # @rbs return: void
     def enqueue(job_class, *args, **kwargs, &block)
-      @jobs << Zizq.build_enqueue_params(job_class, *args, **kwargs, &block)
+      @requests << Zizq.build_enqueue_request(job_class, *args, **kwargs, &block)
     end
 
-    # Collect params for a single raw enqueue. Accepts the same arguments as
+    # Collect a raw enqueue. Accepts the same arguments as
     # `Zizq.enqueue_raw`.
     #
     # @rbs queue: String
     # @rbs type: String
-    # @rbs payload: Hash[String | Symbol, untyped]
+    # @rbs payload: untyped
     # @rbs priority: Integer?
-    # @rbs ready_at: Float?
+    # @rbs ready_at: Zizq::to_f?
     # @rbs retry_limit: Integer?
     # @rbs backoff: Zizq::backoff?
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: void
-    def enqueue_raw(queue:,
-                    type:,
-                    payload:,
-                    priority: nil,
-                    ready_at: nil,
-                    retry_limit: nil,
-                    backoff: nil,
-                    retention: nil,
-                    unique_key: nil,
-                    unique_while: nil)
-      @jobs << {
-        queue:,
-        type:,
-        payload:,
-        priority:,
-        ready_at:,
-        retry_limit:,
-        backoff:,
-        retention:,
-        unique_key:,
-        unique_while:
-      }
+    def enqueue_raw(queue:, type:, payload:, **opts)
+      @requests << EnqueueRequest.new(queue:, type:, payload:, **opts)
     end
   end
 end

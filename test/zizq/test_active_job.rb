@@ -63,21 +63,20 @@ class TestActiveJob < Minitest::Test
     UniqueNoScopeActiveJob.executions = []
   end
 
-  # Build the params hash that the adapter would send to enqueue_raw,
-  # without making any HTTP calls.
-  def adapter_params(job)
-    ActiveJob::QueueAdapters::ZizqAdapter.new.send(:enqueue_params, job)
+  # Build the EnqueueRequest the adapter would produce, without HTTP calls.
+  def adapter_request(job)
+    ActiveJob::QueueAdapters::ZizqAdapter.new.send(:build_enqueue_request, job)
   end
 
-  # Simulate the dispatch side: build a Resources::Job from adapter
-  # params and run it through the Dispatcher.
-  def dispatch(params)
+  # Simulate the dispatch side: build a Resources::Job from a request
+  # and run it through the Dispatcher.
+  def dispatch(req)
     client = Zizq::Client.new(url: URL, format: :json)
     resource_job = Zizq::Resources::Job.new(client, {
       "id" => "j1",
-      "type" => params[:type],
-      "queue" => params[:queue],
-      "payload" => params[:payload],
+      "type" => req.type,
+      "queue" => req.queue,
+      "payload" => req.payload,
       "attempts" => 0
     })
     ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher.dispatch(resource_job)
@@ -87,7 +86,7 @@ class TestActiveJob < Minitest::Test
 
   def test_plain_job_round_trips
     job = PlainActiveJob.new(42, template: "welcome")
-    params = adapter_params(job)
+    params = adapter_request(job)
     dispatch(params)
 
     assert_equal 1, PlainActiveJob.executions.size
@@ -96,7 +95,7 @@ class TestActiveJob < Minitest::Test
 
   def test_extended_job_round_trips
     job = ExtendedActiveJob.new(42, template: "welcome")
-    params = adapter_params(job)
+    params = adapter_request(job)
     dispatch(params)
 
     assert_equal 1, ExtendedActiveJob.executions.size
@@ -105,79 +104,75 @@ class TestActiveJob < Minitest::Test
 
   # --- Plain adapter params (no Zizq extensions) ---
 
-  def test_plain_params_include_type_and_queue
-    params = adapter_params(PlainActiveJob.new(42, template: "welcome"))
+  def test_plain_request_include_type_and_queue
+    req = adapter_request(PlainActiveJob.new(42, template: "welcome"))
 
-    assert_equal "PlainActiveJob", params[:type]
-    assert_equal "default", params[:queue]
+    assert_equal "PlainActiveJob", req.type
+    assert_equal "default", req.queue
   end
 
-  def test_plain_params_include_activejob_payload
-    params = adapter_params(PlainActiveJob.new(42, template: "welcome"))
+  def test_plain_request_include_activejob_payload
+    req = adapter_request(PlainActiveJob.new(42, template: "welcome"))
 
-    assert_equal "PlainActiveJob", params[:payload]["job_class"]
-    assert params[:payload]["arguments"].is_a?(Array)
+    assert_equal "PlainActiveJob", req.payload["job_class"]
+    assert req.payload["arguments"].is_a?(Array)
   end
 
-  def test_plain_params_omit_unique_fields
-    params = adapter_params(PlainActiveJob.new(42, template: "welcome"))
+  def test_plain_request_omit_unique_fields
+    req = adapter_request(PlainActiveJob.new(42, template: "welcome"))
 
-    refute params.key?(:unique_key)
-    refute params.key?(:unique_while)
+    assert_nil req.unique_key
+    assert_nil req.unique_while
   end
 
-  def test_plain_params_omit_backoff_and_retention
-    params = adapter_params(PlainActiveJob.new(42, template: "welcome"))
+  def test_plain_request_omit_backoff_and_retention
+    req = adapter_request(PlainActiveJob.new(42, template: "welcome"))
 
-    refute params.key?(:backoff)
-    refute params.key?(:retention)
-    refute params.key?(:retry_limit)
+    assert_nil req.backoff
+    assert_nil req.retention
+    assert_nil req.retry_limit
   end
 
-  # --- Extended adapter params (with Zizq extensions) ---
+  # --- Extended adapter request (with Zizq extensions) ---
 
-  def test_extended_params_include_unique_key_and_scope
-    params = adapter_params(ExtendedActiveJob.new(42, template: "welcome"))
+  def test_extended_request_include_unique_key_and_scope
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
-    assert params[:unique_key].start_with?("ExtendedActiveJob:")
-    assert_equal :active, params[:unique_while]
+    assert req.unique_key.start_with?("ExtendedActiveJob:")
+    assert_equal :active, req.unique_while
   end
 
-  def test_extended_params_include_backoff
-    params = adapter_params(ExtendedActiveJob.new(42, template: "welcome"))
+  def test_extended_request_include_backoff
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
-    assert_equal({
-      exponent: 3.0,
-      base_ms: 10_000.0,
-      jitter_ms: 5_000.0
-    }, params[:backoff])
+    assert_equal({ exponent: 3.0, base: 10.0, jitter: 5.0 }, req.backoff)
   end
 
-  def test_extended_params_include_retention
-    params = adapter_params(ExtendedActiveJob.new(42, template: "welcome"))
+  def test_extended_request_include_retention
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
-    assert_equal({ completed_ms: 0, dead_ms: 86_400_000 }, params[:retention])
+    assert_equal({ completed: 0.0, dead: 86_400.0 }, req.retention)
   end
 
-  def test_extended_params_include_retry_limit
-    params = adapter_params(ExtendedActiveJob.new(42, template: "welcome"))
+  def test_extended_request_include_retry_limit
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
-    assert_equal 5, params[:retry_limit]
+    assert_equal 5, req.retry_limit
   end
 
-  def test_extended_params_use_activejob_queue_name
-    params = adapter_params(ExtendedActiveJob.new(42, template: "welcome"))
+  def test_extended_request_use_activejob_queue_name
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
-    assert_equal "emails", params[:queue]
+    assert_equal "emails", req.queue
   end
 
   # --- Unique without explicit scope ---
 
   def test_unique_no_scope_includes_key_but_not_while
-    params = adapter_params(UniqueNoScopeActiveJob.new(42))
+    req = adapter_request(UniqueNoScopeActiveJob.new(42))
 
-    assert params[:unique_key].is_a?(String)
-    refute params.key?(:unique_while)
+    assert req.unique_key.is_a?(String)
+    assert_nil req.unique_while
   end
 
   # --- Unique key determinism ---
@@ -203,10 +198,10 @@ class TestActiveJob < Minitest::Test
 
   def test_adapter_unique_key_matches_class_method
     job = ExtendedActiveJob.new(42, template: "welcome")
-    params = adapter_params(job)
+    params = adapter_request(job)
     direct_key = ExtendedActiveJob.zizq_unique_key(42, template: "welcome")
 
-    assert_equal direct_key, params[:unique_key]
+    assert_equal direct_key, params.unique_key
   end
 
   # --- enqueue_all (perform_all_later) ---
@@ -218,15 +213,14 @@ class TestActiveJob < Minitest::Test
       ExtendedActiveJob.new(2, template: "b"),
     ]
 
-    # Collect the params that would be sent to enqueue_bulk.
-    all_params = jobs.map { |j| adapter.send(:enqueue_params, j) }
+    requests = jobs.map { |j| adapter.send(:build_enqueue_request, j) }
 
-    assert_equal "PlainActiveJob", all_params[0][:type]
-    assert_equal "default", all_params[0][:queue]
+    assert_equal "PlainActiveJob", requests[0].type
+    assert_equal "default", requests[0].queue
 
-    assert_equal "ExtendedActiveJob", all_params[1][:type]
-    assert_equal "emails", all_params[1][:queue]
-    assert all_params[1][:unique_key].start_with?("ExtendedActiveJob:")
+    assert_equal "ExtendedActiveJob", requests[1].type
+    assert_equal "emails", requests[1].queue
+    assert requests[1].unique_key.start_with?("ExtendedActiveJob:")
   end
 
   def test_enqueue_all_round_trips_through_dispatcher
@@ -236,9 +230,8 @@ class TestActiveJob < Minitest::Test
       PlainActiveJob.new(2, template: "b"),
     ]
 
-    all_params = jobs.map { |j| adapter.send(:enqueue_params, j) }
-
-    all_params.each { |params| dispatch(params) }
+    requests = jobs.map { |j| adapter.send(:build_enqueue_request, j) }
+    requests.each { |req| dispatch(req) }
 
     assert_equal 2, PlainActiveJob.executions.size
     assert_equal 1, PlainActiveJob.executions[0][:user_id]

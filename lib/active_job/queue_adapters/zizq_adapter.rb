@@ -33,7 +33,7 @@ module ActiveJob
     class ZizqAdapter
       # Enqueue a job for immediate execution.
       def enqueue(job)
-        result = Zizq.enqueue_raw(**enqueue_params(job))
+        result = Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
         job.provider_job_id = result.id
         job.successfully_enqueued = true
         result
@@ -42,7 +42,7 @@ module ActiveJob
       # Enqueue a job for execution at a specific time.
       def enqueue_at(job, timestamp)
         job.scheduled_at = timestamp
-        result = Zizq.enqueue_raw(**enqueue_params(job))
+        result = Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
         job.provider_job_id = result.id
         job.successfully_enqueued = true
         result
@@ -55,7 +55,7 @@ module ActiveJob
       def enqueue_all(jobs)
         results = Zizq.enqueue_bulk do |b|
           jobs.each do |job|
-            b.enqueue_raw(**enqueue_params(job))
+            b.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
           end
         end
 
@@ -82,45 +82,27 @@ module ActiveJob
 
       private
 
-      def enqueue_params(job)
-        params = {
-          queue: job.queue_name,
-          type: job.class.name,
-          payload: job.serialize,
-          priority: job.priority,
-          ready_at: job.scheduled_at
-        }.compact
-
+      def build_enqueue_request(job)
         klass = job.class
 
+        req = Zizq::EnqueueRequest.new(
+          queue:    job.queue_name,
+          type:     klass.name,
+          payload:  job.serialize,
+          priority: job.priority,
+          ready_at: job.scheduled_at
+        )
+
         if klass.respond_to?(:zizq_unique) && klass.zizq_unique
-          params[:unique_key] = klass.zizq_unique_key(*job.arguments)
-          scope = klass.zizq_unique_scope
-          params[:unique_while] = scope if scope
+          req.unique_key = klass.zizq_unique_key(*job.arguments)
+          req.unique_while = klass.zizq_unique_scope
         end
 
-        if klass.respond_to?(:zizq_backoff) && klass.zizq_backoff
-          backoff = klass.zizq_backoff
-          params[:backoff] = {
-            exponent: backoff[:exponent],
-            base_ms: (backoff[:base] * 1000).to_f,
-            jitter_ms: (backoff[:jitter] * 1000).to_f
-          }
-        end
+        req.retry_limit  = klass.zizq_retry_limit  if klass.respond_to?(:zizq_retry_limit) && klass.zizq_retry_limit
+        req.backoff      = klass.zizq_backoff       if klass.respond_to?(:zizq_backoff) && klass.zizq_backoff
+        req.retention    = klass.zizq_retention     if klass.respond_to?(:zizq_retention) && klass.zizq_retention
 
-        if klass.respond_to?(:zizq_retention) && klass.zizq_retention
-          retention = klass.zizq_retention
-          wire = {}
-          wire[:completed_ms] = (retention[:completed] * 1000).to_i if retention[:completed]
-          wire[:dead_ms] = (retention[:dead] * 1000).to_i if retention[:dead]
-          params[:retention] = wire
-        end
-
-        if klass.respond_to?(:zizq_retry_limit) && klass.zizq_retry_limit
-          params[:retry_limit] = klass.zizq_retry_limit
-        end
-
-        params
+        req
       end
     end
   end

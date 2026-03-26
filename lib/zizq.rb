@@ -17,7 +17,7 @@ module Zizq
   autoload :Backoff,         "zizq/backoff"
   autoload :BulkEnqueue,     "zizq/bulk_enqueue"
   autoload :Client,          "zizq/client"
-  autoload :EnqueueOptions,  "zizq/enqueue_options"
+  autoload :EnqueueRequest,  "zizq/enqueue_request"
   autoload :Job,             "zizq/job"
   autoload :JobConfig,       "zizq/job_config"
   autoload :Lifecycle,       "zizq/lifecycle"
@@ -86,7 +86,7 @@ module Zizq
     # `::zizq_deserialize` as class methods on the job class.
     #
     # Default job options can be overridden at enqueue-time by providing a
-    # block which receives a mutable `Zizq::EnqueueOptions` instance.
+    # block which receives a mutable `Zizq::EnqueueRequest` instance.
     #
     #   Zizq.enqueue(SendEmailJob, 42, template: "welcome")
     #   Zizq.enqueue(SendEmailJob, 42) { |o| o.queue = "priority" }
@@ -94,7 +94,7 @@ module Zizq
     # Job classes may also override `::zizq_enqueue_options` to implement
     # dynamically computed options, such as dynamic prioritisation. This class
     # method accepts the same arguments as the `#perform` method and returns an
-    # instance of `Zizq::EnqueueOptions`. Any overrides may call `super` and
+    # instance of `Zizq::EnqueueRequest`. Any overrides may call `super` and
     # modify the result.
     #
     #   class SendEmailJob
@@ -116,10 +116,11 @@ module Zizq
     # @rbs job_class: Class & Zizq::job_class
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
-    # @rbs &block: ?(EnqueueOptions) -> void
+    # @rbs &block: ?(EnqueueRequest) -> void
     # @rbs return: Resources::Job
     def enqueue(job_class, *args, **kwargs, &block)
-      client.enqueue(**build_enqueue_params(job_class, *args, **kwargs, &block))
+      req = build_enqueue_request(job_class, *args, **kwargs, &block)
+      client.enqueue(**req.to_enqueue_params)
     end
 
     # Enqueue a job by providing raw inputs to the Zizq server.
@@ -143,7 +144,7 @@ module Zizq
     #
     # @rbs queue: String
     # @rbs type: String
-    # @rbs payload: Hash[String | Symbol, untyped]
+    # @rbs payload: untyped
     # @rbs priority: Integer?
     # @rbs ready_at: Zizq::to_f?
     # @rbs retry_limit: Integer?
@@ -152,28 +153,9 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: Resources::Job
-    def enqueue_raw(queue:,
-                    type:,
-                    payload:,
-                    priority: nil,
-                    ready_at: nil,
-                    retry_limit: nil,
-                    backoff: nil,
-                    retention: nil,
-                    unique_key: nil,
-                    unique_while: nil)
-      client.enqueue(
-        queue:,
-        type:,
-        payload:,
-        priority:,
-        ready_at:,
-        retry_limit:,
-        backoff:,
-        retention:,
-        unique_key:,
-        unique_while:
-      )
+    def enqueue_raw(queue:, type:, payload:, **opts)
+      req = EnqueueRequest.new(queue:, type:, payload:, **opts)
+      client.enqueue(**req.to_enqueue_params)
     end
 
     # Enqueue multiple jobs atomically in a single bulk request.
@@ -200,77 +182,27 @@ module Zizq
     def enqueue_bulk(&block)
       builder = BulkEnqueue.new
       yield builder
-      jobs_params = builder.jobs
-      return [] if jobs_params.empty?
-      client.enqueue_bulk(jobs: jobs_params)
+      return [] if builder.requests.empty?
+      client.enqueue_bulk(jobs: builder.requests.map(&:to_enqueue_params))
     end
 
     # @api private
-    # Build the params hash for a single enqueue call.
+    # Build an EnqueueRequest for a single job class enqueue.
     #
     # @rbs job_class: Class & Zizq::job_class
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
-    # @rbs &block: ?(EnqueueOptions) -> void
-    # @rbs return: Hash[Symbol, untyped]
-    def build_enqueue_params(job_class, *args, **kwargs, &block)
+    # @rbs &block: ?(EnqueueRequest) -> void
+    # @rbs return: EnqueueRequest
+    def build_enqueue_request(job_class, *args, **kwargs, &block)
       unless job_class.is_a?(Class) && job_class < Zizq::Job
         raise ArgumentError, "#{job_class.inspect} must include Zizq::Job"
       end
 
-      # After the runtime guard above, we know job_class includes Zizq::Job
-      # and therefore has ClassMethods extended. Assert this for steep.
       zizq_job_class = job_class #: Zizq::job_class
-
-      type = zizq_job_class.name
-      raise ArgumentError, "Cannot enqueue anonymous class" if type.nil?
-
-      opts = zizq_job_class.zizq_enqueue_options(*args, **kwargs)
-      yield opts if block_given?
-
-      payload = zizq_job_class.zizq_serialize(*args, **kwargs)
-
-      params = { queue: opts.queue, type:, payload: } #: Hash[Symbol, untyped]
-      params[:priority] = opts.priority if opts.priority
-      params[:ready_at] = opts.ready_at if opts.ready_at
-      params[:retry_limit] = opts.retry_limit if opts.retry_limit
-
-      # Backoff times are specified in seconds in Ruby but the server
-      # expects milliseconds. Convert here at the boundary.
-      if opts.backoff
-        backoff = opts.backoff
-        params[:backoff] = {
-          exponent: backoff[:exponent].to_f,
-          base_ms: (backoff[:base].to_f * 1000).to_f,
-          jitter_ms: (backoff[:jitter].to_f * 1000).to_f
-        }
-      end
-
-      # Retention times are specified in seconds in Ruby but the server
-      # expects milliseconds. Convert here at the boundary.
-      if opts.retention
-        retention = opts.retention
-        wire = {} #: Hash[Symbol, Integer]
-        wire[:completed_ms] = (retention[:completed].to_f * 1000).to_i if retention[:completed]
-        wire[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
-        params[:retention] = wire
-      end
-
-      # Support ActiveSupport::Duration and Numeric alike.
-      # Both ready_at and delay are in fractional seconds; the Client
-      # handles the conversion to the server's millisecond format.
-      params[:ready_at] = Time.now.to_f + opts.delay.to_f if opts.delay
-
-      # Unique jobs: key and scope are populated by zizq_enqueue_options.
-      # The block can override opts.unique_key and opts.unique_while.
-      #
-      # Requires a pro license on the server.
-      if opts.unique_key
-        params[:unique_key] = opts.unique_key
-        params[:unique_while] = opts.unique_while.to_s if opts.unique_while
-      end
-
-      params
+      req = zizq_job_class.zizq_enqueue_request(*args, **kwargs)
+      yield req if block_given?
+      req
     end
   end
 end

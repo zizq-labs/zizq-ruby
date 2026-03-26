@@ -55,7 +55,7 @@ module Zizq
     def zizq_unique_key: (*untyped, **untyped) -> String
     def zizq_serialize: (*untyped, **untyped) -> Hash[String, untyped]
     def zizq_deserialize: (Hash[String, untyped]) -> [Array[untyped], Hash[Symbol, untyped]]
-    def zizq_enqueue_options: (*untyped, **untyped) -> EnqueueOptions
+    def zizq_enqueue_request: (*untyped, **untyped) -> EnqueueRequest
     def name: () -> String?
     def new: () -> Job
   end

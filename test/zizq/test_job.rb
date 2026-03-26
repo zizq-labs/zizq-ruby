@@ -48,16 +48,16 @@ class UnimplementedJob
   include Zizq::Job
 end
 
-# Test job class with a custom zizq_enqueue_options override.
+# Test job class with a custom zizq_enqueue_request override.
 class PriorityOverrideJob
   include Zizq::Job
 
   zizq_queue "priority"
 
-  def self.zizq_enqueue_options(*args, **kwargs)
-    opts = super
-    opts.priority = 0 if args.first == "urgent"
-    opts
+  def self.zizq_enqueue_request(*args, **kwargs)
+    req = super
+    req.priority = 0 if args.first == "urgent"
+    req
   end
 
   def perform(level) = nil
@@ -129,10 +129,10 @@ class TestJob < Minitest::Test
     assert_equal original_kwargs, kwargs
   end
 
-  # --- zizq_enqueue_options ---
+  # --- zizq_enqueue_request ---
 
   def test_enqueue_options_defaults
-    opts = SendEmailJob.zizq_enqueue_options(42)
+    opts = SendEmailJob.zizq_enqueue_request(42)
     assert_equal "emails", opts.queue
     assert_equal 20, opts.priority
     assert_nil opts.delay
@@ -140,17 +140,17 @@ class TestJob < Minitest::Test
   end
 
   def test_enqueue_options_includes_class_config
-    opts = RetryConfiguredJob.zizq_enqueue_options
+    opts = RetryConfiguredJob.zizq_enqueue_request
     assert_equal "retries", opts.queue
     assert_equal 5, opts.retry_limit
     assert_equal({ exponent: 2.0, base: 1.5, jitter: 0.5 }, opts.backoff)
   end
 
   def test_enqueue_options_custom_override
-    opts = PriorityOverrideJob.zizq_enqueue_options("urgent")
+    opts = PriorityOverrideJob.zizq_enqueue_request("urgent")
     assert_equal 0, opts.priority
 
-    opts2 = PriorityOverrideJob.zizq_enqueue_options("normal")
+    opts2 = PriorityOverrideJob.zizq_enqueue_request("normal")
     assert_nil opts2.priority
   end
 
