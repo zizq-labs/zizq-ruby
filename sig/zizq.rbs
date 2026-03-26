@@ -4,6 +4,13 @@
 # Manual RBS declarations that rbs-inline can't generate.
 
 module Zizq
+  # Any object that can be converted to a Float (Time, Duration, Numeric, etc).
+  interface _ToF
+    def to_f: () -> Float
+  end
+
+  type to_f = _ToF
+
   # Serialization format for communication with the server.
   type format = :json | :msgpack
 

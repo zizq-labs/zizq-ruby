@@ -17,8 +17,8 @@ module Zizq
   class EnqueueOptions
     attr_accessor :queue #: String
     attr_accessor :priority #: Integer?
-    attr_accessor :delay #: (Float | Integer)?
-    attr_accessor :ready_at #: Float?
+    attr_accessor :delay #: Zizq::to_f?
+    attr_accessor :ready_at #: Zizq::to_f?
     attr_accessor :retry_limit #: Integer?
     attr_accessor :backoff #: Zizq::backoff?
     attr_accessor :retention #: Zizq::retention?
@@ -27,8 +27,8 @@ module Zizq
 
     # @rbs queue: String
     # @rbs priority: Integer?
-    # @rbs delay: (Float | Integer)?
-    # @rbs ready_at: Float?
+    # @rbs delay: Zizq::to_f?
+    # @rbs ready_at: Zizq::to_f?
     # @rbs retry_limit: Integer?
     # @rbs backoff: Zizq::backoff?
     # @rbs retention: Zizq::retention?

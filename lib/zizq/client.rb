@@ -114,7 +114,7 @@ module Zizq
     # @rbs type: String
     # @rbs payload: Hash[String | Symbol, untyped]
     # @rbs priority: Integer?
-    # @rbs ready_at: Float?
+    # @rbs ready_at: Zizq::to_f?
     # @rbs retry_limit: Integer?
     # @rbs backoff: Zizq::backoff?
     # @rbs retention: Zizq::retention?
