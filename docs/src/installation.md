@@ -170,5 +170,27 @@ end
                 server. Default: <code>Zizq::Job</code>.
             </td>
         </tr>
+        <tr>
+            <td>
+                <div><code>enqueue_middleware</code></div>
+                <div><pre>Zizq::Middleware::Chain</pre></div>
+            </td>
+            <td>
+                The middleware chain used for all job enqueues. Middlewares can
+                be registered in the chain with
+                <code>enqueue_middleware.use(middleware)</code>.
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <div><code>dequeue_middleware</code></div>
+                <div><pre>Zizq::Middleware::Chain</pre></div>
+            </td>
+            <td>
+                The middleware chain used for all job dequeues. Middlewares can
+                be registered in the chain with
+                <code>dequeue_middleware.use(middleware)</code>.
+            </td>
+        </tr>
     </tbody>
 </table>

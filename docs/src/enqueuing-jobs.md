@@ -18,10 +18,12 @@ passed to the `#perfom` method and Zizq reads all the inputs from the job.
 Your application calls the `Zizq.enqueue` method.
 
 ``` ruby
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: "welcome")
+result = Zizq.enqueue(SendEmailJob, user.id, template: "welcome")
+result.id # "03fu0wm75gxgmfyfplwvazhex"
 ```
 
-The job is immediately pushed to the Zizq server for your workers to process.
+The job is immediately pushed to the Zizq server for your workers to process
+and the `Zizq::Resources::Job` instance is returned.
 
 Any configuration on the job, such as the queue name, priority, backoff policy
 etc are included in the enqueue request.
@@ -30,14 +32,14 @@ When the worker runs this job, it will execute something like:
 
 ``` ruby
 job = SendEmailJob.new
-job.perform(user_id: 42, template: "welcome")
+job.perform(42, template: "welcome")
 ```
 
 ### Configuration Overrides
 
 All options that can be configured on the job can also be overridden at
 enqueue-time by providing a block to `Zizq.enqueue`. The block receives the
-default `Zizq::EnqueueOptions` object based on the job class, and the caller
+default `Zizq::EnqueueRequest` object based on the job class, and the caller
 can modify it as needed (e.g. to specify a higher priority).
 
 > [!TIP]
@@ -47,13 +49,13 @@ can modify it as needed (e.g. to specify a higher priority).
 
 ``` ruby
 # Override the priority on this job.
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: "welcome") do |opts|
-  opts.priority = 100
+Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
+  req.priority = 100
 end
 
 # Disable retries on this job.
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: "welcome") do |opts|
-  opts.retry_limit = 0
+Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
+  req.retry_limit = 0
 end
 ```
 
@@ -65,15 +67,15 @@ either the `ready_at` timestamp (seconds since the Unix epoch), or a `delay`
 
 ``` ruby
 # Schedule the job to run in 1 hour.
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: "welcome") do |opts|
-  opts.delay = 3600
+Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
+  req.delay = 3600
 end
 ```
 
 ``` ruby
 # Schedule the job to run at a specific time.
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: "welcome") do |opts|
-  opts.ready_at = Time.new(2027, 3, 15, 14, 30).to_f
+Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
+  req.ready_at = Time.new(2027, 3, 15, 14, 30).to_f
 end
 ```
 
@@ -97,3 +99,36 @@ Zizq.enqueue_raw(
 This method should generally not be used for cases where you are enqueueing a
 job for consumption by the same Ruby application. If you really do need to do
 this, like you likely need to also write a [Custom Dispatcher](./dispatchers.md).
+
+## Bulk Job Enqueueing
+
+If your application needs to enqueue many jobs as part of a single operation,
+throughput can be significantly increased by enqueueing those jobs together in
+a single request. Zizq supports this and it works across queues and across job
+types. You can mix raw enqueues with regular `Zizq::Job` enqueues too.
+
+This is an atomic operation. All jobs are either enqueued successfully, or none
+at all. Jobs will not be visible to workers until the operation returns
+successfully.
+
+There is no upper limit on the number of jobs enqueued in a single request,
+though you should most likely experiment to find a reasonable request size for
+your use case. Anything less than around 5,000 jobs in one request should be
+trivial.
+
+Use `Zizq.enqueue_bulk`, which yields a `BulkEnqueue` object that implements
+same `enqueue` and `enqueue_raw` signatures as `Zizq` itself.
+
+``` ruby
+Zizq.enqueue_bulk do |b|
+  emails.each do |user_id, template|
+    b.enqueue(SendEmailJob, user_id, template:)
+  end
+
+  b.enqueue_raw(
+    queue: "metrics",
+    type: "increment_metric",
+    payload: {key: "emails_enqueued", value: emails.size},
+  )
+end
+```

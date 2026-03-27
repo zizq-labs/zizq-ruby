@@ -7,3 +7,5 @@
 - [Running Workers](./workers.md)
 - [Unique Jobs](./unique-jobs.md)
 - [Custom Dispatchers](./dispatchers.md)
+- [Using Middleware](./middleware.md)
+- [Integration with ActiveJob](./active-job.md)

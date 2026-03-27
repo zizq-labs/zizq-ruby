@@ -151,6 +151,11 @@ MyApp::MyJob.zizq_retention
 
 #### Specifying Job Uniqueness
 
+> [!TIP]
+> This section of the documentation deals mostly with how to define unique jobs.
+> See [Unique Jobs](./unique-jobs.md) for more detailed documentation on using
+> this feature.
+
 This requires a pro license on the server. Zizq is able to prevent duplicate
 enqueues of the same job within a specified job lifecycle scope. Use
 `zizq_unique` enable or disable uniqueness for a job.
@@ -169,7 +174,7 @@ considered unique. Options are:
         <tr>
             <td><code>:queued</code></td>
             <td>
-                Prevent duplicate enqueues if this job is still in the
+                Prevent duplicate enqueues while this job is still in the
                 <code>"scheduled"</code> or <code>"ready"</code> statuses (i.e.
                 until a worker takes the job)
             </td>
@@ -177,7 +182,7 @@ considered unique. Options are:
         <tr>
             <td><code>:active</code></td>
             <td>
-                Prevent duplicate enqueues if this job is still in the
+                Prevent duplicate enqueues while this job is still in the
                 <code>"scheduled"</code>, <code>"ready"</code> or
                 <code>"in_flight"</code> statuses (i.e. until this job
                 successfully completes)
@@ -251,8 +256,8 @@ MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
 ### Dynamic Job Configuration { #dynamic-config }
 
 When the client generates parameters to send to the Zizq server, it does this
-by calling `zizq_enqueue_options(*args, **kwargs)` on your job class, passing
-the job arguments. The return value is a `Zizq::EnqueueOptions` instance,
+by calling `zizq_enqueue_request(*args, **kwargs)` on your job class, passing
+the job arguments. The return value is a `Zizq::EnqueueRequest` instance,
 exactly the same as the one yielded to the caller in `Zizq.enqueue`.
 
 If you need to do any kind of dynamic configuration in your job classes, such
@@ -265,10 +270,10 @@ class MyApp::MyJob
 
   zizq_priority 500
 
-  def self.zizq_enqueue_options(arg1, arg2, example:)
-    opts = super
-    opts.priority -= 50 if arg1 == "Bill"
-    opts
+  def self.zizq_enqueue_request(arg1, arg2, example:)
+    req = super
+    req.priority -= 50 if arg1 == "Bill"
+    req
   end
 end
 ```
@@ -320,3 +325,10 @@ If you do not want errors to trigger retries, you have two options:
 1. Allow the error and configure `zizq_retry_limit` to `0`.
 2. Rescue the error inside the `#perform` method so the Zizq worker does not
    see it as a failure.
+
+## Using `ActiveJob`
+
+If your application is a Rails app, you can also use `ActiveJob` to manage your
+jobs with the `:zizq` queue adapter. See
+[Integration with ActiveJob](./active-job.md) for full documentation on this
+feature.
