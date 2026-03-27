@@ -5,7 +5,7 @@ including the `Zizq::Job` module in your Ruby classes. This module adds
 instance and class methods to the class, which enable dispatching work to
 instances if that class.
 
-## Using `Zizq::Job`
+## `Zizq::Job`
 
 In Zizq, jobs have a number of required attributes, such as a named `queue`, a
 job `type` and a `payload`. A number of optional attributes also exist.
@@ -326,9 +326,9 @@ If you do not want errors to trigger retries, you have two options:
 2. Rescue the error inside the `#perform` method so the Zizq worker does not
    see it as a failure.
 
-## Using `ActiveJob`
+## `ActiveJob`
 
-If your application is a Rails app, you can also use `ActiveJob` to manage your
+If your application is a Rails app, you can also use Active Job to manage your
 jobs with the `:zizq` queue adapter. See
-[Integration with ActiveJob](./active-job.md) for full documentation on this
+[Using Active Job](./active-job.md) for full documentation on this
 feature.

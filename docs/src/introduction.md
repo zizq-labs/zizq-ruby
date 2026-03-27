@@ -92,4 +92,4 @@ retry limit.
 
 > [!TIP]
 > For more advanced and cross-language use cases, jobs can be enqueued and
-> processed directly by using a [custom dispatcher](/dispatchers.md).
+> processed directly by using a [custom dispatcher](./dispatchers.md).
