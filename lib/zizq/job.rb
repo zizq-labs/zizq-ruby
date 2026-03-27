@@ -36,14 +36,14 @@ module Zizq
     #
     # Resolves the job class from the type string, deserializes the
     # payload, and calls `#perform`. Any object that responds to
-    # `#dispatch(job)` can replace this as a custom dispatcher via
+    # `#call(job)` can replace this as a custom dispatcher via
     # `Zizq.configure { |c| c.dispatcher = MyDispatcher.new }`.
     #
     # The contract is simple: return normally → ack, raise → nack.
     #
     # @rbs job: Resources::Job
     # @rbs return: void
-    def self.dispatch(job)
+    def self.call(job)
       job_class = Object.const_get(job.type)
 
       unless job_class.is_a?(Class) && job_class.include?(Zizq::Job)

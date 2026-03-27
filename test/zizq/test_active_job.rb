@@ -79,7 +79,7 @@ class TestActiveJob < Minitest::Test
       "payload" => req.payload,
       "attempts" => 0
     })
-    ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher.dispatch(resource_job)
+    ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher.call(resource_job)
   end
 
   # --- Round-trip tests ---

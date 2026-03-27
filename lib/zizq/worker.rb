@@ -332,7 +332,7 @@ module Zizq
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         begin
-          Zizq.configuration.dispatcher.dispatch(job)
+          Zizq.configuration.dequeue_middleware.call(job)
         ensure
           finish_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           elapsed_time = finish_time - start_time

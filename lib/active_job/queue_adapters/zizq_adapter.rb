@@ -75,7 +75,7 @@ module ActiveJob
       # ActiveJob handles its own deserialization, callbacks, and error
       # handling. We just pass the serialized payload to `Base.execute`.
       module Dispatcher
-        def self.dispatch(job)
+        def self.call(job)
           ActiveJob::Base.execute(job.payload)
         end
       end

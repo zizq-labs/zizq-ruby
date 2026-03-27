@@ -332,7 +332,7 @@ class TestWorker < Minitest::Test
     dispatched_jobs = []
 
     custom_dispatcher = Object.new
-    custom_dispatcher.define_singleton_method(:dispatch) do |job|
+    custom_dispatcher.define_singleton_method(:call) do |job|
       dispatched_jobs << job
     end
 
@@ -368,7 +368,7 @@ class TestWorker < Minitest::Test
     worker.shutdown
     t.join(5)
 
-    # Custom dispatcher was called, not the default Zizq::Job.dispatch.
+    # Custom dispatcher was called, not the default Zizq::Job.call.
     assert_equal 1, dispatched_jobs.size
     assert_equal "j1", dispatched_jobs.first.id
 

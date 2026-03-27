@@ -42,16 +42,43 @@ module Zizq
     # Note: Mutual TLS support requires a Zizq Pro license on the server.
     attr_accessor :tls #: Zizq::tls_options?
 
-    # Job dispatcher. Any object that responds to `#dispatch(job)`.
-    # Defaults to `Zizq::Job` which resolves job classes by name.
-    attr_accessor :dispatcher #: Zizq::dispatcher
+    # Middleware chain for enqueue. Each middleware receives an
+    # `EnqueueRequest` and a chain to continue.
+    attr_reader :enqueue_middleware #: Middleware::Chain[EnqueueRequest, EnqueueRequest]
+
+    # Middleware chain for dequeue/dispatch. Each middleware receives
+    # a `Resources::Job` and a chain to continue.
+    attr_reader :dequeue_middleware #: Middleware::Chain[Resources::Job, void]
 
     def initialize #: () -> void
       @url = "http://localhost:7890"
       @format = :msgpack
       @logger = Logger.new($stdout, level: Logger::INFO)
       @tls = nil
-      @dispatcher = Zizq::Job
+      @enqueue_middleware = Middleware::Chain.new(Identity.new)
+      @dequeue_middleware = Middleware::Chain.new(Zizq::Job)
+    end
+
+    # The job dispatcher.
+    # This is the terminal of the dequeue middleware chain.
+    # Defaults to `Zizq::Job` which finds and executes jobs written by mixing
+    # in the `Zizq::Job` module.
+    def dispatcher #: () -> Zizq::dispatcher
+      @dequeue_middleware.terminal
+    end
+
+    # Set the dispatcher to a custom dispatcher implementation.
+    #
+    # A dispatcher is any object that responds to `#call` with a
+    # `Zizq::Resources::Job` instance and performs that job through some
+    # application-specific logic.
+    #
+    # This is the terminal of the dequeue middleware chain.
+    #
+    # Any errors raised by the dispatcher will result in the normal
+    # backoff/retry behaviour. Jobs are acknowledged automatically on success.
+    def dispatcher=(dispatcher) #: (Zizq::dispatcher) -> void
+      @dequeue_middleware.terminal = dispatcher
     end
 
     # Validates that required configuration is present.
@@ -91,6 +118,14 @@ module Zizq
       end
 
       ctx
+    end
+
+    # @private
+    # Identity terminal — returns the argument unchanged.
+    class Identity
+      def call(arg) #: (untyped) -> untyped
+        arg
+      end
     end
 
     private

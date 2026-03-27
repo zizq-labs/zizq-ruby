@@ -20,6 +20,7 @@ module Zizq
   autoload :EnqueueRequest,  "zizq/enqueue_request"
   autoload :Job,             "zizq/job"
   autoload :JobConfig,       "zizq/job_config"
+  autoload :Middleware,      "zizq/middleware"
   autoload :Lifecycle,       "zizq/lifecycle"
   autoload :Resources,       "zizq/resources"
   autoload :Worker,          "zizq/worker"
@@ -44,6 +45,7 @@ module Zizq
     #   Zizq.configure do |c|
     #     c.url = "http://localhost:7890"
     #     c.format = :msgpack
+    #     c.dequeue_middleware.use(MyDequeueMiddleware.new)
     #   end
     def configure #: () { (Configuration) -> void } -> void
       yield configuration
@@ -120,6 +122,7 @@ module Zizq
     # @rbs return: Resources::Job
     def enqueue(job_class, *args, **kwargs, &block)
       req = build_enqueue_request(job_class, *args, **kwargs, &block)
+      req = configuration.enqueue_middleware.call(req)
       client.enqueue(**req.to_enqueue_params)
     end
 
@@ -155,6 +158,7 @@ module Zizq
     # @rbs return: Resources::Job
     def enqueue_raw(queue:, type:, payload:, **opts)
       req = EnqueueRequest.new(queue:, type:, payload:, **opts)
+      req = configuration.enqueue_middleware.call(req)
       client.enqueue(**req.to_enqueue_params)
     end
 
@@ -183,7 +187,12 @@ module Zizq
       builder = BulkEnqueue.new
       yield builder
       return [] if builder.requests.empty?
-      client.enqueue_bulk(jobs: builder.requests.map(&:to_enqueue_params))
+
+      jobs = builder.requests.map do |req|
+        configuration.enqueue_middleware.call(req).to_enqueue_params
+      end
+
+      client.enqueue_bulk(jobs:)
     end
 
     # @api private
