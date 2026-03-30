@@ -26,6 +26,15 @@ module Zizq
   # Uniqueness scope for deduplication at enqueue time.
   type unique_scope = :queued | :active | :exists
 
+  # Filter parameters for bulk operations (delete, update) and list queries.
+  type where_params = {
+    ?id: (String | Array[String])?,
+    ?status: (String | Array[String])?,
+    ?queue: (String | Array[String])?,
+    ?type: (String | Array[String])?,
+    ?filter: String?
+  }
+
   # TLS options for connecting over HTTPS. Values are PEM strings or file paths.
   type tls_options = { ?ca: String, ?client_cert: String, ?client_key: String }
 

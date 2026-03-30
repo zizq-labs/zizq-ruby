@@ -212,7 +212,7 @@ module Zizq
       options = { id:, status:, queue:, type:, filter:, from:, order:, limit: }.compact #: Hash[Symbol, untyped]
 
       multi_keys = %i[id status queue type]
-      params = build_list_params(options, multi_keys:)
+      params = build_where_params(options, multi_keys:)
 
       # An empty filter ([] or "") matches nothing — short-circuit.
       multi_keys.each do |key|
@@ -222,6 +222,41 @@ module Zizq
       response = get("/jobs", params:)
       data = handle_response!(response, expected: 200)
       Resources::JobPage.new(self, data)
+    end
+
+    # Delete a single job by ID.
+    #
+    # @rbs id: String
+    # @rbs return: void
+    def delete_job(id)
+      response = delete("/jobs/#{id}")
+      handle_response!(response, expected: [200, 204])
+      nil
+    end
+
+    # Delete jobs matching the given filters.
+    #
+    # Filters in the `where:` argument use the same keys as `list_jobs`. An
+    # empty `where:` hash deletes all jobs.
+    #
+    # Returns the number of deleted jobs.
+    #
+    # @rbs where: Zizq::where_params
+    # @rbs return: Integer
+    def delete_all_jobs(where: {})
+      filter_params = validate_where(**where)
+
+      multi_keys = %i[id status queue type]
+      params = build_where_params(filter_params, multi_keys:)
+
+      # An empty multi-value filter matches nothing — short-circuit.
+      multi_keys.each do |key|
+        return 0 if params[key] == ""
+      end
+
+      response = delete("/jobs", params:)
+      data = handle_response!(response, expected: 200)
+      data.fetch("deleted")
     end
 
     # Get a single error record by job ID and attempt number.
@@ -502,8 +537,22 @@ module Zizq
       path
     end
 
+    # Validate and normalize filter parameters for bulk operations.
+    #
+    # Uses keyword arguments so that unknown keys raise ArgumentError.
+    #
+    # @rbs id: (String | Array[String])?
+    # @rbs status: (String | Array[String])?
+    # @rbs queue: (String | Array[String])?
+    # @rbs type: (String | Array[String])?
+    # @rbs filter: String?
+    # @rbs return: Hash[Symbol, untyped]
+    def validate_where(id: nil, status: nil, queue: nil, type: nil, filter: nil)
+      { id:, status:, queue:, type:, filter: }.compact
+    end
+
     # Build query params for list endpoints, joining multi-value keys with ",".
-    def build_list_params(options, multi_keys: []) #: (Hash[Symbol, untyped], ?multi_keys: Array[Symbol]) -> Hash[Symbol, untyped]
+    def build_where_params(options, multi_keys: []) #: (Hash[Symbol, untyped], ?multi_keys: Array[Symbol]) -> Hash[Symbol, untyped]
       params = {} #: Hash[Symbol, untyped]
       options.each do |key, value|
         if multi_keys.include?(key) && value.is_a?(Array)
@@ -649,6 +698,29 @@ module Zizq
           http.post(
             build_path(path),
             {"accept" => @content_type}
+          )
+        )
+      end
+    end
+
+    def delete(path, params: {}) #: (String, ?params: Hash[Symbol, untyped]) -> RawResponse
+      request do |http|
+        consume_response(
+          http.delete(
+            build_path(path, params:),
+            {"accept" => @content_type}
+          )
+        )
+      end
+    end
+
+    def patch(path, body, params: {}) #: (String, Hash[Symbol, untyped], ?params: Hash[Symbol, untyped]) -> RawResponse
+      request do |http|
+        consume_response(
+          http.patch(
+            build_path(path, params:),
+            {"content-type" => @content_type, "accept" => @content_type},
+            Protocol::HTTP::Body::Buffered.wrap(encode_body(body))
           )
         )
       end

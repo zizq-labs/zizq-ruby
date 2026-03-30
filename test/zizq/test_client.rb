@@ -265,6 +265,52 @@ class TestClient < Minitest::Test
     assert_equal false, result.has_next?
   end
 
+  # --- delete_job ---
+
+  def test_delete_job
+    stub_request(:delete, "#{URL}/jobs/j1")
+      .to_return(status: 204, body: "", headers: {})
+
+    assert_nil @json_client.delete_job("j1")
+  end
+
+  def test_delete_job_not_found
+    stub_request(:delete, "#{URL}/jobs/j1")
+      .to_return(status: 404, body: JSON.generate({ "error" => "job not found" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_raises(Zizq::NotFoundError) { @json_client.delete_job("j1") }
+  end
+
+  # --- delete_all_jobs ---
+
+  def test_delete_all_jobs_with_filters
+    stub_request(:delete, "#{URL}/jobs?queue=emails&status=dead")
+      .to_return(status: 200, body: JSON.generate({ "deleted" => 5 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    count = @json_client.delete_all_jobs(where: { queue: "emails", status: "dead" })
+    assert_equal 5, count
+  end
+
+  def test_delete_all_jobs_no_filters
+    stub_request(:delete, "#{URL}/jobs")
+      .to_return(status: 200, body: JSON.generate({ "deleted" => 10 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    count = @json_client.delete_all_jobs
+    assert_equal 10, count
+  end
+
+  def test_delete_all_jobs_empty_array_short_circuits
+    count = @json_client.delete_all_jobs(where: { id: [] })
+    assert_equal 0, count
+  end
+
+  def test_delete_all_jobs_rejects_unknown_filter
+    assert_raises(ArgumentError) { @json_client.delete_all_jobs(where: { typo: "x" }) }
+  end
+
   # --- get_error ---
 
   def test_get_error
