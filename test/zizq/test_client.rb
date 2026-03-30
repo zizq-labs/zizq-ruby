@@ -234,6 +234,37 @@ class TestClient < Minitest::Test
     assert_equal 1, result.jobs.size
   end
 
+  def test_list_jobs_with_id_filter
+    response = { "jobs" => [{ "id" => "j1" }], "pages" => { "self" => "/jobs" } }
+
+    stub_request(:get, "#{URL}/jobs?id=j1,j2")
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.list_jobs(id: %w[j1 j2])
+    assert_equal 1, result.jobs.size
+  end
+
+  def test_list_jobs_with_payload_filter
+    response = { "jobs" => [{ "id" => "j1" }], "pages" => { "self" => "/jobs" } }
+
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "filter" => ".user_id == 42" })
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.list_jobs(filter: ".user_id == 42")
+    assert_equal 1, result.jobs.size
+  end
+
+  def test_list_jobs_with_empty_array_short_circuits
+    # No HTTP request should be made.
+    result = @json_client.list_jobs(id: [])
+    assert_instance_of Zizq::Resources::JobPage, result
+    assert_equal [], result.jobs
+    assert_equal false, result.has_next?
+  end
+
   # --- get_error ---
 
   def test_get_error

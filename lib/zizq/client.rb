@@ -186,19 +186,39 @@ module Zizq
 
     # List jobs with optional filters.
     #
-    # Multi-value filters (`status`, `queue`, `type`) accept arrays — they
-    # are joined with commas as the server expects.
+    # Multi-value filters (`status`, `queue`, `type`, `id`) accept arrays —
+    # they are joined with commas as the server expects.
     #
+    # The `filter` parameter accepts a jq expression for filtering jobs by
+    # payload content (e.g. `.user_id == 42`).
+    #
+    # @rbs id: (String | Array[String])?
     # @rbs status: (String | Array[String])?
     # @rbs queue: (String | Array[String])?
     # @rbs type: (String | Array[String])?
+    # @rbs filter: String?
     # @rbs from: String?
     # @rbs order: Zizq::sort_direction?
     # @rbs limit: Integer?
     # @rbs return: Resources::JobPage
-    def list_jobs(status: nil, queue: nil, type: nil, from: nil, order: nil, limit: nil)
-      options = { status:, queue:, type:, from:, order:, limit: }.compact #: Hash[Symbol, untyped]
-      params = build_list_params(options, multi_keys: %i[status queue type])
+    def list_jobs(id: nil,
+                  status: nil,
+                  queue: nil,
+                  type: nil,
+                  filter: nil,
+                  from: nil,
+                  order: nil,
+                  limit: nil)
+      options = { id:, status:, queue:, type:, filter:, from:, order:, limit: }.compact #: Hash[Symbol, untyped]
+
+      multi_keys = %i[id status queue type]
+      params = build_list_params(options, multi_keys:)
+
+      # An empty filter ([] or "") matches nothing — short-circuit.
+      multi_keys.each do |key|
+        return Resources::JobPage.new(self, { "jobs" => [], "pages" => {} }) if params[key] == ""
+      end
+
       response = get("/jobs", params:)
       data = handle_response!(response, expected: 200)
       Resources::JobPage.new(self, data)
