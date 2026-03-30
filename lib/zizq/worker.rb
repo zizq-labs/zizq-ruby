@@ -109,6 +109,7 @@ module Zizq
       @logger = logger || Zizq.configuration.logger
       @lifecycle = Lifecycle.new
       @dispatch_queue = Thread::Queue.new
+      @streaming_response = nil #: untyped
 
       Zizq.configuration.validate!
       @ack_processor = AckProcessor.new(
@@ -169,10 +170,14 @@ module Zizq
       # Drain pending acks/nacks while the connection is still open.
       @ack_processor.stop(timeout: shutdown_timeout)
 
+      # Close the streaming response to unblock the producer's IO read.
+      # This happens after workers and acks have drained so the server
+      # doesn't requeue in-flight jobs while workers are still finishing.
+      @streaming_response&.close rescue nil
+
       # Signal the producer that draining is complete. If it's waiting
       # inside take_jobs on the ClosedQueueError path, this wakes it
-      # and it breaks out cleanly. If it's blocked on an IO read (no
-      # job arrived since drain), we fall back to Thread#kill.
+      # and it breaks out cleanly.
       @lifecycle.stop!
       unless producer_thread.join(shutdown_timeout)
         logger.warn { "Producer did not exit cleanly, killing" }
@@ -214,7 +219,8 @@ module Zizq
               on_connect: -> {
                 logger.info { "Connected. Listening for jobs." }
                 @backoff.reset
-              }
+              },
+              on_response: ->(resp) { @streaming_response = resp }
             ) do |job|
               begin
                 logger.debug do
@@ -235,7 +241,8 @@ module Zizq
               end
             end
 
-            # Stream ended normally — reset backoff for next reconnect.
+            # Stream ended normally — clear stale reference and reset backoff.
+            @streaming_response = nil
             @backoff.reset
           rescue Zizq::ConnectionError, Zizq::StreamError => error
             break unless @lifecycle.running?

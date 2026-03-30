@@ -364,7 +364,7 @@ module Zizq
     # @rbs worker_id: String?
     # @rbs &block: (Resources::Job) -> void
     # @rbs return: void
-    def take_jobs(prefetch: 1, queues: [], worker_id: nil, on_connect: nil, &block)
+    def take_jobs(prefetch: 1, queues: [], worker_id: nil, on_connect: nil, on_response: nil, &block)
       raise ArgumentError, "take_jobs requires a block" unless block
 
       params = { prefetch: } #: Hash[Symbol, untyped]
@@ -380,6 +380,7 @@ module Zizq
         begin
           raise StreamError, "take jobs stream returned HTTP #{response.status}" unless response.status == 200
           on_connect&.call
+          on_response&.call(response)
 
           # Wrap each parsed hash in a Resources::Job before yielding.
           wrapper = proc { |data| block.call(Resources::Job.new(self, data)) }
