@@ -259,6 +259,68 @@ module Zizq
       data.fetch("deleted")
     end
 
+    # Update a single job's mutable fields.
+    #
+    # Fields not provided are left unchanged. Use `Zizq::RESET` to clear
+    # a nullable field back to the server default.
+    #
+    # Raises `Zizq::NotFoundError` if the job does not exist.
+    # Raises `Zizq::ClientError` (422) if the job is in a terminal state.
+    #
+    # @rbs id: String
+    # @rbs queue: (String | singleton(Zizq::UNCHANGED))?
+    # @rbs priority: (Integer | singleton(Zizq::UNCHANGED))?
+    # @rbs ready_at: (Zizq::to_f | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retry_limit: (Integer | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs return: Resources::Job
+    def update_job(id,
+                   queue: UNCHANGED,
+                   priority: UNCHANGED,
+                   ready_at: UNCHANGED,
+                   retry_limit: UNCHANGED,
+                   backoff: UNCHANGED,
+                   retention: UNCHANGED)
+      body = build_set_body(
+        queue:, priority:, ready_at:,
+        retry_limit:, backoff:, retention:
+      )
+      response = patch("/jobs/#{id}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Update all jobs matching the given filters.
+    #
+    # Filters in the `where:` argument use the same keys as `list_jobs`.
+    # Fields in the `apply:` argument use the same keys as `update_job`.
+    #
+    # Terminal jobs (completed/dead) are silently skipped unless explicitly
+    # requested via `status:` in `where:`, which returns 422.
+    #
+    # Returns the number of updated jobs.
+    #
+    # @rbs where: Zizq::where_params
+    # @rbs apply: Zizq::apply_params
+    # @rbs return: Integer
+    def update_all_jobs(where: {}, apply: {})
+      filter_params = validate_where(**where)
+
+      multi_keys = %i[id status queue type]
+      params = build_where_params(filter_params, multi_keys:)
+
+      # An empty multi-value filter matches nothing — short-circuit.
+      multi_keys.each do |key|
+        return 0 if params[key] == ""
+      end
+
+      body = validate_and_build_set(**apply)
+      response = patch("/jobs", body, params:)
+      data = handle_response!(response, expected: 200)
+      data.fetch("patched")
+    end
+
     # Get a single error record by job ID and attempt number.
     #
     # @rbs id: String
@@ -549,6 +611,85 @@ module Zizq
     # @rbs return: Hash[Symbol, untyped]
     def validate_where(id: nil, status: nil, queue: nil, type: nil, filter: nil)
       { id:, status:, queue:, type:, filter: }.compact
+    end
+
+    # Validate set parameters via keyword args (rejects unknown keys) and
+    # build the JSON body. Used by `update_all_jobs`.
+    #
+    # @rbs queue: (String | singleton(Zizq::UNCHANGED))?
+    # @rbs priority: (Integer | singleton(Zizq::UNCHANGED))?
+    # @rbs ready_at: (Zizq::to_f | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retry_limit: (Integer | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs return: Hash[Symbol, untyped]
+    def validate_and_build_set(queue: UNCHANGED,
+                               priority: UNCHANGED,
+                               ready_at: UNCHANGED,
+                               retry_limit: UNCHANGED,
+                               backoff: UNCHANGED,
+                               retention: UNCHANGED)
+      build_set_body(queue:, priority:, ready_at:, retry_limit:, backoff:, retention:)
+    end
+
+    # Build the JSON body hash for a PATCH request from set parameters.
+    #
+    # - `UNCHANGED` values are omitted (field not sent).
+    # - `RESET` values are sent as `nil` (JSON null).
+    # - `nil` is rejected — use `RESET` to clear a field.
+    # - Other values are converted to their wire format.
+    #
+    # @rbs return: Hash[Symbol, untyped]
+    def build_set_body(queue: UNCHANGED,
+                       priority: UNCHANGED,
+                       ready_at: UNCHANGED,
+                       retry_limit: UNCHANGED,
+                       backoff: UNCHANGED,
+                       retention: UNCHANGED)
+      body = {} #: Hash[Symbol, untyped]
+
+      unless queue.equal?(UNCHANGED)
+        raise ArgumentError, "queue cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is" if queue.nil?
+        body[:queue] = queue
+      end
+
+      unless priority.equal?(UNCHANGED)
+        raise ArgumentError, "priority cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is" if priority.nil?
+        body[:priority] = priority
+      end
+
+      unless ready_at.equal?(UNCHANGED)
+        body[:ready_at] = ready_at.equal?(RESET) ? nil : (ready_at.to_f * 1000).to_i
+      end
+
+      unless retry_limit.equal?(UNCHANGED)
+        body[:retry_limit] = retry_limit.equal?(RESET) ? nil : retry_limit
+      end
+
+      unless backoff.equal?(UNCHANGED)
+        body[:backoff] = if backoff.equal?(RESET)
+          nil
+        else
+          {
+            exponent: backoff[:exponent].to_f,
+            base_ms: (backoff[:base].to_f * 1000).to_i,
+            jitter_ms: (backoff[:jitter].to_f * 1000).to_i
+          }
+        end
+      end
+
+      unless retention.equal?(UNCHANGED)
+        body[:retention] = if retention.equal?(RESET)
+          nil
+        else
+          ret = {} #: Hash[Symbol, Integer]
+          ret[:completed_ms] = (retention[:completed].to_f * 1000).to_i if retention[:completed]
+          ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
+          ret
+        end
+      end
+
+      body
     end
 
     # Build query params for list endpoints, joining multi-value keys with ",".

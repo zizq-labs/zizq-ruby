@@ -25,6 +25,13 @@ module Zizq
   autoload :Resources,       "zizq/resources"
   autoload :Worker,          "zizq/worker"
 
+  # Sentinel indicating a field should not be included in the request.
+  # Used as the default for update parameters.
+  module UNCHANGED; end
+
+  # Sentinel indicating a field should be sent as null to reset to server default.
+  module RESET; end
+
   @client_mutex = Mutex.new
 
   class << self

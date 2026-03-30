@@ -311,6 +311,97 @@ class TestClient < Minitest::Test
     assert_raises(ArgumentError) { @json_client.delete_all_jobs(where: { typo: "x" }) }
   end
 
+  # --- update_job ---
+
+  def test_update_job
+    response = { "id" => "j1", "queue" => "q2", "priority" => 10 }
+
+    stub_request(:patch, "#{URL}/jobs/j1")
+      .with(
+        body: JSON.generate({ queue: "q2", priority: 10 }),
+        headers: { "Content-Type" => "application/json" }
+      )
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.update_job("j1", queue: "q2", priority: 10)
+    assert_instance_of Zizq::Resources::Job, result
+    assert_equal "q2", result.queue
+  end
+
+  def test_update_job_with_reset
+    response = { "id" => "j1" }
+
+    stub_request(:patch, "#{URL}/jobs/j1")
+      .with(body: JSON.generate({ retry_limit: nil }))
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    @json_client.update_job("j1", retry_limit: Zizq::RESET)
+  end
+
+  def test_update_job_omits_unchanged_fields
+    response = { "id" => "j1", "priority" => 99 }
+
+    stub_request(:patch, "#{URL}/jobs/j1")
+      .with(body: JSON.generate({ priority: 99 }))
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    @json_client.update_job("j1", priority: 99)
+  end
+
+  def test_update_job_rejects_nil_queue
+    assert_raises(ArgumentError) { @json_client.update_job("j1", queue: nil) }
+  end
+
+  def test_update_job_rejects_nil_priority
+    assert_raises(ArgumentError) { @json_client.update_job("j1", priority: nil) }
+  end
+
+  def test_update_job_converts_ready_at_to_ms
+    response = { "id" => "j1" }
+
+    stub_request(:patch, "#{URL}/jobs/j1")
+      .with(body: JSON.generate({ ready_at: 1_500_000_000_000 }))
+      .to_return(status: 200, body: JSON.generate(response),
+                 headers: { "Content-Type" => "application/json" })
+
+    @json_client.update_job("j1", ready_at: 1_500_000_000.0)
+  end
+
+  # --- update_all_jobs ---
+
+  def test_update_all_jobs_with_filters
+    stub_request(:patch, "#{URL}/jobs?queue=q1")
+      .with(body: JSON.generate({ queue: "q2" }))
+      .to_return(status: 200, body: JSON.generate({ "patched" => 5 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    count = @json_client.update_all_jobs(
+      where: { queue: "q1" },
+      apply: { queue: "q2" }
+    )
+    assert_equal 5, count
+  end
+
+  def test_update_all_jobs_empty_id_short_circuits
+    count = @json_client.update_all_jobs(where: { id: [] }, apply: { priority: 1 })
+    assert_equal 0, count
+  end
+
+  def test_update_all_jobs_rejects_unknown_where_key
+    assert_raises(ArgumentError) do
+      @json_client.update_all_jobs(where: { typo: "x" }, apply: { priority: 1 })
+    end
+  end
+
+  def test_update_all_jobs_rejects_unknown_set_key
+    assert_raises(ArgumentError) do
+      @json_client.update_all_jobs(where: {}, apply: { typo: 1 })
+    end
+  end
+
   # --- get_error ---
 
   def test_get_error
