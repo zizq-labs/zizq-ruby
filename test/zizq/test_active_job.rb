@@ -204,6 +204,47 @@ class TestActiveJob < Minitest::Test
     assert_equal direct_key, params.unique_key
   end
 
+  # --- zizq_payload_filter ---
+
+  def test_payload_filter_exact_match
+    filter = ExtendedActiveJob.zizq_payload_filter(42, template: "welcome")
+    # ActiveJob serializes kwargs with _aj_ruby2_keywords marker.
+    expected_payload = ExtendedActiveJob.zizq_serialize(42, template: "welcome")
+    assert_equal ".arguments == #{JSON.generate(expected_payload)}", filter
+  end
+
+  # --- zizq_payload_subset_filter ---
+
+  def test_payload_subset_filter_args_only
+    filter = ExtendedActiveJob.zizq_payload_subset_filter(42)
+    assert_equal '(.arguments[0:1] == [42])', filter
+  end
+
+  def test_payload_subset_filter_kwargs_only
+    filter = ExtendedActiveJob.zizq_payload_subset_filter(template: "welcome")
+    assert_equal(
+      '(.arguments[0:0] == []) and ' \
+      '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
+      '(.arguments[-1] | contains({"template":"welcome"}))',
+      filter
+    )
+  end
+
+  def test_payload_subset_filter_args_and_kwargs
+    filter = ExtendedActiveJob.zizq_payload_subset_filter(42, template: "welcome")
+    assert_equal(
+      '(.arguments[0:1] == [42]) and ' \
+      '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
+      '(.arguments[-1] | contains({"template":"welcome"}))',
+      filter
+    )
+  end
+
+  def test_payload_subset_filter_no_args
+    filter = ExtendedActiveJob.zizq_payload_subset_filter
+    assert_equal '(.arguments[0:0] == [])', filter
+  end
+
   # --- enqueue_all (perform_all_later) ---
 
   def test_enqueue_all_builds_bulk_params

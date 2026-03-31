@@ -129,6 +129,52 @@ class TestJob < Minitest::Test
     assert_equal original_kwargs, kwargs
   end
 
+  # --- zizq_payload_filter ---
+
+  def test_payload_filter_exact_match
+    filter = SendEmailJob.zizq_payload_filter(42, template: "welcome")
+    assert_equal '. == {"args":[42],"kwargs":{"template":"welcome"}}', filter
+  end
+
+  def test_payload_filter_no_args
+    filter = DefaultQueueJob.zizq_payload_filter
+    assert_equal '. == {"args":[],"kwargs":{}}', filter
+  end
+
+  # --- zizq_payload_subset_filter ---
+
+  def test_payload_subset_filter_args_only
+    filter = SendEmailJob.zizq_payload_subset_filter(42)
+    assert_equal(
+      '(.args[0:1] == [42]) and (.kwargs | contains({}))',
+      filter
+    )
+  end
+
+  def test_payload_subset_filter_kwargs_only
+    filter = SendEmailJob.zizq_payload_subset_filter(template: "welcome")
+    assert_equal(
+      '(.args[0:0] == []) and (.kwargs | contains({"template":"welcome"}))',
+      filter
+    )
+  end
+
+  def test_payload_subset_filter_args_and_kwargs
+    filter = SendEmailJob.zizq_payload_subset_filter(42, template: "welcome")
+    assert_equal(
+      '(.args[0:1] == [42]) and (.kwargs | contains({"template":"welcome"}))',
+      filter
+    )
+  end
+
+  def test_payload_subset_filter_no_args
+    filter = DefaultQueueJob.zizq_payload_subset_filter
+    assert_equal(
+      '(.args[0:0] == []) and (.kwargs | contains({}))',
+      filter
+    )
+  end
+
   # --- zizq_enqueue_request ---
 
   def test_enqueue_options_defaults

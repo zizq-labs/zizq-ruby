@@ -21,9 +21,36 @@ module Zizq
     # @rbs!
     #   # The class name where this is included (invisible to steep without this).
     #   def name: () -> String?
+
+    # Serialize positional and keyword arguments into a JSON-serializable
+    # payload.
     #
-    #   # Serialize job arguments. Implemented by the including module.
-    #   def zizq_serialize: (*untyped, **untyped) -> untyped
+    # Implemented by the including module.
+    def zizq_serialize(*args, **kwargs) #: (*untyped, **untyped) -> untyped
+      raise NotImplementedError, "#{self} must implement zizq_serialize"
+    end
+
+    # Deserialize positional and keyword arguments from the serialized payload.
+    #
+    # Implemented by the including module.
+    def zizq_deserialize(payload) #: untyped -> [Array[untyped], Hash[Symbol, untyped]]
+      raise NotImplementedError, "#{self} must implement zizq_deserialize"
+    end
+
+    # Generate a jq expression that exactly matches payloads with the given
+    # arguments.
+    #
+    # Implemented by the including module.
+    def zizq_payload_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
+      raise NotImplementedError, "#{self} must implement zizq_payload_filter"
+    end
+
+    # Generate a jq expression that matches a subset of the given arguments.
+    #
+    # Implemented by the including module.
+    def zizq_payload_subset_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
+      raise NotImplementedError, "#{self} must implement zizq_payload_subset_filter"
+    end
 
     # Declare the default queue for this job class.
     #

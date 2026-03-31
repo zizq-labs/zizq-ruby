@@ -74,8 +74,11 @@ module Zizq
       #   { "args" => [ 42, "Hello" ], "kwargs" => { "template": "example" } }
       #
       # If you override this method you almost certainly need to override
-      # `::zizq_deserialize` too. Any failure to deserialize the arguments will
-      # cause the job to fail and backoff according to the backoff policy.
+      # `::zizq_deserialize`, `::zizq_payload_filter` and
+      # `::zizq_payload_subset_filter` too.
+      #
+      # Any failure to deserialize the arguments will cause the job to fail and
+      # backoff according to the backoff policy.
       def zizq_serialize(*args, **kwargs) #: (*untyped, **untyped) -> Hash[String, untyped]
         { "args" => args, "kwargs" => kwargs.transform_keys(&:to_s) }
       end
@@ -102,6 +105,39 @@ module Zizq
         args   = payload.fetch("args")
         kwargs = payload.fetch("kwargs").transform_keys(&:to_sym)
         [args, kwargs]
+      end
+
+      # Generate a jq expression that exactly matches payloads with the given
+      # arguments.
+      #
+      # This is used for filtering in Zizq::Query.
+      #
+      # Generates an expression of the form:
+      #
+      #   . == {"args":["a","b","c"],"kwargs":{"example":true,"other":false}}
+      def zizq_payload_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
+        payload = zizq_serialize(*args, **kwargs)
+        ". == #{JSON.generate(payload)}"
+      end
+
+      # Generate a jq expression that matches jobs whose positional args
+      # start with the given values and whose kwargs contain the given
+      # key/value pairs.
+      #
+      # This is used for filtering in Zizq::Query.
+      #
+      # Generates expressions of the form:
+      #
+      #   (.args[0:2] == ["a","b"]) and (.kwargs | contains({"example":true}))
+      def zizq_payload_subset_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
+        payload = zizq_serialize(*args, **kwargs)
+        serialized_args = payload.fetch("args")
+        serialized_kwargs = payload.fetch("kwargs")
+
+        [
+          "(.args[0:#{serialized_args.size}] == #{JSON.generate(serialized_args)})",
+          "(.kwargs | contains(#{JSON.generate(serialized_kwargs)}))"
+        ].join(" and ")
       end
     end
 
