@@ -11,15 +11,23 @@ class TestAckProcessor < Minitest::Test
   def setup
     Zizq.reset!
     Zizq.configure { |c| c.url = URL; c.format = :json }
+    WebMock.reset_executed_requests!
+    @processors = []
+  end
+
+  def teardown
+    @processors.each { |p| p.stop(timeout: 5) rescue nil }
   end
 
   def new_processor(capacity: 10)
-    Zizq::AckProcessor.new(
+    proc = Zizq::AckProcessor.new(
       client: Zizq.client,
       capacity: capacity,
       logger: Logger.new(File::NULL),
       backoff: Zizq::Backoff.new(min_wait: 0.1, max_wait: 5.0, multiplier: 2.0)
     )
+    @processors << proc
+    proc
   end
 
   def test_single_ack
