@@ -46,12 +46,9 @@ class FailingJob
   end
 end
 
-class TestWorker < Minitest::Test
-  URL = "http://localhost:7890"
-
+class TestWorker < ZizqTestCase
   def setup
-    Zizq.reset!
-    Zizq.configure { |c| c.url = URL; c.format = :json }
+    super
     RecordingJob.results = []
     FailingJob.fail_count = 0
   end

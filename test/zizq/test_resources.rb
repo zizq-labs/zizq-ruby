@@ -5,10 +5,9 @@
 
 require "test_helper"
 
-class TestResources < Minitest::Test
-  URL = "http://localhost:7890"
-
+class TestResources < ZizqTestCase
   def setup
+    super
     @client = Zizq::Client.new(url: URL, format: :json)
   end
 

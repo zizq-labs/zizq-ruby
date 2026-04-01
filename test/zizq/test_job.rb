@@ -63,13 +63,7 @@ class PriorityOverrideJob
   def perform(level) = nil
 end
 
-class TestJob < Minitest::Test
-  URL = "http://localhost:7890"
-
-  def setup
-    Zizq.reset!
-    Zizq.configure { |c| c.url = URL; c.format = :json }
-  end
+class TestJob < ZizqTestCase
 
   # --- zizq_queue class method ---
 

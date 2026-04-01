@@ -5,13 +5,9 @@
 
 require "test_helper"
 
-class TestAckProcessor < Minitest::Test
-  URL = "http://localhost:7890"
-
+class TestAckProcessor < ZizqTestCase
   def setup
-    Zizq.reset!
-    Zizq.configure { |c| c.url = URL; c.format = :json }
-    WebMock.reset_executed_requests!
+    super
     @processors = []
   end
 

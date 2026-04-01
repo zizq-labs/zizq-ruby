@@ -54,10 +54,9 @@ class UniqueNoScopeActiveJob < ActiveJob::Base
   end
 end
 
-class TestActiveJob < Minitest::Test
-  URL = "http://localhost:7890"
-
+class TestActiveJob < ZizqTestCase
   def setup
+    super
     PlainActiveJob.executions = []
     ExtendedActiveJob.executions = []
     UniqueNoScopeActiveJob.executions = []

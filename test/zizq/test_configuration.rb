@@ -5,10 +5,7 @@
 
 require "test_helper"
 
-class TestConfiguration < Minitest::Test
-  def setup
-    Zizq.reset!
-  end
+class TestConfiguration < ZizqTestCase
 
   def test_defaults
     config = Zizq::Configuration.new

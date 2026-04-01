@@ -11,13 +11,7 @@ class SendJob
   def perform(user_id, template: "default") = nil
 end
 
-class TestQuery < Minitest::Test
-  URL = "http://localhost:7890"
-
-  def setup
-    Zizq.reset!
-    Zizq.configure { |c| c.url = URL; c.format = :json }
-  end
+class TestQuery < ZizqTestCase
 
   # --- Immutability ---
 
