@@ -784,7 +784,11 @@ module Zizq
           block, result_queue = item
           barrier.async do
             result_queue.push([:ok, block.call(http)])
-          rescue => e
+          rescue Exception => e # rubocop:disable Lint/RescueException
+            # Must catch Exception (not just StandardError) to ensure the
+            # caller is always unblocked. Without this, errors like
+            # NoMemoryError or library-level Exceptions would kill the IO
+            # thread and leave callers blocking on result_queue.pop forever.
             result_queue.push([:error, e])
           end
         end
