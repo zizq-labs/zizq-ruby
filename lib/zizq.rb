@@ -22,6 +22,7 @@ module Zizq
   autoload :JobConfig,       "zizq/job_config"
   autoload :Middleware,      "zizq/middleware"
   autoload :Lifecycle,       "zizq/lifecycle"
+  autoload :Query,           "zizq/query"
   autoload :Resources,       "zizq/resources"
   autoload :Worker,          "zizq/worker"
 
