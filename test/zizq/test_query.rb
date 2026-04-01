@@ -110,6 +110,128 @@ class TestQuery < ZizqTestCase
     end
   end
 
+  # --- empty? / any? / none? ---
+
+  def test_empty_when_no_jobs
+    stub_list(query: { "limit" => "1" }, body: page_body([]))
+    assert Zizq::Query.new.empty?
+  end
+
+  def test_not_empty_when_jobs_exist
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    refute Zizq::Query.new.empty?
+  end
+
+  def test_any_without_block
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    assert Zizq::Query.new.any?
+  end
+
+  def test_any_without_block_when_empty
+    stub_list(query: { "limit" => "1" }, body: page_body([]))
+    refute Zizq::Query.new.any?
+  end
+
+  def test_none_without_block
+    stub_list(query: { "limit" => "1" }, body: page_body([]))
+    assert Zizq::Query.new.none?
+  end
+
+  def test_none_without_block_when_jobs_exist
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    refute Zizq::Query.new.none?
+  end
+
+  # --- one? ---
+
+  def test_one_when_exactly_one
+    stub_list(query: { "limit" => "2" }, body: page_body(["j1"]))
+    assert Zizq::Query.new.one?
+  end
+
+  def test_one_when_zero
+    stub_list(query: { "limit" => "2" }, body: page_body([]))
+    refute Zizq::Query.new.one?
+  end
+
+  def test_one_when_multiple
+    stub_list(query: { "limit" => "2" }, body: page_body(["j1", "j2"]))
+    refute Zizq::Query.new.one?
+  end
+
+  # --- reverse_each ---
+
+  def test_reverse_each_uses_desc_order
+    stub_list(query: { "order" => "desc" }, body: page_body(["j2", "j1"]))
+    ids = Zizq::Query.new.reverse_each.map(&:id)
+    assert_equal %w[j2 j1], ids
+  end
+
+  # --- first / last / take ---
+
+  def test_first_fetches_single_job
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    job = Zizq::Query.new.first
+    assert_equal "j1", job.id
+  end
+
+  def test_first_returns_nil_when_empty
+    stub_list(query: { "limit" => "1" }, body: page_body([]))
+    assert_nil Zizq::Query.new.first
+  end
+
+  def test_last_reverses_order_and_fetches_one
+    stub_list(query: { "limit" => "1", "order" => "desc" }, body: page_body(["j99"]))
+    job = Zizq::Query.new.last
+    assert_equal "j99", job.id
+  end
+
+  def test_last_on_desc_query_reverses_to_asc
+    stub_list(query: { "limit" => "1", "order" => "asc" }, body: page_body(["j1"]))
+    job = Zizq::Query.new.order(:desc).last
+    assert_equal "j1", job.id
+  end
+
+  def test_take_fetches_n_jobs
+    stub_list(query: { "limit" => "3" }, body: page_body(["j1", "j2", "j3"]))
+    jobs = Zizq::Query.new.take(3)
+    assert_equal %w[j1 j2 j3], jobs.map(&:id)
+  end
+
+  # --- reverse_order ---
+
+  def test_reverse_order_defaults_to_desc
+    stub_list(query: { "order" => "desc" })
+    Zizq::Query.new.reverse_order.to_a
+  end
+
+  def test_reverse_order_flips_desc_to_asc
+    stub_list(query: { "order" => "asc" })
+    Zizq::Query.new.order(:desc).reverse_order.to_a
+  end
+
+  # --- update_one / delete_one ---
+
+  def test_update_one_limits_to_one
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    stub_request(:patch, "#{URL}/jobs")
+      .with(query: { "id" => "j1" }, body: JSON.generate({ priority: 99 }))
+      .to_return(json_response({ "patched" => 1 }))
+
+    count = Zizq::Query.new.update_one(priority: 99)
+    assert_equal 1, count
+  end
+
+  def test_delete_one_limits_to_one
+    stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
+    stub_request(:delete, "#{URL}/jobs")
+      .with(query: { "id" => "j1" })
+      .to_return(json_response({ "deleted" => 1 }))
+
+    count = Zizq::Query.new.delete_one
+    assert_equal 1, count
+  end
+
   # --- each ---
 
   def test_each_yields_jobs

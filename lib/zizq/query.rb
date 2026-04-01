@@ -227,6 +227,125 @@ module Zizq
       rebuild(limit:)
     end
 
+    # Reverse the sort order.
+    #
+    # Returns a new query with the opposite order. If no order was set,
+    # defaults to descending (the server default is ascending).
+    #
+    # @rbs return: Query
+    def reverse_order
+      rebuild(order: @order == :desc ? :asc : :desc)
+    end
+
+    # Returns true if there are no matching jobs.
+    #
+    # Optimised: fetches a single job to check.
+    #
+    # @rbs return: bool
+    def empty?
+      first.nil?
+    end
+
+    # Returns true if there are any matching jobs.
+    #
+    # Without a block, optimised to fetch a single job. With a block,
+    # falls back to Enumerable (tests each job against the block).
+    #
+    # @rbs return: bool
+    def any?
+      return super if block_given?
+
+      !first.nil?
+    end
+
+    # Returns true if there are no matching jobs.
+    #
+    # Without a block, optimised to fetch a single job. With a block,
+    # falls back to Enumerable (tests each job against the block).
+    #
+    # @rbs return: bool
+    def none?
+      return super if block_given?
+
+      first.nil?
+    end
+
+    # Returns true if there is exactly one matching job.
+    #
+    # Without a block, optimised to fetch at most two jobs. With a block,
+    # falls back to Enumerable.
+    #
+    # @rbs return: bool
+    def one?
+      return super if block_given?
+
+      limit(2).to_a.size == 1
+    end
+
+    # Iterate over matching jobs in reverse order.
+    #
+    # Optimised: pushes the reverse ordering to the server instead of
+    # fetching all jobs into memory and reversing.
+    #
+    # @rbs &block: (Resources::Job) -> void
+    # @rbs return: ::Enumerator[Zizq::Resources::Job, void]
+    def reverse_each(&block)
+      reverse_order.each(&block)
+    end
+
+    # Return the first matching job, or nil if none match.
+    #
+    # Optimised: fetches a single job from the server (`?limit=1`).
+    #
+    # @rbs return: Resources::Job?
+    def first
+      limit(1).each.first
+    end
+
+    # Return the last matching job, or nil if none match.
+    #
+    # Optimised: reverses the order and fetches a single job.
+    #
+    # @rbs return: Resources::Job?
+    def last
+      reverse_order.first
+    end
+
+    # Return the first `n` matching jobs.
+    #
+    # Optimised: sets the limit to `n` so the server only returns what's
+    # needed.
+    #
+    # @rbs n: Integer
+    # @rbs return: Array[Resources::Job]
+    def take(n)
+      limit(n).to_a
+    end
+
+    # Update the first matching job.
+    #
+    # Returns 1 if a job was updated, 0 if no jobs matched.
+    #
+    # @rbs queue: (String | singleton(Zizq::UNCHANGED))?
+    # @rbs priority: (Integer | singleton(Zizq::UNCHANGED))?
+    # @rbs ready_at: (Zizq::to_f | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retry_limit: (Integer | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+    # @rbs return: Integer
+    def update_one(...)
+      limit(1).update_all(...)
+    end
+
+    # Delete the first matching job.
+    #
+    # Returns 1 if a job was deleted, 0 if no jobs matched.
+    #
+    # @rbs return: Integer
+    def delete_one
+      limit(1).delete_all
+    end
+
     # Iterate over matching jobs, lazily paginating through results.
     #
     # Respects `limit` if set. Without a block, returns an `Enumerator`.
