@@ -28,7 +28,7 @@ module Zizq
   class Client
     # A fully-read HTTP response (status + decoded body), safe to use outside
     # the async reactor that produced it.
-    RawResponse = Data.define(:status, :body)
+    RawResponse = Data.define(:status, :body, :content_type)
 
     CONTENT_TYPES = { #: Hash[Zizq::format, String]
       msgpack: "application/msgpack",
@@ -720,11 +720,16 @@ module Zizq
       end
     end
 
-    def decode_body(data) #: (String) -> Hash[String, untyped]
-      case @format
+    def decode_body(data, content_type: nil) #: (String, ?content_type: String?) -> Hash[String, untyped]
+      format = case content_type
+               when /msgpack/ then :msgpack
+               when /json/ then :json
+               else @format
+               end
+      case format
       when :msgpack then MessagePack.unpack(data)
       when :json then JSON.parse(data)
-      else raise ArgumentError, "Unknown format: #{@format}"
+      else raise ArgumentError, "Unknown format: #{format}"
       end
     end
 
@@ -744,7 +749,7 @@ module Zizq
     # Read the response body and close it, returning a RawResponse that is
     # safe to use outside the reactor.
     def consume_response(response) #: (untyped) -> RawResponse
-      RawResponse.new(status: response.status, body: response.read)
+      RawResponse.new(status: response.status, body: response.read, content_type: response.headers["content-type"])
     ensure
       response.close
     end
@@ -883,12 +888,14 @@ module Zizq
       status = response.status
       expected_statuses = Array(expected)
 
+      ct = response.content_type
+
       if expected_statuses.include?(status)
         return nil if status == 204
-        decode_body(response.body)
+        decode_body(response.body, content_type: ct)
       else
         body = begin
-          decode_body(response.body)
+          decode_body(response.body, content_type: ct)
         rescue
           nil
         end
