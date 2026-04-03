@@ -359,6 +359,13 @@ module Zizq
       data["version"]
     end
 
+    # List all distinct queue names in the server.
+    def get_queues #: () -> Array[String]
+      response = get("/queues")
+      data = handle_response!(response, expected: 200)
+      data["queues"]
+    end
+
     # Mark a job as successfully completed (ack).
     #
     # If this method (or [`#report_failure`]) is not called upon job

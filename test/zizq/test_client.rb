@@ -467,6 +467,26 @@ class TestClient < ZizqTestCase
     assert_equal "0.1.0", @json_client.server_version
   end
 
+  # --- get_queues ---
+
+  def test_get_queues
+    stub_request(:get, "#{URL}/queues")
+      .to_return(status: 200, body: JSON.generate({ "queues" => ["emails", "payments"] }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.get_queues
+    assert_equal ["emails", "payments"], result
+  end
+
+  def test_get_queues_empty
+    stub_request(:get, "#{URL}/queues")
+      .to_return(status: 200, body: JSON.generate({ "queues" => [] }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.get_queues
+    assert_equal [], result
+  end
+
   # --- report_success (ack) ---
 
   def test_report_success
