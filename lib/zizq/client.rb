@@ -359,7 +359,7 @@ module Zizq
       data["version"]
     end
 
-    # List all distinct queue names in the server.
+    # List all distinct queue names on the server.
     def get_queues #: () -> Array[String]
       response = get("/queues")
       data = handle_response!(response, expected: 200)

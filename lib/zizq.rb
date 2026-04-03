@@ -88,6 +88,31 @@ module Zizq
       @configuration = nil
     end
 
+    # Server version string.
+    def server_version #: () -> String
+      client.server_version
+    end
+
+    # List all distinct queue names on the server.
+    def queues #: () -> Array[String]
+      client.get_queues
+    end
+
+    # Start a query to retrieve or modify job data.
+    #
+    # @rbs id: (String | Array[String])?
+    # @rbs queue: (String | Array[String])?
+    # @rbs type: (String | Array[String])?
+    # @rbs status: (String | Array[String])?
+    # @rbs jq_filter: String?
+    # @rbs order: Zizq::sort_direction?
+    # @rbs limit: Integer?
+    # @rbs page_size: Integer?
+    # @rbs return: Zizq::Query
+    def query(...)
+      Query.new(...)
+    end
+
     # Enqueue a job by class with positional and keyword arguments.
     #
     # By default all arguments are serialized as JSON, which means hashes with
