@@ -5,7 +5,7 @@
 > [Getting Started](/docs/getting-started) guide first.
 
 The official [Zizq Ruby Client](https://rubygems.org/gems/zizq) is available
-through Rubygems. Add it to your application's `Gemfile`.
+through RubyGems. Add it to your application's `Gemfile`.
 
 ``` ruby
 gem 'zizq', '~> 0.1.0'
@@ -23,7 +23,10 @@ Zizq client libraries are versioned with the same version numbers as the Zizq
 server, which follows the SemVer structure `[MAJOR].[MINOR].[PATCH]`.
 
 Whenever a new major or minor version of the server is released, client
-libraries with the same major and minor version numbers are also released.
+libraries with the same major and minor version numbers are also released. In
+short, as long as the major versions match between the client and server, the
+client should generally have an equal or lower minor version number than the
+server. The client should never exceed the server version.
 
 * It is safe to assume that a server version with the same major version number
   as the client and an equal or higher minor version number are fully
@@ -69,6 +72,10 @@ Zizq.configure do |c|
   c.logger = Logger.new("log/zizq.log")
 end
 ```
+
+> [!CAUTION]
+> If your server is exposed directly to the internet, it should be using Mutual
+> TLS otherwise anybody can communicate with it.
 
 ### Options
 

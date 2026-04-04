@@ -1,10 +1,11 @@
 # Introduction
 
 Zizq is a lightweight, self-contained and persistent job queue server with
-clients in various programming languages. All Zizq clients are **MIT licensed**.
+clients in various programming languages. All official Zizq clients are
+**MIT licensed**.
 
 This documentation details how to use Zizq with Ruby by using the official Zizq
-Ruby Client, which is available on Rubygems as
+Ruby Client, which is available on RubyGems as
 [zizq](https://rubygems.org/gems/zizq).
 
 The worker is multi-threaded and optionally multi-fiber via the
@@ -31,12 +32,13 @@ The Ruby client has two main parts:
    application.
 2. An executable used to run concurrent workers and perform your jobs.
 
-Jobs can be managed in one of two ways:
+Jobs can be managed in one of three ways:
 
 1. By mixing `Zizq::Job` into your classes and enqueueing those jobs with args.
 2. By enqueueing raw payloads and using a custom dispatcher implementation.
+3. By using Active Job with the `:zizq` queue adapter.
 
-In both cases Zizq handles the persistence, acknowledgement, backoff and retry
+In each case Zizq handles the persistence, acknowledgement, backoff and retry
 handling automatically.
 
 ## Example
@@ -50,7 +52,7 @@ class SendEmailJob
   zizq_queue 'emails'
   zizq_priority 100
 
-  def perform(user_id:, template:)
+  def perform(user_id, template:)
     # your application logic here
   end
 end
@@ -59,7 +61,7 @@ end
 Instances of those jobs are enqueued like this:
 
 ```ruby
-Zizq.enqueue(SendEmailJob, user_id: user.id, template: 'welcome')
+Zizq.enqueue(SendEmailJob, user.id, template: 'welcome')
 ```
 
 And the worker is run to perform those jobs like this:

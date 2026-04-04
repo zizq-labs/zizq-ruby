@@ -9,3 +9,4 @@
 - [Custom Dispatchers](./dispatchers.md)
 - [Using Middleware](./middleware.md)
 - [Using Active Job](./active-job.md)
+- [Querying & Managing Jobs](./zizq-query.md)
