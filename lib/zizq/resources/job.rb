@@ -55,12 +55,12 @@ module Zizq
 
       # Fetch the error history for this job.
       #
-      # @rbs from: String?
       # @rbs order: Zizq::sort_direction?
       # @rbs limit: Integer?
-      # @rbs return: ErrorPage
-      def errors(from: nil, order: nil, limit: nil)
-        @client.list_errors(id, from:, order:, limit:)
+      # @rbs page_size: Integer?
+      # @rbs return: ErrorEnumerator
+      def errors(order: nil, limit: nil, page_size: nil)
+        ErrorEnumerator.new(id, order:, limit:, page_size:)
       end
 
       # Mark this job as successfully completed.
@@ -78,6 +78,46 @@ module Zizq
       # @rbs return: Job
       def fail!(message:, error_type: nil, backtrace: nil, retry_at: nil, kill: false)
         @client.report_failure(id, message:, error_type:, backtrace:, retry_at:, kill:)
+      end
+
+      # Delete this job.
+      #
+      # @rbs return: void
+      def delete
+        @client.delete_job(id)
+      end
+
+      # Update this job's mutable fields.
+      #
+      # Returns the updated job.
+      #
+      # @rbs queue: (String | singleton(Zizq::UNCHANGED))?
+      # @rbs priority: (Integer | singleton(Zizq::UNCHANGED))?
+      # @rbs ready_at: (Zizq::to_f | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+      # @rbs retry_limit: (Integer | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+      # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+      # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
+      # @rbs return: Job
+      def update(queue: Zizq::UNCHANGED,
+                 priority: Zizq::UNCHANGED,
+                 ready_at: Zizq::UNCHANGED,
+                 retry_limit: Zizq::UNCHANGED,
+                 backoff: Zizq::UNCHANGED,
+                 retention: Zizq::UNCHANGED)
+        job = @client.update_job(
+          id,
+          queue:,
+          priority:,
+          ready_at:,
+          retry_limit:,
+          backoff:,
+          retention:
+        )
+
+        # Make sure this job's fields are updated.
+        @data.merge!(job.to_h)
+
+        job
       end
     end
   end

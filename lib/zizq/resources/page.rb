@@ -13,9 +13,31 @@ module Zizq
     #
     # @rbs generic T < Resource
     class Page < Resource
+      # @rbs skip
+      include Enumerable
+
+      # @rbs!
+      #   include ::Enumerable[T]
+
       # Wrapped resource objects for this page.
       def items #: () -> Array[T]
         raise NotImplementedError, "#{self.class.name}#items must be implemented"
+      end
+
+      # Returns the underlying raw response hash.
+      #
+      # Re-declared here because Enumerable#to_h would otherwise shadow
+      # the Resource#to_h definition.
+      def to_h #: () -> Hash[String, untyped]
+        @data
+      end
+
+      # Yields each item on this page. Required by Enumerable.
+      #
+      # @rbs &block: (T) -> void
+      # @rbs return: Enumerator[T, void] | void
+      def each(&block)
+        items.each(&block)
       end
 
       # Returns true if there is a next page that can be fetched.

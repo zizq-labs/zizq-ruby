@@ -68,7 +68,11 @@ overridden at enqueue-time too.
 
 #### Specifying the Queue
 
-Use `zizq_queue` to set or get the `queue`. The default queue is `"default"`.
+Use `zizq_queue` to set or get the `queue`. Queue names must be valid UTF-8 and
+cannot contain any of the following reserved characters: `,`, `*`, `?`, `[`,
+`]`, `{`, `}`, `\`
+
+The default queue is `"default"`.
 
 ``` ruby
 class MyApp::MyJob

@@ -39,7 +39,7 @@ module Zizq
   type apply_params = {
     ?queue: (String | singleton(UNCHANGED))?,
     ?priority: (Integer | singleton(UNCHANGED))?,
-    ?ready_at: (Integer | singleton(RESET) | singleton(UNCHANGED))?,
+    ?ready_at: (to_f | singleton(RESET) | singleton(UNCHANGED))?,
     ?retry_limit: (Integer | singleton(RESET) | singleton(UNCHANGED))?,
     ?backoff: (backoff | singleton(RESET) | singleton(UNCHANGED))?,
     ?retention: (retention | singleton(RESET) | singleton(UNCHANGED))?

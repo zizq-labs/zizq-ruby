@@ -4,8 +4,6 @@
 # rbs_inline: enabled
 # frozen_string_literal: true
 
-require "json"
-
 module Zizq
   # Composable query builder for jobs in Zizq.
   #
@@ -251,6 +249,7 @@ module Zizq
     # Without a block, optimised to fetch a single job. With a block,
     # falls back to Enumerable (tests each job against the block).
     #
+    # @rbs &block: ?(Resources::Job) -> bool
     # @rbs return: bool
     def any?
       return super if block_given?
@@ -263,6 +262,7 @@ module Zizq
     # Without a block, optimised to fetch a single job. With a block,
     # falls back to Enumerable (tests each job against the block).
     #
+    # @rbs &block: ?(Resources::Job) -> bool
     # @rbs return: bool
     def none?
       return super if block_given?
@@ -275,6 +275,7 @@ module Zizq
     # Without a block, optimised to fetch at most two jobs. With a block,
     # falls back to Enumerable.
     #
+    # @rbs &block: ?(Resources::Job) -> bool
     # @rbs return: bool
     def one?
       return super if block_given?
@@ -287,7 +288,7 @@ module Zizq
     # Optimised: pushes the reverse ordering to the server instead of
     # fetching all jobs into memory and reversing.
     #
-    # @rbs &block: (Resources::Job) -> void
+    # @rbs &block: ?(Resources::Job) -> void
     # @rbs return: ::Enumerator[Zizq::Resources::Job, void]
     def reverse_each(&block)
       reverse_order.each(&block)
@@ -350,7 +351,7 @@ module Zizq
     #
     # Respects `limit` if set. Without a block, returns an `Enumerator`.
     #
-    # @rbs &block: (Resources::Job) -> void
+    # @rbs &block: ?(Resources::Job) -> void
     # @rbs return: ::Enumerator[Zizq::Resources::Job, void]
     def each(&block)
       enumerator = enum_for(:each)
@@ -382,7 +383,7 @@ module Zizq
     # If `limit` is set, terminates after the last page is reached that exceeds
     # the limit, but does not truncate the page.
     #
-    # @rbs &block: (Resources::JobPage) -> void
+    # @rbs &block: ?(Resources::JobPage) -> void
     # @rbs return: ::Enumerator[Zizq::Resources::JobPage, void]
     def each_page(&block)
       enumerator = enum_for(:each_page)

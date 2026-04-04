@@ -89,22 +89,11 @@ class TestResources < ZizqTestCase
 
   # --- Job link methods ---
 
-  def test_job_errors_delegates_to_client
-    error_response = {
-      "errors" => [{ "attempt" => 1, "message" => "boom", "failed_at" => 2000 }],
-      "pages" => { "self" => "/jobs/j1/errors" }
-    }
-
-    stub_request(:get, "#{URL}/jobs/j1/errors")
-      .to_return(status: 200, body: JSON.generate(error_response),
-                 headers: { "Content-Type" => "application/json" })
-
+  def test_job_errors_returns_error_enumerator
     job = Zizq::Resources::Job.new(@client, { "id" => "j1" })
-    page = job.errors
+    result = job.errors
 
-    assert_instance_of Zizq::Resources::ErrorPage, page
-    assert_equal 1, page.errors.size
-    assert_equal "boom", page.errors[0].message
+    assert_instance_of Zizq::Resources::ErrorEnumerator, result
   end
 
   def test_job_complete_delegates_to_client
@@ -128,6 +117,30 @@ class TestResources < ZizqTestCase
 
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "scheduled", result.status
+  end
+
+  def test_job_delete_delegates_to_client
+    stub_request(:delete, "#{URL}/jobs/j1")
+      .to_return(status: 204, body: "")
+
+    job = Zizq::Resources::Job.new(@client, { "id" => "j1" })
+    result = job.delete
+
+    assert_nil result
+  end
+
+  def test_job_update_delegates_to_client
+    updated = { "id" => "j1", "queue" => "emails", "priority" => 10 }
+    stub_request(:patch, "#{URL}/jobs/j1")
+      .with { |req| JSON.parse(req.body)["priority"] == 10 }
+      .to_return(status: 200, body: JSON.generate(updated),
+                 headers: { "Content-Type" => "application/json" })
+
+    job = Zizq::Resources::Job.new(@client, { "id" => "j1" })
+    result = job.update(priority: 10)
+
+    assert_instance_of Zizq::Resources::Job, result
+    assert_equal 10, result.priority
   end
 
   # --- ErrorRecord ---
@@ -155,6 +168,122 @@ class TestResources < ZizqTestCase
 
     assert_nil record.error_type
     assert_nil record.backtrace
+  end
+
+  # --- ErrorEnumerator ---
+
+  def test_error_enumerator_iterates_errors
+    stub_request(:get, "#{URL}/jobs/j1/errors")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 1, "message" => "boom", "dequeued_at" => 1000, "failed_at" => 2000 },
+          { "attempt" => 2, "message" => "bang", "dequeued_at" => 3000, "failed_at" => 4000 },
+        ],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    errors = Zizq::Resources::ErrorEnumerator.new("j1").to_a
+
+    assert_equal 2, errors.size
+    assert_equal "boom", errors[0].message
+    assert_equal "bang", errors[1].message
+  end
+
+  def test_error_enumerator_paginates
+    stub_request(:get, "#{URL}/jobs/j1/errors?limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 1, "message" => "first", "dequeued_at" => 1000, "failed_at" => 2000 },
+        ],
+        "pages" => { "next" => "/jobs/j1/errors?from=1&limit=1" }
+      }), headers: { "Content-Type" => "application/json" })
+
+    stub_request(:get, "#{URL}/jobs/j1/errors?from=1&limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 2, "message" => "second", "dequeued_at" => 3000, "failed_at" => 4000 },
+        ],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    errors = Zizq::Resources::ErrorEnumerator.new("j1").in_pages_of(1).to_a
+
+    assert_equal 2, errors.size
+    assert_equal "first", errors[0].message
+    assert_equal "second", errors[1].message
+  end
+
+  def test_error_enumerator_respects_limit
+    stub_request(:get, "#{URL}/jobs/j1/errors?limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 1, "message" => "only", "dequeued_at" => 1000, "failed_at" => 2000 },
+        ],
+        "pages" => { "next" => "/jobs/j1/errors?from=1&limit=1" }
+      }), headers: { "Content-Type" => "application/json" })
+
+    errors = Zizq::Resources::ErrorEnumerator.new("j1").limit(1).to_a
+
+    assert_equal 1, errors.size
+    assert_equal "only", errors[0].message
+  end
+
+  def test_error_enumerator_passes_order
+    stub_request(:get, "#{URL}/jobs/j1/errors?order=desc")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 2, "message" => "latest", "dequeued_at" => 3000, "failed_at" => 4000 },
+        ],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    errors = Zizq::Resources::ErrorEnumerator.new("j1").order(:desc).to_a
+
+    assert_equal 1, errors.size
+    assert_equal "latest", errors[0].message
+  end
+
+  def test_error_enumerator_empty
+    stub_request(:get, "#{URL}/jobs/j1/errors")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    stub_request(:get, "#{URL}/jobs/j1/errors?limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    enum = Zizq::Resources::ErrorEnumerator.new("j1")
+
+    assert_equal [], enum.to_a
+    assert enum.empty?
+    assert enum.none?
+  end
+
+  def test_error_enumerator_first_and_last
+    stub_request(:get, "#{URL}/jobs/j1/errors?limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 1, "message" => "first", "dequeued_at" => 1000, "failed_at" => 2000 },
+        ],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    stub_request(:get, "#{URL}/jobs/j1/errors?order=desc&limit=1")
+      .to_return(status: 200, body: JSON.generate({
+        "errors" => [
+          { "attempt" => 3, "message" => "last", "dequeued_at" => 5000, "failed_at" => 6000 },
+        ],
+        "pages" => {}
+      }), headers: { "Content-Type" => "application/json" })
+
+    enum = Zizq::Resources::ErrorEnumerator.new("j1")
+
+    assert_equal "first", enum.first.message
+    assert_equal "last", enum.last.message
   end
 
   # --- JobPage ---
@@ -310,5 +439,75 @@ class TestResources < ZizqTestCase
 
     assert_instance_of Zizq::Resources::ErrorPage, page2
     assert_equal "bang", page2.errors[0].message
+  end
+
+  # --- Page Enumerable ---
+
+  def test_page_is_enumerable
+    data = {
+      "jobs" => [
+        { "id" => "j1", "type" => "Foo", "queue" => "q" },
+        { "id" => "j2", "type" => "Bar", "queue" => "q" },
+      ],
+      "pages" => {}
+    }
+    page = Zizq::Resources::JobPage.new(@client, data)
+
+    assert_kind_of Enumerable, page
+    assert_equal ["j1", "j2"], page.map(&:id)
+    assert_equal 2, page.count
+  end
+
+  # --- JobPage#delete_all ---
+
+  def test_job_page_delete_all
+    data = {
+      "jobs" => [
+        { "id" => "j1", "type" => "Foo", "queue" => "q" },
+        { "id" => "j2", "type" => "Bar", "queue" => "q" },
+      ],
+      "pages" => {}
+    }
+
+    stub_request(:delete, "#{URL}/jobs?id=j1,j2")
+      .to_return(status: 200, body: JSON.generate({ "deleted" => 2 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    page = Zizq::Resources::JobPage.new(@client, data)
+    assert_equal 2, page.delete_all
+  end
+
+  def test_job_page_delete_all_empty_page
+    data = { "jobs" => [], "pages" => {} }
+    page = Zizq::Resources::JobPage.new(@client, data)
+
+    assert_equal 0, page.delete_all
+  end
+
+  # --- JobPage#update_all ---
+
+  def test_job_page_update_all
+    data = {
+      "jobs" => [
+        { "id" => "j1", "type" => "Foo", "queue" => "q" },
+        { "id" => "j2", "type" => "Bar", "queue" => "q" },
+      ],
+      "pages" => {}
+    }
+
+    stub_request(:patch, "#{URL}/jobs?id=j1,j2")
+      .with { |req| JSON.parse(req.body)["priority"] == 10 }
+      .to_return(status: 200, body: JSON.generate({ "patched" => 2 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    page = Zizq::Resources::JobPage.new(@client, data)
+    assert_equal 2, page.update_all(priority: 10)
+  end
+
+  def test_job_page_update_all_empty_page
+    data = { "jobs" => [], "pages" => {} }
+    page = Zizq::Resources::JobPage.new(@client, data)
+
+    assert_equal 0, page.update_all(priority: 10)
   end
 end
