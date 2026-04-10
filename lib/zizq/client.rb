@@ -66,15 +66,34 @@ module Zizq
         **endpoint_options,
       )
 
+      # Streaming take uses a dedicated HTTP/1.1 endpoint. The take
+      # connection is long-lived and carries only one request, so HTTP/2's
+      # multiplexing, stream IDs, and frame headers add overhead with no
+      # benefit — there's nothing to multiplex against. Acks/enqueues run
+      # on separate threads with their own HTTP/2 clients, so they're
+      # unaffected either way. HTTP/1.1 gives the stream a plain TCP
+      # socket with no framing tax and measurably better throughput.
+      stream_endpoint_options = endpoint_options.merge(
+        protocol: Async::HTTP::Protocol::HTTP11,
+      )
+      @stream_endpoint = Async::HTTP::Endpoint.parse(
+        @url,
+        **stream_endpoint_options,
+      )
+
       @io_mutex = Mutex.new
       @io_thread = nil #: Thread?
       @io_queue = nil #: Thread::Queue?
 
       # Each thread gets its own Async::HTTP::Client bound to its own
-      # reactor. We track them all so close can shut them down.
+      # reactor — one for regular request/response traffic (HTTP/2) and
+      # a separate one lazily created on the first take_jobs call
+      # (HTTP/1.1). Both kinds of clients are tracked in a single array
+      # so `close` can shut them all down together.
       @http_clients = [] #: Array[Async::HTTP::Client]
       @http_clients_mutex = Mutex.new
       @http_key = :"zizq_http_#{object_id}"
+      @stream_http_key = :"zizq_stream_http_#{object_id}"
 
       @content_type = CONTENT_TYPES.fetch(format)
       @stream_accept = STREAM_ACCEPT.fetch(format)
@@ -499,7 +518,7 @@ module Zizq
       headers["worker-id"] = worker_id if worker_id
 
       Sync do
-        response = http.get(path, headers)
+        response = stream_http.get(path, headers)
 
         begin
           raise StreamError, "take jobs stream returned HTTP #{response.status}" unless response.status == 200
@@ -509,9 +528,15 @@ module Zizq
           # Wrap each parsed hash in a Resources::Job before yielding.
           wrapper = proc { |data| block.call(Resources::Job.new(self, data)) }
 
+          # async-http returns `nil` for empty response bodies over HTTP/1.1
+          # (e.g. a 200 with content-length: 0 from the server closing the
+          # stream immediately). Treat that as "no chunks" rather than
+          # crashing in the parser.
+          body = response.body || []
+
           case @format
-          when :json then self.class.parse_ndjson(response.body, &wrapper)
-          when :msgpack then self.class.parse_msgpack_stream(response.body, &wrapper)
+          when :json then self.class.parse_ndjson(body, &wrapper)
+          when :msgpack then self.class.parse_msgpack_stream(body, &wrapper)
           end
         ensure
           response.close rescue nil
@@ -815,13 +840,26 @@ module Zizq
     # The tracking array holds WeakRefs so clients from exited threads
     # can be garbage-collected.
     def http #: () -> Async::HTTP::Client
-      Thread.current.thread_variable_get(@http_key) || begin
-        client = Async::HTTP::Client.new(@endpoint)
+      thread_local_http(@http_key, @endpoint)
+    end
+
+    # Return the calling thread's streaming HTTP client (HTTP/1.1),
+    # creating one if needed. See `#http` for the thread-local locking
+    # rationale. Kept separate from the main client so the long-lived
+    # `/jobs/take` connection doesn't share an HTTP/2 session with
+    # ack/enqueue traffic.
+    def stream_http #: () -> Async::HTTP::Client
+      thread_local_http(@stream_http_key, @stream_endpoint)
+    end
+
+    def thread_local_http(key, endpoint) #: (Symbol, Async::HTTP::Endpoint) -> Async::HTTP::Client
+      Thread.current.thread_variable_get(key) || begin
+        client = Async::HTTP::Client.new(endpoint)
         @http_clients_mutex.synchronize do
           @http_clients.reject! { |ref| !ref.weakref_alive? }
           @http_clients << WeakRef.new(client)
         end
-        Thread.current.thread_variable_set(@http_key, client)
+        Thread.current.thread_variable_set(key, client)
         client
       end
     end
