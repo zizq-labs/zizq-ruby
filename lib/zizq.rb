@@ -18,6 +18,7 @@ module Zizq
   autoload :BulkEnqueue,     "zizq/bulk_enqueue"
   autoload :Client,          "zizq/client"
   autoload :EnqueueRequest,  "zizq/enqueue_request"
+  autoload :EnqueueWith,     "zizq/enqueue_with"
   autoload :Job,             "zizq/job"
   autoload :JobConfig,       "zizq/job_config"
   autoload :Middleware,      "zizq/middleware"
@@ -214,6 +215,21 @@ module Zizq
     #     b.enqueue(SendEmailJob, 42) { |o| o.queue = "priority" }
     #   end
     #
+    # Build a scoped enqueue helper that applies the given option overrides
+    # to every enqueue routed through it. Equivalent to using the block
+    # form of `Zizq.enqueue`, but composable and reusable.
+    #
+    #   Zizq.enqueue_with(ready_at: Time.now + 3600).enqueue(MyJob, 42)
+    #   Zizq.enqueue_with(priority: 0).enqueue_bulk { |b| ... }
+    #
+    # See `Zizq::EnqueueWith` for details.
+    #
+    # @rbs overrides: Hash[Symbol, untyped]
+    # @rbs return: EnqueueWith
+    def enqueue_with(**overrides)
+      EnqueueWith.new(self, overrides)
+    end
+
     # @rbs &block: (BulkEnqueue) -> void
     # @rbs return: Array[Resources::Job]
     def enqueue_bulk(&block)

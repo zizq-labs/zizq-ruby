@@ -48,5 +48,40 @@ module Zizq
     def enqueue_raw(queue:, type:, payload:, **opts)
       @requests << EnqueueRequest.new(queue:, type:, payload:, **opts)
     end
+
+    # Build a scoped enqueue helper that applies the given overrides to a
+    # single enqueue inside this bulk block. Sugar for the block form:
+    #
+    #   b.enqueue_with(ready_at: Time.now + 3600).enqueue(OtherJob, 42)
+    #
+    # is equivalent to:
+    #
+    #   b.enqueue(OtherJob, 42) { |req| req.ready_at = Time.now + 3600 }
+    #
+    # @rbs overrides: Hash[Symbol, untyped]
+    # @rbs return: EnqueueWith
+    def enqueue_with(**overrides)
+      EnqueueWith.new(self, overrides)
+    end
+
+    # Nested bulk is a no-op — we're already inside a bulk block, so we
+    # just yield this same builder. This exists to satisfy the
+    # `_EnqueueTarget` interface, which lets `EnqueueWith#enqueue_bulk`
+    # work uniformly against both the top-level `Zizq` module and a
+    # `BulkEnqueue` instance without branching on target type.
+    #
+    #   Zizq.enqueue_bulk do |b|
+    #     b.enqueue_with(priority: 0).enqueue_bulk do |b2|
+    #       b2.enqueue(MyJob, 1)
+    #       b2.enqueue(MyJob, 2)
+    #     end
+    #   end
+    #
+    # @rbs &block: (BulkEnqueue) -> void
+    # @rbs return: self
+    def enqueue_bulk(&block)
+      yield self
+      self
+    end
   end
 end

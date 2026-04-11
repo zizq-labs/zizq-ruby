@@ -71,6 +71,58 @@ module Zizq
                    retention: nil,
                    unique_key: nil,
                    unique_while: nil)
+      update(
+        type:,
+        queue:,
+        payload:,
+        priority:,
+        delay:,
+        ready_at:,
+        retry_limit:,
+        backoff:,
+        retention:,
+        unique_key:,
+        unique_while:,
+      )
+    end
+
+    # Update one or more fields in place.
+    #
+    # Each keyword argument defaults to the current field value, so
+    # callers only need to name the fields they want to change. Returns
+    # `self` for chaining. Unknown keys raise `ArgumentError` — this is
+    # the signal that prevents typos like `:retries` from silently
+    # doing nothing.
+    #
+    #   req.update(priority: 0, ready_at: Time.now + 60)
+    #
+    # Used by `Zizq::EnqueueWith` to apply scoped overrides, and can be
+    # called directly from enqueue blocks as an alternative to assigning
+    # individual attributes.
+    #
+    # @rbs type: String
+    # @rbs queue: String
+    # @rbs payload: untyped
+    # @rbs priority: Integer?
+    # @rbs delay: Zizq::to_f?
+    # @rbs ready_at: Zizq::to_f?
+    # @rbs retry_limit: Integer?
+    # @rbs backoff: Zizq::backoff?
+    # @rbs retention: Zizq::retention?
+    # @rbs unique_key: String?
+    # @rbs unique_while: Zizq::unique_scope?
+    # @rbs return: self
+    def update(type: @type,
+               queue: @queue,
+               payload: @payload,
+               priority: @priority,
+               delay: @delay,
+               ready_at: @ready_at,
+               retry_limit: @retry_limit,
+               backoff: @backoff,
+               retention: @retention,
+               unique_key: @unique_key,
+               unique_while: @unique_while)
       @type         = type
       @queue        = queue
       @payload      = payload
@@ -82,6 +134,7 @@ module Zizq
       @retention    = retention
       @unique_key   = unique_key
       @unique_while = unique_while
+      self
     end
 
     # Convert to the params expected by `Client#enqueue`.

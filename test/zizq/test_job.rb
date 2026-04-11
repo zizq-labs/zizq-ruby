@@ -734,4 +734,151 @@ class TestJob < ZizqTestCase
     assert_equal "j1", result[0].id
     assert_equal "j2", result[1].id
   end
+
+  # --- Zizq.enqueue_with ---
+
+  def test_enqueue_with_applies_overrides_to_job_class
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["type"] == "SendEmailJob" &&
+          body["priority"] == 0 &&
+          body["ready_at"].is_a?(Integer)
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1", "type" => "SendEmailJob" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    ready_at = Time.now + 3600
+    Zizq.enqueue_with(priority: 0, ready_at: ready_at).enqueue(SendEmailJob, 42)
+  end
+
+  def test_enqueue_with_is_chainable_and_merges_later_keys
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["queue"] == "priority" && body["priority"] == 5
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_with(queue: "priority", priority: 100)
+        .enqueue_with(priority: 5)
+        .enqueue(SendEmailJob, 42)
+  end
+
+  def test_enqueue_with_is_reusable
+    stub_request(:post, "#{URL}/jobs")
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    builder = Zizq.enqueue_with(priority: 0)
+    builder.enqueue(SendEmailJob, 1)
+    builder.enqueue(SendEmailJob, 2)
+
+    assert_requested(:post, "#{URL}/jobs", times: 2)
+  end
+
+  def test_enqueue_with_block_runs_after_overrides
+    # Block can override the scoped values for a single call.
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["priority"] == 999 }
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_with(priority: 0).enqueue(SendEmailJob, 42) { |req| req.priority = 999 }
+  end
+
+  def test_enqueue_with_applies_to_enqueue_raw
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["type"] == "custom" && body["queue"] == "x" && body["priority"] == 5
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_with(priority: 5).enqueue_raw(
+      queue: "x",
+      type: "custom",
+      payload: { user_id: 42 }
+    )
+  end
+
+  def test_enqueue_raw_kwargs_win_over_enqueue_with_overrides
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["priority"] == 1 }
+      .to_return(status: 201, body: JSON.generate({ "id" => "j1" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    # Inline kwarg (priority: 1) should beat the scoped override (priority: 5).
+    Zizq.enqueue_with(priority: 5).enqueue_raw(
+      queue: "x",
+      type: "custom",
+      payload: {},
+      priority: 1
+    )
+  end
+
+  def test_enqueue_with_wraps_bulk_applying_to_every_job
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"].size == 2 &&
+          body["jobs"][0]["priority"] == 0 &&
+          body["jobs"][1]["priority"] == 0
+      }
+      .to_return(status: 201, body: JSON.generate({ "jobs" => [
+        { "id" => "j1" }, { "id" => "j2" }
+      ] }), headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_with(priority: 0).enqueue_bulk do |b|
+      b.enqueue(SendEmailJob, 1)
+      b.enqueue(SendEmailJob, 2)
+    end
+  end
+
+  def test_enqueue_with_inside_bulk_enqueue_bulk_composes
+    # `enqueue_with(...).enqueue_bulk { ... }` inside an existing bulk
+    # block appends to the same batch (no nested bulk request). All jobs
+    # in the inner block share the scoped overrides.
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"].size == 3 &&
+          body["jobs"][0]["priority"] == 20 &&    # class default, not scoped
+          body["jobs"][1]["priority"] == 0 &&     # scoped
+          body["jobs"][2]["priority"] == 0        # scoped
+      }
+      .to_return(status: 201, body: JSON.generate({ "jobs" => [
+        { "id" => "j1" }, { "id" => "j2" }, { "id" => "j3" }
+      ] }), headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_bulk do |b|
+      b.enqueue(SendEmailJob, 1)
+      b.enqueue_with(priority: 0).enqueue_bulk do |b2|
+        b2.enqueue(SendEmailJob, 2)
+        b2.enqueue(SendEmailJob, 3)
+      end
+    end
+  end
+
+  def test_bulk_enqueue_with_scopes_single_call
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"].size == 2 &&
+          body["jobs"][0]["priority"] == 20 &&       # first job: class default
+          body["jobs"][0]["ready_at"].nil? &&        # first job: unaffected
+          body["jobs"][1]["priority"] == 0 &&        # second job: scoped
+          body["jobs"][1]["ready_at"].is_a?(Integer) # second job: scoped
+      }
+      .to_return(status: 201, body: JSON.generate({ "jobs" => [
+        { "id" => "j1" }, { "id" => "j2" }
+      ] }), headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue_bulk do |b|
+      b.enqueue(SendEmailJob, 1)
+      b.enqueue_with(priority: 0, ready_at: Time.now + 60).enqueue(SendEmailJob, 2)
+    end
+  end
 end

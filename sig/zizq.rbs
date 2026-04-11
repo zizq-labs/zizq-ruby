@@ -83,4 +83,29 @@ module Zizq
 
   # Alias so source code can write `Zizq::job_class` instead of `_JobClass`.
   type job_class = _JobClass
+
+  # Structural type for anything that `Zizq::EnqueueWith` can forward to —
+  # both the top-level `Zizq` module and `Zizq::BulkEnqueue` instances
+  # satisfy this. `BulkEnqueue#enqueue_bulk` is a no-op that just yields
+  # itself, so nested `enqueue_with(...).enqueue_bulk { ... }` calls
+  # inside an existing bulk block compose naturally.
+  interface _EnqueueTarget
+    def enqueue: (
+      Class & job_class,
+      *untyped,
+      **untyped
+    ) ?{ (EnqueueRequest) -> void } -> untyped
+
+    def enqueue_raw: (
+      queue: String,
+      type: String,
+      payload: untyped,
+      **untyped
+    ) -> untyped
+
+    def enqueue_bulk: () { (_EnqueueTarget) -> void } -> untyped
+  end
+
+  # Alias so source code can write `Zizq::enqueue_target`.
+  type enqueue_target = _EnqueueTarget
 end
