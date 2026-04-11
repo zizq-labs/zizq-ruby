@@ -58,9 +58,6 @@ module Zizq
     # lost (default: 30).
     attr_reader :shutdown_timeout #: Integer
 
-    # Backoff configuration used for reconnects and ack/nack retries.
-    attr_reader :backoff #: Backoff
-
     # Proc to derive a worker ID string for each thread and fiber.
     #
     # When not present, the Zizq server assigns a random worker ID.
@@ -68,6 +65,14 @@ module Zizq
 
     # An instance of a Logger to be used for worker logging.
     attr_reader :logger #: Logger
+
+    # The dispatcher used to handle each job.
+    #
+    # Defaults to the globally-configured `dequeue_middleware` chain.
+    # When a custom dispatcher is provided to `#initialize`, it is used as-is
+    # and the configured middleware chain is ignored. Caller may construct
+    # their own `Zizq::Middleware::Chain` if middleware needs to be applied.
+    attr_reader :dispatcher #: ^(Resources::Job) -> void
 
     # @rbs queues: Array[String]
     # @rbs thread_count: Integer
@@ -79,6 +84,7 @@ module Zizq
     # @rbs retry_multiplier: (Float | Integer)
     # @rbs worker_id: (^(Integer, Integer) -> String?)?
     # @rbs logger: Logger?
+    # @rbs dispatcher: (^(Resources::Job) -> void)?
     # @rbs return: void
     def initialize(
       queues: [],
@@ -90,35 +96,27 @@ module Zizq
       retry_max_wait: DEFAULT_RETRY_MAX_WAIT,
       retry_multiplier: DEFAULT_RETRY_MULTIPLIER,
       worker_id: nil,
-      logger: nil
+      logger: nil,
+      dispatcher: nil
     )
       raise ArgumentError, "thread_count must be at least 1 (got #{thread_count})" if thread_count < 1
       raise ArgumentError, "fiber_count must be at least 1 (got #{fiber_count})" if fiber_count < 1
+
+      Zizq.configuration.validate!
 
       @queues = queues
       @thread_count = thread_count
       @fiber_count = fiber_count
       @prefetch = prefetch || thread_count * fiber_count * 2
       @shutdown_timeout = shutdown_timeout
-      @backoff = Backoff.new(
-        min_wait:   retry_min_wait,
-        max_wait:   retry_max_wait,
-        multiplier: retry_multiplier
-      )
+      @retry_min_wait = retry_min_wait
+      @retry_max_wait = retry_max_wait
+      @retry_multiplier = retry_multiplier
       @worker_id_proc = worker_id
       @logger = logger || Zizq.configuration.logger
-      @lifecycle = Lifecycle.new
-      @dispatch_queue = Thread::Queue.new
-      @streaming_response = nil #: untyped
-      @killing = false
+      @dispatcher = dispatcher || Zizq.configuration.dequeue_middleware
 
-      Zizq.configuration.validate!
-      @ack_processor = AckProcessor.new(
-        client:   Zizq.client,
-        capacity: @prefetch * 2,
-        logger:   @logger,
-        backoff:  @backoff
-      )
+      reset_runtime_state
     end
 
     # Request a graceful shutdown.
@@ -157,9 +155,14 @@ module Zizq
 
     # Start the worker.
     #
-    # Spawns the desired number of worker threads and fibers, distributes jobs
-    # to those workers and then blocks until shutdown.
+    # Spawns the desired number of worker threads and fibers, distributes
+    # jobs to those workers and then blocks until shutdown. Safe to call
+    # multiple times on the same Worker instance — all mutable runtime
+    # state (lifecycle, dispatch queue, ack processor, backoff) is reset
+    # at the start of each run.
     def run #: () -> void
+      reset_runtime_state
+
       logger.info do
         format(
           "Zizq worker starting: %d threads, %d fibers, prefetch=%d",
@@ -230,6 +233,27 @@ module Zizq
     end
 
     private
+
+    # Reset all mutable runtime state so `#run` can be called multiple
+    # times on the same Worker instance. Called from `#initialize` and
+    # from the top of `#run`.
+    def reset_runtime_state #: () -> void
+      @backoff = Backoff.new(
+        min_wait:   @retry_min_wait,
+        max_wait:   @retry_max_wait,
+        multiplier: @retry_multiplier,
+      )
+      @lifecycle = Lifecycle.new
+      @dispatch_queue = Thread::Queue.new
+      @streaming_response = nil #: untyped
+      @killing = false
+      @ack_processor = AckProcessor.new(
+        client:   Zizq.client,
+        capacity: @prefetch * 2,
+        logger:   @logger,
+        backoff:  @backoff,
+      )
+    end
 
     def start_producer_thread #: () -> Thread
       Thread.new do
@@ -394,7 +418,7 @@ module Zizq
         start_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
         begin
-          Zizq.configuration.dequeue_middleware.call(job)
+          @dispatcher.call(job)
         ensure
           finish_time = Process.clock_gettime(Process::CLOCK_MONOTONIC)
           elapsed_time = finish_time - start_time

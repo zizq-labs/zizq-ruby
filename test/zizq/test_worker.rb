@@ -60,8 +60,6 @@ class TestWorker < ZizqTestCase
     assert_equal 10, worker.prefetch
     assert_equal [], worker.queues
     assert_equal 30, worker.shutdown_timeout
-    assert_equal 1, worker.backoff.min_wait
-    assert_equal 30, worker.backoff.max_wait
   end
 
   def test_custom_prefetch

@@ -22,16 +22,6 @@ JOB_COUNT = Integer(ENV.fetch("JOB_COUNT", 10_000))
 THREADS = Integer(ENV.fetch("THREADS", "5"))
 FIBERS = Integer(ENV.fetch("FIBERS", "1"))
 
-Zizq.configure do |c|
-  c.dispatcher = ->(job) do
-    if job.queue == "ruby/bench" && job.type == "bench"
-      if job.payload == JOB_COUNT
-        Process.kill("TERM", Process.pid)
-      end
-    end
-  end
-end
-
 # --- Enqueue Phase ----
 
 enqueue_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
@@ -61,6 +51,13 @@ puts format(
 worker = Zizq::Worker.new(
   thread_count: THREADS,
   fiber_count: FIBERS,
+  dispatcher: ->(job) do
+    if job.queue == "ruby/bench" && job.type == "bench"
+      if job.payload == JOB_COUNT
+        Process.kill("TERM", Process.pid)
+      end
+    end
+  end
 )
 
 Signal.trap("TERM") { worker.stop }
