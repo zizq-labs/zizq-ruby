@@ -110,6 +110,7 @@ module Zizq
       @lifecycle = Lifecycle.new
       @dispatch_queue = Thread::Queue.new
       @streaming_response = nil #: untyped
+      @killing = false
 
       Zizq.configuration.validate!
       @ack_processor = AckProcessor.new(
@@ -120,11 +121,36 @@ module Zizq
       )
     end
 
-    # Signal the worker to begin shutting down gracefully.
+    # Request a graceful shutdown.
     #
-    # Transitions the lifecycle to :draining and closes the dispatch queue
-    # so workers finish their current jobs and exit.
-    def shutdown #: () -> void
+    # Transitions the lifecycle to `:draining` and closes the dispatch
+    # queue. Worker threads finish any in-flight jobs, the ack processor
+    # flushes pending acks, and the producer stays connected to the server
+    # while all of that drains — only then is the streaming connection
+    # closed and `#run` returns.
+    #
+    # Safe to call from a signal handler (uses only atomic ivar assignment
+    # and `Thread::Queue#close`).
+    def stop #: () -> void
+      @lifecycle.drain!
+      @dispatch_queue.close rescue nil
+    end
+
+    # Request an immediate shutdown.
+    #
+    # Like `#stop`, but the streaming connection is closed immediately
+    # during teardown (rather than after workers drain), so the server
+    # re-dispatches any in-flight jobs after its visibility timeout. Use
+    # this when `#stop` has been given adequate time and still hasn't
+    # returned.
+    #
+    # In-progress jobs on worker threads continue to completion — we
+    # don't interrupt user code mid-execution — but no new jobs are
+    # pulled from the queue and cleanup uses short deadlines.
+    #
+    # Safe to call from a signal handler.
+    def kill #: () -> void
+      @killing = true
       @lifecycle.drain!
       @dispatch_queue.close rescue nil
     end
@@ -134,8 +160,6 @@ module Zizq
     # Spawns the desired number of worker threads and fibers, distributes jobs
     # to those workers and then blocks until shutdown.
     def run #: () -> void
-      install_signal_handlers
-
       logger.info do
         format(
           "Zizq worker starting: %d threads, %d fibers, prefetch=%d",
@@ -152,28 +176,45 @@ module Zizq
       worker_threads = start_worker_threads
       producer_thread = start_producer_thread
 
-      # Block until the lifecycle leaves :running (shutdown or crash).
+      # Block until the lifecycle leaves :running (stop, kill, or crash).
       @lifecycle.wait_while_running
 
-      logger.info do
-        format(
-          "Shutting down. Waiting up to %.2fs for workers to finish...",
-          shutdown_timeout,
-        )
+      if @killing
+        logger.info { "Killing. Closing stream and forcing shutdown..." }
+
+        # Close the streaming response immediately so the server
+        # re-dispatches any in-flight jobs after its visibility timeout.
+        # This also unblocks the producer's IO read.
+        @streaming_response&.close rescue nil
+
+        # Workers will finish their current job (can't be interrupted)
+        # and then see the closed dispatch queue and exit. Give them a
+        # short deadline — we don't wait for the full shutdown_timeout.
+        join_with_deadline(worker_threads)
+
+        # Drain whatever acks are still pending with a short deadline.
+        @ack_processor.stop(timeout: [shutdown_timeout, 2].min)
+      else
+        logger.info do
+          format(
+            "Shutting down. Waiting up to %.2fs for workers to finish...",
+            shutdown_timeout,
+          )
+        end
+
+        # Workers drain remaining jobs from the closed dispatch queue.
+        # The producer stays connected so in-flight jobs aren't requeued
+        # by the server while workers are still finishing them.
+        join_with_deadline(worker_threads)
+
+        # Drain pending acks/nacks while the connection is still open.
+        @ack_processor.stop(timeout: shutdown_timeout)
+
+        # Close the streaming response to unblock the producer's IO read.
+        # This happens after workers and acks have drained so the server
+        # doesn't requeue in-flight jobs while workers are still finishing.
+        @streaming_response&.close rescue nil
       end
-
-      # Workers drain remaining jobs from the closed dispatch queue.
-      # The producer stays connected so in-flight jobs aren't requeued
-      # by the server while workers are still finishing them.
-      join_with_deadline(worker_threads)
-
-      # Drain pending acks/nacks while the connection is still open.
-      @ack_processor.stop(timeout: shutdown_timeout)
-
-      # Close the streaming response to unblock the producer's IO read.
-      # This happens after workers and acks have drained so the server
-      # doesn't requeue in-flight jobs while workers are still finishing.
-      @streaming_response&.close rescue nil
 
       # Signal the producer that draining is complete. If it's waiting
       # inside take_jobs on the ClosedQueueError path, this wakes it
@@ -188,19 +229,6 @@ module Zizq
     end
 
     private
-
-    def install_signal_handlers #: () -> void
-      %w[INT TERM].each do |signal|
-        Signal.trap(signal) do
-          if @lifecycle.running?
-            shutdown
-          else
-            # Second signal during graceful shutdown — force exit.
-            exit!(1)
-          end
-        end
-      end
-    end
 
     def start_producer_thread #: () -> Thread
       Thread.new do

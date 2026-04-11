@@ -126,7 +126,7 @@ require File.expand_path(entrypoint)
 
 # --- Start the worker ---
 
-Zizq::Worker.run(
+worker = Zizq::Worker.new(
   thread_count:,
   fiber_count:,
   prefetch:,
@@ -136,3 +136,19 @@ Zizq::Worker.run(
   retry_max_wait:,
   retry_multiplier:,
 )
+
+# First INT/TERM: graceful stop.
+# Second INT/TERM (while already stopping): hard process exit.
+stopping = false
+%w[INT TERM].each do |signal|
+  Signal.trap(signal) do
+    if stopping
+      exit!(1)
+    else
+      stopping = true
+      worker.stop
+    end
+  end
+end
+
+worker.run

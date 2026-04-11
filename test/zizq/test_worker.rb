@@ -99,7 +99,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while RecordingJob.results.empty? && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     assert_equal 1, RecordingJob.results.size
@@ -145,7 +145,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while FailingJob.fail_count == 0 && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     assert_equal 1, FailingJob.fail_count
@@ -191,7 +191,7 @@ class TestWorker < ZizqTestCase
       end
     end
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     assert_requested(nack_stub, at_least_times: 1)
@@ -223,7 +223,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while RecordingJob.results.empty? && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     assert_equal 1, RecordingJob.results.size
@@ -264,7 +264,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while FailingJob.fail_count == 0 && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     assert_equal 1, FailingJob.fail_count
@@ -301,7 +301,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while RecordingJob.results.size < 2 && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     # Both jobs were processed across the 2 fibers
@@ -362,7 +362,7 @@ class TestWorker < ZizqTestCase
     deadline = Time.now + 5
     sleep 0.05 while dispatched_jobs.empty? && Time.now < deadline
 
-    worker.shutdown
+    worker.stop
     t.join(5)
 
     # Custom dispatcher was called, not the default Zizq::Job.call.
