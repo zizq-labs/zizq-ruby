@@ -10,6 +10,7 @@ require 'zizq'
 
 Zizq.configure do |c|
   c.url = ENV['ZIZQ_URL'] if ENV['ZIZQ_URL']
+  c.format = ENV.fetch('ZIZQ_FORMAT', 'msgpack').to_sym
 
   if ENV['ZIZQ_CA']
     c.tls = {
