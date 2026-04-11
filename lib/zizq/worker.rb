@@ -216,9 +216,10 @@ module Zizq
         @streaming_response&.close rescue nil
       end
 
-      # Signal the producer that draining is complete. If it's waiting
-      # inside take_jobs on the ClosedQueueError path, this wakes it
-      # and it breaks out cleanly.
+      # Signal the producer that cleanup is complete. The watcher fiber
+      # inside the producer's Sync block wakes up on this and cancels
+      # the producer's main task, so the stream is closed from its own
+      # reactor rather than via a cross-thread close.
       @lifecycle.stop!
       unless producer_thread.join(shutdown_timeout)
         logger.warn { "Producer did not exit cleanly, killing" }
@@ -236,61 +237,87 @@ module Zizq
 
         logger.info { "Zizq producer thread started" }
 
-        while @lifecycle.running?
-          begin
-            client = Zizq.client
-            logger.info { "Connecting to #{client.url}..." }
+        # The producer runs inside its own Sync block so we can spawn a
+        # watcher fiber that cancels the main producer task on final
+        # shutdown. `task.stop` raises `Async::Stop` at the next fiber
+        # yield point, which means we can interrupt the producer
+        # wherever it's currently blocked — inside `stream_http.get`
+        # reading response headers, inside `parse_ndjson` waiting on
+        # the body, or inside `wait_until_stopped`. All of those are
+        # fiber yield points, so the cancellation is immediate.
+        #
+        # The watcher waits on `wait_until_stopped` (not
+        # `wait_while_running`) so the producer stays connected through
+        # the worker+ack drain phase. Only once main has finished
+        # cleanup and called `@lifecycle.stop!` does the producer get
+        # cancelled.
+        Sync do |task|
+          task.async do
+            @lifecycle.wait_until_stopped
+            task.stop
+          end
 
-            client.take_jobs(
-              prefetch:,
-              queues:,
-              on_connect: -> {
-                logger.info { "Connected. Listening for jobs." }
-                @backoff.reset
-              },
-              on_response: ->(resp) { @streaming_response = resp }
-            ) do |job|
-              begin
-                logger.debug do
-                  format(
-                    "Received %s (%s), dispatch queue: %d",
-                    job.type,
-                    job.id,
-                    @dispatch_queue.size
-                  )
+          while @lifecycle.running?
+            begin
+              client = Zizq.client
+              logger.info { "Connecting to #{client.url}..." }
+
+              client.take_jobs(
+                prefetch:,
+                queues:,
+                on_connect: -> {
+                  logger.info { "Connected. Listening for jobs." }
+                  @backoff.reset
+                },
+                on_response: ->(resp) { @streaming_response = resp },
+              ) do |job|
+                begin
+                  logger.debug do
+                    format(
+                      "Received %s (%s), dispatch queue: %d",
+                      job.type,
+                      job.id,
+                      @dispatch_queue.size
+                    )
+                  end
+
+                  @dispatch_queue.push(job)
+                rescue ClosedQueueError
+                  # Shutdown in progress. Stay connected so in-flight jobs
+                  # aren't requeued while workers and acks drain. The
+                  # watcher fiber will cancel this task when main calls
+                  # `@lifecycle.stop!` at the end of cleanup.
+                  @lifecycle.wait_until_stopped
+                  break
                 end
-
-                @dispatch_queue.push(job)
-              rescue ClosedQueueError
-                # Shutdown in progress. Stay connected so in-flight jobs
-                # aren't requeued while workers and acks drain.
-                @lifecycle.wait_until_stopped
-                break
               end
+
+              # Stream ended normally — clear stale reference and reset backoff.
+              @streaming_response = nil
+              @backoff.reset
+            rescue Async::Stop
+              # Watcher fiber cancelled us — shutdown is complete.
+              break
+            rescue Zizq::ConnectionError, Zizq::StreamError => error
+              break unless @lifecycle.running?
+
+              logger.warn do
+                format(
+                  "%s: %s. Reconnecting in %.2fs...",
+                  error.class,
+                  error.message,
+                  @backoff.duration,
+                )
+              end
+
+              @backoff.wait
+            rescue => error
+              break unless @lifecycle.running?
+
+              logger.error { "Error: #{error.class}: #{error.message}" }
+              logger.debug { error.backtrace&.join("\n") }
+              @backoff.wait
             end
-
-            # Stream ended normally — clear stale reference and reset backoff.
-            @streaming_response = nil
-            @backoff.reset
-          rescue Zizq::ConnectionError, Zizq::StreamError => error
-            break unless @lifecycle.running?
-
-            logger.warn do
-              format(
-                "%s: %s. Reconnecting in %.2fs...",
-                error.class,
-                error.message,
-                @backoff.duration,
-              )
-            end
-
-            @backoff.wait
-          rescue => error
-            break unless @lifecycle.running?
-
-            logger.error { "Error: #{error.class}: #{error.message}" }
-            logger.debug { error.backtrace&.join("\n") }
-            @backoff.wait
           end
         end
 

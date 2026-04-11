@@ -13,6 +13,11 @@ end
 
 # Async gem — fiber-based concurrency.
 module Async
+  # Raised inside a task's fiber when `Task#stop` is called. This is a
+  # cooperative cancellation mechanism — ensure blocks still run.
+  class Stop < Exception
+  end
+
   # Async tasks are generic over some return type that is returned when the
   # task is waited on.
   class Task[out T]
@@ -25,6 +30,10 @@ module Async
 
     # Return the result of the block provided to `#async`
     def wait: () -> T
+
+    # Cancel the task by raising `Async::Stop` in its fiber at the next
+    # yield point.
+    def stop: () -> void
   end
 
   class Barrier
@@ -81,5 +90,6 @@ module Kernel
   def Async: [T] () { (Async::Task[T]) -> T } -> Async::Task[T]
 
   # Top-level `Sync { ... }` block, creates a fiber scheduler if needed.
-  def Sync: [T] () { () -> T } -> T
+  # The block receives the enclosing `Async::Task`.
+  def Sync: [T] () { (Async::Task[untyped]) -> T } -> T
 end
