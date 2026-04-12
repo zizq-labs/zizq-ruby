@@ -27,7 +27,6 @@ require "zizq"
 thread_count = Integer(ENV.fetch("ZIZQ_THREADS", Zizq::Worker::DEFAULT_THREADS))
 fiber_count = Integer(ENV.fetch("ZIZQ_FIBERS", Zizq::Worker::DEFAULT_FIBERS))
 prefetch = ENV.key?("ZIZQ_PREFETCH") ? Integer(ENV["ZIZQ_PREFETCH"]) : nil
-shutdown_timeout = Float(ENV.fetch("ZIZQ_SHUTDOWN_TIMEOUT", Zizq::Worker::DEFAULT_SHUTDOWN_TIMEOUT))
 retry_min_wait = Float(ENV.fetch("ZIZQ_RETRY_MIN_WAIT", Zizq::Worker::DEFAULT_RETRY_MIN_WAIT))
 retry_max_wait = Float(ENV.fetch("ZIZQ_RETRY_MAX_WAIT", Zizq::Worker::DEFAULT_RETRY_MAX_WAIT))
 retry_multiplier = Float(ENV.fetch("ZIZQ_RETRY_MULTIPLIER", Zizq::Worker::DEFAULT_RETRY_MULTIPLIER))
@@ -73,7 +72,6 @@ Vernier.profile(out: out, interval: interval, allocation_sample_rate: 0) do
     fiber_count:,
     prefetch:,
     queues:,
-    shutdown_timeout:,
     retry_min_wait:,
     retry_max_wait:,
     retry_multiplier:,

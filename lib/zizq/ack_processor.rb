@@ -50,18 +50,13 @@ module Zizq
       @thread
     end
 
-    # Close the queue and wait for the processor to drain.
+    # Close the queue and wait for the processor to drain. Waits indefinitely —
+    # callers who want a deadline should wrap the call in `Timeout::timeout`.
     #
-    # @rbs timeout: Integer
     # @rbs return: void
-    def stop(timeout: 10)
+    def stop
       @queue.close
-      return unless @thread
-
-      unless @thread.join(timeout)
-        @logger.warn { "Ack processor did not drain in #{timeout}s, killing" }
-        @thread.kill
-      end
+      @thread&.join
     end
 
     private

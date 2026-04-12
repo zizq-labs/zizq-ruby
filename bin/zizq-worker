@@ -5,14 +5,18 @@
 # frozen_string_literal: true
 
 require "optparse"
+require "timeout"
 require "zizq"
+
+# Default deadline for a graceful `stop` before escalating to `kill`.
+DEFAULT_SHUTDOWN_DEADLINE = 30.0
 
 # --- Defaults from env vars, falling back to hardcoded defaults ---
 
 thread_count = Integer(ENV.fetch("ZIZQ_THREADS", Zizq::Worker::DEFAULT_THREADS))
 fiber_count = Integer(ENV.fetch("ZIZQ_FIBERS", Zizq::Worker::DEFAULT_FIBERS))
 prefetch = ENV.key?("ZIZQ_PREFETCH") ? Integer(ENV["ZIZQ_PREFETCH"]) : nil
-shutdown_timeout = Float(ENV.fetch("ZIZQ_SHUTDOWN_TIMEOUT", Zizq::Worker::DEFAULT_SHUTDOWN_TIMEOUT))
+shutdown_deadline = Float(ENV.fetch("ZIZQ_SHUTDOWN_DEADLINE", DEFAULT_SHUTDOWN_DEADLINE))
 retry_min_wait = Float(ENV.fetch("ZIZQ_RETRY_MIN_WAIT", Zizq::Worker::DEFAULT_RETRY_MIN_WAIT))
 retry_max_wait = Float(ENV.fetch("ZIZQ_RETRY_MAX_WAIT", Zizq::Worker::DEFAULT_RETRY_MAX_WAIT))
 retry_multiplier = Float(ENV.fetch("ZIZQ_RETRY_MULTIPLIER", Zizq::Worker::DEFAULT_RETRY_MULTIPLIER))
@@ -59,8 +63,8 @@ parser = OptionParser.new do |opts|
     queues.concat(q.split(",").map(&:strip).reject(&:empty?))
   end
 
-  opts.on("--shutdown-timeout N", Float, "Shutdown timeout in seconds (default: #{Zizq::Worker::DEFAULT_SHUTDOWN_TIMEOUT}, env: ZIZQ_SHUTDOWN_TIMEOUT)") do |n|
-    shutdown_timeout = n
+  opts.on("--shutdown-deadline N", Float, "Graceful shutdown deadline in seconds before escalating to kill (default: #{DEFAULT_SHUTDOWN_DEADLINE}, env: ZIZQ_SHUTDOWN_DEADLINE)") do |n|
+    shutdown_deadline = n
   end
 
   opts.on("--retry-min-wait N", Float, "Minimum retry wait in seconds (default: #{Zizq::Worker::DEFAULT_RETRY_MIN_WAIT}, env: ZIZQ_RETRY_MIN_WAIT)") do |n|
@@ -131,24 +135,40 @@ worker = Zizq::Worker.new(
   fiber_count:,
   prefetch:,
   queues:,
-  shutdown_timeout:,
   retry_min_wait:,
   retry_max_wait:,
   retry_multiplier:,
 )
 
-# First INT/TERM: graceful stop.
-# Second INT/TERM (while already stopping): hard process exit.
+# `Zizq::Worker#stop` is patient (waits forever for in-flight jobs and
+# acks to drain). We enforce the shutdown deadline at the CLI level: the
+# signal handler calls `worker.stop` and spawns a shutdown thread that
+# joins the worker with `Timeout::timeout`, escalating to `kill` on
+# expiry.
+worker_thread = Thread.new { worker.run }
+
+# First INT/TERM: graceful stop with deadline watchdog.
+# Second INT/TERM: hard process exit.
 stopping = false
+
 %w[INT TERM].each do |signal|
   Signal.trap(signal) do
     if stopping
-      exit!(1)
+      exit(1)
     else
-      stopping = true
       worker.stop
+      stopping = true
+      Thread.new do
+        Timeout.timeout(shutdown_deadline) { worker_thread.join }
+      rescue Timeout::Error
+        worker.logger.warn do
+          "Worker did not stop within #{shutdown_deadline}s, killing..."
+        end
+        exit(1)
+      end
     end
   end
 end
 
-worker.run
+# Wait until the worker finishes cleanly.
+worker_thread.join

@@ -12,7 +12,7 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def teardown
-    @processors.each { |p| p.stop(timeout: 5) rescue nil }
+    @processors.each { |p| p.stop rescue nil }
   end
 
   def new_processor(capacity: 10)
@@ -34,7 +34,7 @@ class TestAckProcessor < ZizqTestCase
     proc = new_processor
     proc.start
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j1"))
-    proc.stop(timeout: 5)
+    proc.stop
 
     assert_requested(stub, times: 1)
   end
@@ -58,7 +58,7 @@ class TestAckProcessor < ZizqTestCase
       error_type: "RuntimeError",
       backtrace: "line1\nline2"
     ))
-    proc.stop(timeout: 5)
+    proc.stop
 
     assert_requested(stub, times: 1)
   end
@@ -79,7 +79,7 @@ class TestAckProcessor < ZizqTestCase
       job_id: "j2", message: "err", error_type: "E", backtrace: nil
     ))
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j3"))
-    proc.stop(timeout: 5)
+    proc.stop
 
     assert_requested(bulk_stub, at_least_times: 1)
     assert_requested(nack_stub, times: 1)
@@ -97,7 +97,7 @@ class TestAckProcessor < ZizqTestCase
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j1"))
     # Backoff for first retry is 0.2s; wait long enough for it to complete
     sleep 0.5
-    proc.stop(timeout: 5)
+    proc.stop
 
     assert_requested(stub, times: 2)
   end
@@ -110,7 +110,7 @@ class TestAckProcessor < ZizqTestCase
     proc = new_processor
     proc.start
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j1"))
-    proc.stop(timeout: 5)
+    proc.stop
 
     # 422 is silently accepted — no retry
     assert_requested(stub, times: 1)
@@ -124,7 +124,7 @@ class TestAckProcessor < ZizqTestCase
     proc = new_processor
     proc.start
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j1"))
-    proc.stop(timeout: 5)
+    proc.stop
 
     # 4xx is dropped — no retry
     assert_requested(stub, times: 1)
@@ -142,7 +142,7 @@ class TestAckProcessor < ZizqTestCase
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j2"))
     # Wait for retry to complete (backoff 0.2s)
     sleep 0.5
-    proc.stop(timeout: 5)
+    proc.stop
 
     assert_requested(stub, times: 2)
   end
@@ -154,7 +154,7 @@ class TestAckProcessor < ZizqTestCase
     proc = new_processor
     proc.start
     5.times { |i| proc.push(Zizq::AckProcessor::Ack.new(job_id: "j#{i + 1}")) }
-    proc.stop(timeout: 5)
+    proc.stop
 
     # All 5 IDs should have been sent via bulk endpoint (1 or more calls)
     assert_requested(stub, at_least_times: 1)

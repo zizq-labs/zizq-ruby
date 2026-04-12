@@ -59,7 +59,6 @@ class TestWorker < ZizqTestCase
     assert_equal 1, worker.fiber_count
     assert_equal 10, worker.prefetch
     assert_equal [], worker.queues
-    assert_equal 30, worker.shutdown_timeout
   end
 
   def test_custom_prefetch
@@ -90,7 +89,7 @@ class TestWorker < ZizqTestCase
       .to_return(status: 204)
 
     worker = Zizq::Worker.new(thread_count: 1, queues: [], prefetch: 1,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -136,7 +135,7 @@ class TestWorker < ZizqTestCase
                  headers: { "Content-Type" => "application/json" })
 
     worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -172,7 +171,7 @@ class TestWorker < ZizqTestCase
                  headers: { "Content-Type" => "application/json" })
 
     worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -214,7 +213,7 @@ class TestWorker < ZizqTestCase
 
     # 1 thread with 2 fibers exercises the Async code path
     worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -255,7 +254,7 @@ class TestWorker < ZizqTestCase
                  headers: { "Content-Type" => "application/json" })
 
     worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -292,7 +291,7 @@ class TestWorker < ZizqTestCase
       .to_return(status: 204)
 
     worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -353,7 +352,7 @@ class TestWorker < ZizqTestCase
       .to_return(status: 204)
 
     worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
-                                 shutdown_timeout: 2, logger: Logger.new(File::NULL))
+ logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 

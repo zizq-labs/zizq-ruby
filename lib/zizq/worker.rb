@@ -17,7 +17,6 @@ module Zizq
   class Worker
     DEFAULT_THREADS = 5 #: Integer
     DEFAULT_FIBERS = 1 #: Integer
-    DEFAULT_SHUTDOWN_TIMEOUT = 30 #: Integer
     DEFAULT_RETRY_MIN_WAIT = 1
     DEFAULT_RETRY_MAX_WAIT = 30
     DEFAULT_RETRY_MULTIPLIER = 2
@@ -51,13 +50,6 @@ module Zizq
     # pipeline full while ack round-trips are in flight.
     attr_reader :prefetch #: Integer
 
-    # The maximum amount of time to wait for all workers to wrap up on shutdown.
-    #
-    # Once this timeout is reached, worker tasks are forcibly killed, which
-    # will cause any in-flight jobs to be returned to the queue. No jobs are
-    # lost (default: 30).
-    attr_reader :shutdown_timeout #: Integer
-
     # Proc to derive a worker ID string for each thread and fiber.
     #
     # When not present, the Zizq server assigns a random worker ID.
@@ -78,7 +70,6 @@ module Zizq
     # @rbs thread_count: Integer
     # @rbs fiber_count: Integer
     # @rbs prefetch: Integer?
-    # @rbs shutdown_timeout: Integer
     # @rbs retry_min_wait: (Float | Integer)
     # @rbs retry_max_wait: (Float | Integer)
     # @rbs retry_multiplier: (Float | Integer)
@@ -91,7 +82,6 @@ module Zizq
       thread_count: DEFAULT_THREADS,
       fiber_count: DEFAULT_FIBERS,
       prefetch: nil,
-      shutdown_timeout: DEFAULT_SHUTDOWN_TIMEOUT,
       retry_min_wait: DEFAULT_RETRY_MIN_WAIT,
       retry_max_wait: DEFAULT_RETRY_MAX_WAIT,
       retry_multiplier: DEFAULT_RETRY_MULTIPLIER,
@@ -108,7 +98,6 @@ module Zizq
       @thread_count = thread_count
       @fiber_count = fiber_count
       @prefetch = prefetch || thread_count * fiber_count * 2
-      @shutdown_timeout = shutdown_timeout
       @retry_min_wait = retry_min_wait
       @retry_max_wait = retry_max_wait
       @retry_multiplier = retry_multiplier
@@ -191,27 +180,22 @@ module Zizq
         @streaming_response&.close rescue nil
 
         # Workers will finish their current job (can't be interrupted)
-        # and then see the closed dispatch queue and exit. Give them a
-        # short deadline — we don't wait for the full shutdown_timeout.
-        join_with_deadline(worker_threads)
+        # and then see the closed dispatch queue and exit.
+        worker_threads.each(&:join)
 
-        # Drain whatever acks are still pending with a short deadline.
-        @ack_processor.stop(timeout: [shutdown_timeout, 2].min)
+        # Drain whatever acks happen to flush before their fibers exit.
+        # No timeout — workers finish their current job and exit quickly.
+        @ack_processor.stop
       else
-        logger.info do
-          format(
-            "Shutting down. Waiting up to %.2fs for workers to finish...",
-            shutdown_timeout,
-          )
-        end
+        logger.info { "Shutting down. Waiting for workers to finish..." }
 
         # Workers drain remaining jobs from the closed dispatch queue.
         # The producer stays connected so in-flight jobs aren't requeued
         # by the server while workers are still finishing them.
-        join_with_deadline(worker_threads)
+        worker_threads.each(&:join)
 
         # Drain pending acks/nacks while the connection is still open.
-        @ack_processor.stop(timeout: shutdown_timeout)
+        @ack_processor.stop
 
         # Close the streaming response to unblock the producer's IO read.
         # This happens after workers and acks have drained so the server
@@ -224,10 +208,7 @@ module Zizq
       # the producer's main task, so the stream is closed from its own
       # reactor rather than via a cross-thread close.
       @lifecycle.stop!
-      unless producer_thread.join(shutdown_timeout)
-        logger.warn { "Producer did not exit cleanly, killing" }
-        producer_thread.kill
-      end
+      producer_thread.join
 
       logger.info { "Zizq worker stopped" }
     end
@@ -481,25 +462,6 @@ module Zizq
 
     def resolve_worker_id(thread_idx, fiber_idx) #: (Integer, Integer) -> String?
       worker_id_proc&.call(thread_idx, fiber_idx)
-    end
-
-    # Join all threads within the shutdown timeout. Any thread that hasn't
-    # finished by the deadline is forcibly killed.
-    #
-    # Thread#join(timeout) returns nil when the timeout expires without the
-    # thread finishing — it does NOT kill the thread. We must kill it
-    # explicitly so we don't leave zombie threads running after shutdown.
-    def join_with_deadline(threads) #: (Array[Thread]) -> void
-      deadline = Process.clock_gettime(Process::CLOCK_MONOTONIC) + shutdown_timeout
-
-      threads.each do |t|
-        remaining = deadline - Process.clock_gettime(Process::CLOCK_MONOTONIC)
-        next if remaining > 0 && t.join(remaining)
-        next unless t.alive?
-
-        logger.warn { "Shutdown timeout reached. Killing thread #{t.name}" }
-        t.kill
-      end
     end
   end
 end
