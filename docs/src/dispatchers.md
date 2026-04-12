@@ -100,3 +100,33 @@ end
 ```
 
 Dispatchers may be composed in many ways.
+
+## Direct Usage in `Zizq::Worker`
+
+> [!NOTE]
+> Passing `dispatcher` directly to `Zizq::Worker` ignores any configured
+> dequeue middleware chain and directly executes the dispatcher.
+
+If your application directly uses `Zizq::Worker` rather than the `zizq-worker`
+executable, you may instead provide a dispatcher implementation directly to the
+worker instance. Since a dispatcher is just any object that implements
+`#call(job)`, this can easily be a proc, which is handy for ad-hoc worker
+instances.
+
+``` ruby
+require "zizq"
+
+worker = Zizq::Worker.new(
+  queues: ["generic"],
+  dispatcher: ->(job) do
+    case job.type
+    when "send_email"
+      # ...
+    when "..."
+      # ...
+    end
+  end
+)
+
+worker.run
+```

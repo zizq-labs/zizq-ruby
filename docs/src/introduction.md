@@ -1,8 +1,7 @@
 # Introduction
 
-Zizq is a lightweight, self-contained and persistent job queue server with
-clients in various programming languages. All official Zizq clients are
-**MIT licensed**.
+Zizq is a simple single-binary persistent job queue server with clients in
+various programming languages. All official Zizq clients are **MIT licensed**.
 
 This documentation details how to use Zizq with Ruby by using the official Zizq
 Ruby Client, which is available on RubyGems as
@@ -29,7 +28,8 @@ raised on the [Issue tracker](https://github.com/zizq-labs/zizq-ruby/issues).
 The Ruby client has two main parts:
 
 1. A client library with classes and modules to integrate in your Ruby
-   application.
+   application, such as enqueueing and query primitives, as well as a `Worker`
+   class for inline worker usage.
 2. An executable used to run concurrent workers and perform your jobs.
 
 Jobs can be managed in one of three ways:

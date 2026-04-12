@@ -1,7 +1,7 @@
 [book]
 title = "Zizq Ruby Client"
 authors = ["Chris Corbyn"]
-description = "Zizq Ruby Client Documentation — The lightweight job queue server"
+description = "Zizq Ruby Client Documentation — Simple single binary job queue server"
 language = "en"
 src = "src"
 

@@ -1,8 +1,12 @@
 # Running Workers
 
-Your jobs are ultimately handled in a separate process via the `zizq-worker`
-executable that is part of the `zizq` RubyGem. The worker supports
-multi-threaded and multi-fiber execution (N threads * M fibers).
+Your jobs are ultimately handled in a separate process which runs
+`Zizq::Worker`. You can either run this manually within your Ruby application
+code, or via the `zizq-worker` executable that is part of the `zizq` RubyGem.
+The worker supports multi-threaded and multi-fiber execution (N threads * M
+fibers).
+
+## The `zizq-worker` Executable
 
 Start the worker by running `zizq-worker` on the command line, and specifying
 how many threads and fibers to use. If your application is not ready for
@@ -41,7 +45,7 @@ I, [2026-03-24T15:25:57.792173 #1331422]  INFO -- : Connected. Listening for job
 All configuration will be taken from any `Zizq.configure { ... }` your
 application performs during startup.
 
-## Listening to Specific Queues
+### Listening to Specific Queues
 
 Some deployments may run different worker processes in different environments
 each processing jobs from different queues. You can specify which queues each
@@ -60,7 +64,7 @@ I, [2026-03-25T17:44:31.275195 #1390198]  INFO -- : Connecting to http://localho
 I, [2026-03-25T17:44:31.352037 #1390198]  INFO -- : Connected. Listening for jobs.
 ```
 
-## Shutting Down
+### Shutting Down `zizq-worker`
 
 The usual signals, `INT` (`ctrl-c`) and `TERM` can be sent to the worker to
 cleanly terminate. Zizq gives any in-flight jobs a grace period to complete
@@ -83,3 +87,116 @@ In the case of an unclean shutdown, any in-flight jobs are automatically
 returned to the queue by the Zizq server and another worker will naturally
 receive those jobs. There is no risk of job loss in the case of an unclean
 shutdown.
+
+## Using `Zizq::Worker` in Code
+
+If you want more control (for example to run the worker in a single process
+alongside a Rack application), you can easily use `Zizq::Worker` directly in
+your application code. This is exactly what the `zizq-worker` executable does
+under the hood.
+
+Options are passed the the `Zizq::Worker` initializer, and the worker's `#run`
+method is called, which blocks until the worker terminates. The worker can be
+terminated by sending `Zizq::Worker#stop` (graceful shutdown), or
+`Zizq::Worker#kill` (hard, unclean forced shutdown).
+
+### Available Options
+
+The following keyword arguments are available on `Zizq::Worker#initialize`:
+
+* `thread_count:` - Number of worker threads. Default 5.
+* `fiber_count:` - Number of fibers per worker thread. Default 1.
+* `queues:` - Array of queues to listen to (empty array means all queues).
+* `prefetch:` - Number of jobs to dequeue at once. Should not be lower than
+  `thread_count * fiber_count`.
+* `logger:` - Logger instance. Defaults to `Zizq.configuration.logger`.
+* `dispatcher:` - Custom dispatcher implementation. Defaults to
+  `Zizq.configuration.deqeueue_middleware`.
+
+### Examples
+
+Running a worker with 5 threads and 10 fibers per thread.
+
+``` ruby
+require "zizq"
+
+worker = Zizq::Worker.new(
+  thread_count: 5,
+  fiber_count: 10,
+  queues: ["emails", "payments"],
+)
+
+Signal.trap("INT") { worker.stop }
+
+worker.run
+```
+
+The above will block the main thread until a `SIGINT` is received to terminate
+the worker. If you need to run other code while the worker runs, put the worker
+into a background thread.
+
+``` ruby
+require "zizq"
+
+worker = Zizq::Worker.new(queues: ["emails", "payments"])
+
+Signal.trap("INT") { worker.stop }
+
+worker_thread = Thread.new { worker.run }
+
+# ... Other code in your application ...
+
+# Block until shutdown.
+worker_thread.join
+```
+
+By default `Zizq::Worker#stop` will wait for in-flight jobs to wrap up, with
+unbounded time. If you could have jobs that run for a long time and need to
+force the worker to terminate early, use `Zizq::Worker#kill` (or if you can
+safely do so, just `exit(status)`.
+
+``` ruby
+require "zizq"
+
+worker = Zizq::Worker.new(queues: ["emails", "payments"])
+
+worker_thread = Thread.new { worker.run }
+
+Signal.trap("INT") do
+  worker.stop
+  Thread.new do
+    Timeout::timeout(60) do
+      worker_thread.join
+    end
+  rescue Timeout::Error
+    worker.kill # or exit(1)
+  end
+end
+
+# ... Other code in your application ...
+
+worker_thread.join
+```
+
+For cross-languae/low-level worker usage, you can provide a `dispatcher`
+implementation directly to the worker.
+
+``` ruby
+require "zizq"
+
+worker = Zizq::Worker.new(
+  queues: ["generic"],
+  dispatcher: ->(job) do
+    case job.type
+    when "send_email"
+      # ...
+    when "..."
+      # ...
+    end
+  end
+)
+
+worker.run
+```
+
+The `Zizq::Worker` automatically handles acknowledgment and failure for you.
