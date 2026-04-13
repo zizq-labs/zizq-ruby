@@ -6,7 +6,6 @@
 require "test_helper"
 
 class TestConfiguration < ZizqTestCase
-
   def test_defaults
     config = Zizq::Configuration.new
     assert_equal "http://localhost:7890", config.url

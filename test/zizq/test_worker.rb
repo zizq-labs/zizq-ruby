@@ -253,8 +253,12 @@ class TestWorker < ZizqTestCase
       .to_return(status: 200, body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
                  headers: { "Content-Type" => "application/json" })
 
-    worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
- logger: Logger.new(File::NULL))
+    worker = Zizq::Worker.new(
+      thread_count: 1,
+      fiber_count: 2,
+      prefetch: 2,
+      logger: Logger.new(File::NULL),
+    )
 
     t = Thread.new { worker.run }
 
@@ -290,8 +294,12 @@ class TestWorker < ZizqTestCase
     stub_request(:post, "#{URL}/jobs/success")
       .to_return(status: 204)
 
-    worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
- logger: Logger.new(File::NULL))
+    worker = Zizq::Worker.new(
+      thread_count: 1,
+      fiber_count: 2,
+      prefetch: 2,
+      logger: Logger.new(File::NULL),
+    )
 
     t = Thread.new { worker.run }
 
@@ -351,8 +359,11 @@ class TestWorker < ZizqTestCase
     ack_stub = stub_request(:post, "#{URL}/jobs/success")
       .to_return(status: 204)
 
-    worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
- logger: Logger.new(File::NULL))
+    worker = Zizq::Worker.new(
+      thread_count: 1,
+      prefetch: 1,
+      logger: Logger.new(File::NULL),
+    )
 
     t = Thread.new { worker.run }
 

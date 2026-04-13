@@ -815,4 +815,19 @@ class TestClient < ZizqTestCase
   ensure
     client&.close
   end
+
+  # --- close ---
+
+  def test_close
+    # Do this a lot to make sure we're not leaking anything.
+    200.times do
+      client = Zizq::Client.new(url: URL, format: :json)
+      stub_request(:get, "#{URL}/health")
+        .to_return(status: 200, body: JSON.generate({ "status" => "ok" }),
+                   headers: { "Content-Type" => "application/json" })
+
+      client.health
+      client.close
+    end
+  end
 end

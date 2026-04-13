@@ -23,6 +23,10 @@ class ZizqTestCase < Minitest::Test
   def setup
     Zizq.reset!
     Zizq.configure { |c| c.url = URL; c.format = :json }
-    WebMock.reset_executed_requests!
+    WebMock.reset!
+  end
+
+  def teardown
+    Zizq.reset!
   end
 end

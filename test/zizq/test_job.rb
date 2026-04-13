@@ -226,6 +226,7 @@ class TestJob < ZizqTestCase
       "priority" => 100,
       "dequeued_at" => 1_700_000_000_000
     })
+    client.close
 
     job = SendEmailJob.new
     job.set_zizq_job(resource_job)

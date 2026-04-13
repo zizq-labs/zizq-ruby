@@ -264,3 +264,6 @@ module Zizq
     end
   end
 end
+
+# Make sure everything is cleaned up before we exit.
+Kernel.at_exit { Zizq.reset! }

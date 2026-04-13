@@ -81,7 +81,8 @@ module Zizq
         **stream_endpoint_options,
       )
 
-      @io_mutex = Mutex.new
+      @mutex = Mutex.new
+
       @io_thread = nil #: Thread?
       @io_queue = nil #: Thread::Queue?
 
@@ -91,7 +92,6 @@ module Zizq
       # (HTTP/1.1). Both kinds of clients are tracked in a single array
       # so `close` can shut them all down together.
       @http_clients = [] #: Array[Async::HTTP::Client]
-      @http_clients_mutex = Mutex.new
       @http_key = :"zizq_http_#{object_id}"
       @stream_http_key = :"zizq_stream_http_#{object_id}"
 
@@ -102,11 +102,17 @@ module Zizq
     # Close all thread-local HTTP clients and release connections.
     def close #: () -> void
       if @io_thread&.alive?
-        @io_queue&.close
-        @io_thread&.join
+        @mutex.synchronize do
+          @io_queue&.close
+          @io_thread&.join
+        end
       end
 
-      @http_clients_mutex.synchronize do
+      self.class.make_finalizer(@io_queue, @http_clients).call
+    end
+
+    def cleanup_internal_clients #: () -> void
+      @mutex.synchronize do
         @http_clients.each do |ref|
           ref.close
         rescue WeakRef::RefError
@@ -801,7 +807,7 @@ module Zizq
     def ensure_io_thread #: () -> void
       return if @io_thread&.alive?
 
-      @io_mutex.synchronize do
+      @mutex.synchronize do
         return if @io_thread&.alive?
 
         @io_queue = Thread::Queue.new
@@ -814,6 +820,11 @@ module Zizq
     # Async reactor, pops work from the queue (fiber-scheduler-aware), and
     # dispatches each call as a concurrent fiber via a barrier.
     def io_thread_run #: () -> void
+      ObjectSpace.define_finalizer(
+        self,
+        self.class.make_finalizer(@io_queue, @http_clients)
+      )
+
       Sync do
         barrier = Async::Barrier.new
 
@@ -832,6 +843,8 @@ module Zizq
 
         barrier.wait
       end
+    ensure
+      ObjectSpace.undefine_finalizer(self)
     end
 
     # Return the calling thread's HTTP client, creating one if needed.
@@ -855,7 +868,7 @@ module Zizq
     def thread_local_http(key, endpoint) #: (Symbol, Async::HTTP::Endpoint) -> Async::HTTP::Client
       Thread.current.thread_variable_get(key) || begin
         client = Async::HTTP::Client.new(endpoint)
-        @http_clients_mutex.synchronize do
+        @mutex.synchronize do
           @http_clients.reject! { |ref| !ref.weakref_alive? }
           @http_clients << WeakRef.new(client)
         end
@@ -945,6 +958,24 @@ module Zizq
                       else ResponseError
                       end
         raise error_class.new(message, status: status, body: body)
+      end
+    end
+
+    # @private
+    def self.make_finalizer(io_queue, http_clients)
+      -> do
+        io_queue&.close
+        http_clients.each do |ref|
+          ref.close
+        rescue WeakRef::RefError
+          # Client already GC'd (owning thread exited).
+        rescue NoMethodError
+          # The async connection pool may hold references to tasks whose
+          # fibers were already reclaimed when their owning Sync reactor
+          # exited. Stopping those dead tasks raises NoMethodError; safe
+          # to ignore.
+        end
+        http_clients.clear
       end
     end
   end

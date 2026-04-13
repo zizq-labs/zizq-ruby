@@ -24,7 +24,7 @@ Gem::Specification.new do |spec|
                      "essential features most projects eventually need and wish they had."
 
   spec.homepage = "https://github.com/d11wtq/zizq"
-  spec.required_ruby_version = ">= 3.2"
+  spec.required_ruby_version = ">= 3.2.8"
 
   spec.files = Dir["lib/**/*.rb", "bin/**/*", "LICENSE"]
   spec.executables = ["zizq-worker"]

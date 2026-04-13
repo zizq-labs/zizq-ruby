@@ -79,6 +79,7 @@ class TestActiveJob < ZizqTestCase
       "attempts" => 0
     })
     ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher.call(resource_job)
+    client.close
   end
 
   # --- Round-trip tests ---

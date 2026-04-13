@@ -11,6 +11,10 @@ class TestResources < ZizqTestCase
     @client = Zizq::Client.new(url: URL, format: :json)
   end
 
+  def teardown
+    @client&.close
+  end
+
   # --- Resource base ---
 
   def test_to_h_returns_raw_data
