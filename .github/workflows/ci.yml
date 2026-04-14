@@ -44,3 +44,69 @@ jobs:
 
       - name: Test
         run: bundle exec rake test
+
+  package:
+    name: Package
+    needs: typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+          bundler-cache: true
+
+      - name: Build release artifact
+        run: ./release.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: zizq-ruby-package
+          path: target/release/zizq-*.gem
+
+  integration:
+    name: Integration
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          path: client
+
+      - name: Read client version
+        id: client-version
+        working-directory: client
+        run: |
+          version=$(ruby -r ./lib/zizq/version -e 'puts Zizq::VERSION')
+          major=${version%%.*}
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "major=${major}" >> "$GITHUB_OUTPUT"
+
+      - name: Find and download latest compatible server build
+        env:
+          GH_TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
+        run: |
+          client/.github/scripts/find-server-build.sh \
+            ${{ steps.client-version.outputs.major }} \
+            server
+
+      - name: Download client artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: zizq-ruby-package
+          path: artifact
+
+      - name: Set up Ruby
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.3"
+
+      - name: Run integration tests
+        working-directory: client
+        run: |
+          ./integration/run.sh \
+            --binary ${{ github.workspace }}/server/zizq \
+            --gem ${{ github.workspace }}/artifact/zizq-*.gem
