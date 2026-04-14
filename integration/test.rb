@@ -40,8 +40,12 @@ class IntegrationTest < Minitest::Test
       c.logger = Logger.new(File::NULL)
     end
 
-    Zizq.client.delete_all_jobs
+    Zizq.query.delete_all
     IntegrationTestJob.mock_perform = nil
+  end
+
+  def teardown
+    Zizq.reset!
   end
 
   def test_health_check
