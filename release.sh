@@ -30,6 +30,10 @@ if [[ "${1:-}" == "--check" ]]; then
     bundle exec rake typecheck
 fi
 
+# Generate RBS signatures from inline annotations (shipped in the gem).
+echo "    Generating RBS..."
+bundle exec rake rbs
+
 # Build the gem.
 echo "    Building gem..."
 mkdir -p "$OUT_DIR"

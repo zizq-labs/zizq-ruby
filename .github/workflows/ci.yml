@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: write
+
 jobs:
   typecheck:
     name: Type Check
@@ -49,6 +52,8 @@ jobs:
     name: Package
     needs: typecheck
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v5
 
@@ -58,6 +63,10 @@ jobs:
           ruby-version: "3.3"
           bundler-cache: true
 
+      - name: Read version
+        id: version
+        run: echo "version=$(ruby -r ./lib/zizq/version -e 'puts Zizq::VERSION')" >> "$GITHUB_OUTPUT"
+
       - name: Build release artifact
         run: ./release.sh
 
@@ -65,7 +74,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: zizq-ruby-package
-          path: target/release/zizq-*.gem
+          path: |
+            target/release/zizq-*.gem
+            target/release/zizq-*.gem.sha256
 
   integration:
     name: Integration
@@ -110,3 +121,35 @@ jobs:
           ./integration/run.sh \
             --binary ${{ github.workspace }}/server/zizq \
             --gem ${{ github.workspace }}/artifact/zizq-*.gem
+
+  # --- Publish GitHub Release (main only, requires approval) ---
+
+  publish:
+    name: Publish Release
+    needs: [test, package, integration]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v7
+        with:
+          name: zizq-ruby-package
+          path: artifacts
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          version=${{ needs.package.outputs.version }}
+          sed -n "/^## ${version}/,/^## /p" CHANGELOG.md | head -n -1 | tail -n +2 > release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=${{ needs.package.outputs.version }}
+          gh release create "v${version}" \
+            --title "v${version}" \
+            --notes-file release-notes.md \
+            artifacts/zizq-*

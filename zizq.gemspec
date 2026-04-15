@@ -26,7 +26,13 @@ Gem::Specification.new do |spec|
   spec.homepage = "https://github.com/d11wtq/zizq"
   spec.required_ruby_version = ">= 3.2.8"
 
-  spec.files = Dir["lib/**/*.rb", "bin/**/*", "LICENSE"]
+  spec.files = Dir[
+    "lib/**/*.rb",
+    "bin/**/*",
+    "sig/zizq.rbs",
+    "sig/generated/**/*.rbs",
+    "LICENSE"
+  ]
   spec.executables = ["zizq-worker"]
   spec.require_paths = ["lib"]
 
