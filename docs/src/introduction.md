@@ -5,7 +5,7 @@ various programming languages. All official Zizq clients are **MIT licensed**.
 
 This documentation details how to use Zizq with Ruby by using the official Zizq
 Ruby Client, which is available on RubyGems as
-[zizq](https://rubygems.org/gems/zizq).
+[`zizq`](https://rubygems.org/gems/zizq).
 
 The worker is multi-threaded and optionally multi-fiber via the
 [`async`](https://github.com/socketry/async) gem. You could run just one
@@ -15,7 +15,7 @@ manage concurrency.
 
 > [!NOTE]
 > If you have not yet installed the Zizq server, follow the
-> [Getting Started](/docs/getting-started) guide first.
+> [Getting Started](/docs/getting-started/) guide first.
 
 ## Issues & Source
 

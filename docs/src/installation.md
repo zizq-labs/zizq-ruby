@@ -41,6 +41,16 @@ server. The client should never exceed the server version.
 For access to the latest features applications should generally match the major
 and minor version numbers between the server and the client.
 
+Examples:
+
+Server Version | Client Version | Supported
+---------------|----------------|----------
+0.1.0          | 0.1.0          | ✅
+0.5.12         | 0.3.7          | ✅
+1.0.1          | 0.12.2         | ❌
+0.5.12         | 0.5.23         | ✅
+0.5.12         | 0.6.0          | ❌
+
 ## Configuration
 
 Once installed you can load Zizq into your application by requiring `"zizq"`.
