@@ -153,3 +153,10 @@ jobs:
             --title "v${version}" \
             --notes-file release-notes.md \
             artifacts/zizq-*
+
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          version=${{ needs.package.outputs.version }}
+          gem push "./artifacts/zizq-${version}.gem"
