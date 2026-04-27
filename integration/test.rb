@@ -12,6 +12,8 @@
 require "minitest/autorun"
 require "timeout"
 require "zizq"
+require "active_job"
+require "active_job/queue_adapters/zizq_adapter"
 
 ZIZQ_URL = ENV.fetch("ZIZQ_URL") do
   abort "Error: ZIZQ_URL environment variable must be set."
@@ -22,6 +24,24 @@ class IntegrationTestJob
   include Zizq::Job
 
   zizq_queue "worker-integration"
+
+  class << self
+    attr_accessor :mock_perform # e.g. ->(*args, **kwargs) { ... }
+  end
+
+  def perform(*args, **kwargs)
+    self.class.mock_perform&.call(*args, **kwargs)
+  end
+end
+
+# An ActiveJob class for testing ActiveJob-specific query methods.
+ActiveJob::Base.logger = Logger.new(File::NULL)
+
+class ActiveJobTestJob < ActiveJob::Base
+  extend Zizq::ActiveJobConfig
+
+  self.queue_adapter = :zizq
+  self.queue_name = "activejob-integration"
 
   class << self
     attr_accessor :mock_perform # e.g. ->(*args, **kwargs) { ... }
@@ -104,7 +124,7 @@ class IntegrationTest < Minitest::Test
     count = 10
 
     Zizq.enqueue_bulk do |b|
-      count.times { |i| b.enqueue(IntegrationTestJob, i+1) }
+      count.times { |i| b.enqueue(IntegrationTestJob, i+1, label: "test") }
     end
 
     worker = Zizq::Worker.new(
@@ -115,7 +135,37 @@ class IntegrationTest < Minitest::Test
 
     received = []
 
-    IntegrationTestJob.mock_perform = ->(n) do
+    IntegrationTestJob.mock_perform = ->(n, label:) do
+      received << n
+      worker.stop if n >= count
+    end
+
+    worker.run
+
+    assert_equal count, received.length
+    assert_equal (1..count).to_a, received.sort
+  end
+
+  def test_activejob_worker_round_trip
+    Zizq.configure do |c|
+      c.dispatcher = ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher
+    end
+
+    count = 10
+
+    ActiveJob.perform_all_later(
+      count.times.map { |i| ActiveJobTestJob.new(i+1, label: 'test') }
+    )
+
+    worker = Zizq::Worker.new(
+      thread_count: 1,
+      fiber_count: 1,
+      queues: ["activejob-integration"],
+    )
+
+    received = []
+
+    ActiveJobTestJob.mock_perform = ->(n, label:) do
       received << n
       worker.stop if n >= count
     end
@@ -169,6 +219,149 @@ class IntegrationTest < Minitest::Test
     refute Zizq.query.empty?
     assert_equal 3, Zizq.query.count
     assert_equal 1, Zizq.query.by_type("count_b").count
+  end
+
+  def test_count_jobs
+    assert_equal 0, Zizq.client.count_jobs
+
+    Zizq.enqueue_bulk do |b|
+      b.enqueue_raw(queue: "q1", type: "count_a", payload: {})
+      b.enqueue_raw(queue: "q1", type: "count_b", payload: {})
+      b.enqueue_raw(queue: "q2", type: "count_c", payload: {})
+    end
+
+    assert_equal 3, Zizq.client.count_jobs
+    assert_equal 2, Zizq.client.count_jobs(queue: "q1")
+    assert_equal 1, Zizq.client.count_jobs(queue: "q2")
+    assert_equal 1, Zizq.client.count_jobs(type: "count_a")
+    assert_equal 1, Zizq.client.count_jobs(queue: "q1", type: "count_b")
+    assert_equal 0, Zizq.client.count_jobs(queue: "nonexistent")
+  end
+
+  def test_update_job
+    job = Zizq.enqueue_raw(
+      queue: "integration",
+      type: "update_test",
+      payload: {},
+      priority: 100,
+    )
+
+    updated = Zizq.client.update_job(job.id, priority: 50)
+    assert_equal job.id, updated.id
+    assert_equal 50, updated.priority
+
+    fetched = Zizq.client.get_job(job.id)
+    assert_equal 50, fetched.priority
+  end
+
+  def test_update_all_jobs
+    Zizq.enqueue_bulk do |b|
+      b.enqueue_raw(queue: "q1", type: "upd_a", payload: {}, priority: 100)
+      b.enqueue_raw(queue: "q1", type: "upd_b", payload: {}, priority: 100)
+      b.enqueue_raw(queue: "q2", type: "upd_c", payload: {}, priority: 100)
+    end
+
+    patched = Zizq.client.update_all_jobs(
+      where: { queue: "q1" },
+      apply: { priority: 1 },
+    )
+    assert_equal 2, patched
+
+    q1_job = Zizq.query.by_queue("q1").first
+    assert_equal 1, q1_job.priority
+
+    q2_job = Zizq.query.by_queue("q2").first
+    assert_equal 100, q2_job.priority
+  end
+
+  def test_query_by_jq_filter
+    Zizq.enqueue_bulk do |b|
+      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "high", region: "eu" })
+      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "low", region: "eu" })
+      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "high", region: "us" })
+    end
+
+    high_priority = Zizq.query
+      .add_jq_filter('.priority == "high"')
+      .to_a
+    assert_equal 2, high_priority.length
+
+    high_eu = Zizq.query
+      .add_jq_filter('.priority == "high"')
+      .add_jq_filter('.region == "eu"')
+      .first
+    assert high_eu
+    assert_equal({ "priority" => "high", "region" => "eu" }, high_eu.payload)
+  end
+
+  def test_query_by_job_class_and_args
+    Zizq.enqueue(IntegrationTestJob, 1, x: "a")
+    Zizq.enqueue(IntegrationTestJob, 1, x: "b")
+    Zizq.enqueue(IntegrationTestJob, 2, x: "a")
+
+    matches = Zizq.query
+      .by_job_class_and_args(IntegrationTestJob, 1, x: "a")
+      .to_a
+    assert_equal 1, matches.length
+  end
+
+  def test_query_by_job_class_and_args_subset
+    Zizq.enqueue(IntegrationTestJob, 1, x: "a", y: true)
+    Zizq.enqueue(IntegrationTestJob, 1, x: "b", y: false)
+    Zizq.enqueue(IntegrationTestJob, 2, x: "a", y: true)
+
+    # Subset match on positional arg only.
+    by_first_arg = Zizq.query
+      .by_job_class_and_args_subset(IntegrationTestJob, 1)
+      .to_a
+    assert_equal 2, by_first_arg.length
+
+    # Subset match on kwargs only.
+    by_kwarg = Zizq.query
+      .by_job_class_and_args_subset(IntegrationTestJob, x: "a")
+      .to_a
+    assert_equal 2, by_kwarg.length
+
+    # Subset match combining positional arg + kwarg.
+    combined = Zizq.query
+      .by_job_class_and_args_subset(IntegrationTestJob, 1, x: "a")
+      .to_a
+    assert_equal 1, combined.length
+  end
+
+  def test_activejob_query_by_job_class_and_args
+    ActiveJobTestJob.perform_later(1, label: "a")
+    ActiveJobTestJob.perform_later(1, label: "b")
+    ActiveJobTestJob.perform_later(2, label: "a")
+
+    matches = Zizq.query
+      .by_job_class_and_args(ActiveJobTestJob, 1, label: "a")
+      .to_a
+    assert_equal 1, matches.length
+  end
+
+  def test_activejob_query_by_job_class_and_args_subset
+    ActiveJobTestJob.perform_later(1, label: "a")
+    ActiveJobTestJob.perform_later(1, label: "b")
+    ActiveJobTestJob.perform_later(2, label: "a")
+
+    # Subset match on positional arg only.
+    by_first_arg = Zizq.query
+      .by_job_class_and_args_subset(ActiveJobTestJob, 1)
+      .to_a
+    assert_equal 2, by_first_arg.length
+
+    # Subset match on kwarg only.
+    by_label = Zizq.query
+      .by_job_class_and_args_subset(ActiveJobTestJob, label: "a")
+      .to_a
+    assert_equal 2, by_label.length
+
+    # Combined.
+    combined = Zizq.query
+      .by_job_class_and_args_subset(ActiveJobTestJob, 1, label: "a")
+      .to_a
+    assert_equal 1, combined.length
   end
 
   def test_delete_all_jobs

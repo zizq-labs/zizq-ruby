@@ -60,8 +60,9 @@ cp "$SCRIPT_DIR"/*.rb "$WORKDIR/"
 
 cd "$WORKDIR"
 
-echo "    Installing gem..."
+echo "    Installing gems..."
 gem install --no-document "$GEM" 2>&1 | sed 's/^/    /'
+gem install --no-document activejob -v '~> 8.0' 2>&1 | sed 's/^/    /'
 
 # --- Start the server ---
 
