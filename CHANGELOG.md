@@ -1,7 +1,9 @@
 # Changelog
 
-## 0.1.1
+## 0.2.0
 
+- Implement `Client#count_jobs`
+- Optimise `Zizq::Query#count`
 
 ## 0.1.0
 
