@@ -264,6 +264,29 @@ class TestClient < ZizqTestCase
     assert_equal false, result.has_next?
   end
 
+  # --- count_jobs ---
+
+  def test_count_jobs_no_filters
+    stub_request(:get, "#{URL}/jobs/count")
+      .to_return(status: 200, body: JSON.generate({ "count" => 42 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_equal 42, @json_client.count_jobs
+  end
+
+  def test_count_jobs_with_filters
+    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready")
+      .to_return(status: 200, body: JSON.generate({ "count" => 7 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_equal 7, @json_client.count_jobs(queue: "emails", status: "ready")
+  end
+
+  def test_count_jobs_empty_array_short_circuits
+    count = @json_client.count_jobs(queue: [])
+    assert_equal 0, count
+  end
+
   # --- delete_job ---
 
   def test_delete_job

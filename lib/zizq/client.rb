@@ -249,6 +249,37 @@ module Zizq
       Resources::JobPage.new(self, data)
     end
 
+    # Count jobs matching the given filters.
+    #
+    # Accepts the same filter arguments as `list_jobs` (minus pagination).
+    # Returns the count as an integer.
+    #
+    # @rbs id: (String | Array[String])?
+    # @rbs status: (String | Array[String])?
+    # @rbs queue: (String | Array[String])?
+    # @rbs type: (String | Array[String])?
+    # @rbs filter: String?
+    # @rbs return: Integer
+    def count_jobs(id: nil,
+                   status: nil,
+                   queue: nil,
+                   type: nil,
+                   filter: nil)
+      options = { id:, status:, queue:, type:, filter: }.compact #: Hash[Symbol, untyped]
+
+      multi_keys = %i[id status queue type]
+      params = build_where_params(options, multi_keys:)
+
+      # An empty filter ([] or "") matches nothing — short-circuit.
+      multi_keys.each do |key|
+        return 0 if params[key] == ""
+      end
+
+      response = get("/jobs/count", params:)
+      data = handle_response!(response, expected: 200)
+      data.fetch("count")
+    end
+
     # Delete a single job by ID.
     #
     # @rbs id: String

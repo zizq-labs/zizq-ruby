@@ -61,6 +61,6 @@ gh run download "$run_id" \
   --name "$name" \
   --dir "$OUTPUT_DIR"
 
-tar -xzf "${OUTPUT_DIR}"/zizq-*-linux-x86_64.tar.gz -C "$OUTPUT_DIR"
+tar -xzf "${OUTPUT_DIR}/zizq-${version}-linux-x86_64.tar.gz" -C "$OUTPUT_DIR"
 
 echo "Server binary: ${OUTPUT_DIR}/zizq"
