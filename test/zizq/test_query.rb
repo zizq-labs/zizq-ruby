@@ -288,12 +288,31 @@ class TestQuery < ZizqTestCase
 
   # --- count ---
 
-  def test_count_enumerates_all_pages
-    stub_list(body: page_body(["j1", "j2"], next_path: "/jobs?from=j2"))
-    stub_request(:get, "#{URL}/jobs?from=j2")
-      .to_return(json_response(page_body(["j3"])))
+  def test_count_uses_server_side_count
+    stub_request(:get, "#{URL}/jobs/count")
+      .to_return(json_response({ "count" => 42 }))
 
-    assert_equal 3, Zizq::Query.new.count
+    assert_equal 42, Zizq::Query.new.count
+  end
+
+  def test_count_passes_filters
+    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready")
+      .to_return(json_response({ "count" => 7 }))
+
+    assert_equal 7, Zizq::Query.new.by_queue("emails").by_status("ready").count
+  end
+
+  def test_count_caps_at_limit
+    stub_request(:get, "#{URL}/jobs/count")
+      .to_return(json_response({ "count" => 100 }))
+
+    assert_equal 5, Zizq::Query.new.limit(5).count
+  end
+
+  def test_count_with_block_falls_back_to_enumerable
+    stub_list(body: page_body(["j1", "j2", "j3"]))
+
+    assert_equal 2, Zizq::Query.new.count { |j| j.id != "j2" }
   end
 
   # --- delete_all ---

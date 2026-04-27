@@ -283,6 +283,32 @@ module Zizq
       limit(2).to_a.size == 1
     end
 
+    # Count matching jobs via the server-side count endpoint.
+    #
+    # Without a block or argument, uses `GET /jobs/count` for an efficient
+    # server-side count. When a limit is set, caps the result locally with
+    # `[total, limit].min`.
+    #
+    # With a block or argument, falls back to Enumerable (iterates and counts
+    # matching jobs).
+    #
+    # @rbs *args: untyped
+    # @rbs &block: ?(Resources::Job) -> bool
+    # @rbs return: Integer
+    def count(*args, &block)
+      return super if block || !args.empty?
+
+      total = Zizq.client.count_jobs(
+        id: @id,
+        queue: @queue,
+        type: @type,
+        status: @status,
+        filter: @jq_filter,
+      )
+
+      @limit ? [total, @limit].min : total
+    end
+
     # Iterate over matching jobs in reverse order.
     #
     # Optimised: pushes the reverse ordering to the server instead of
