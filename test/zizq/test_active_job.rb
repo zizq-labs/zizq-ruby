@@ -209,8 +209,9 @@ class TestActiveJob < ZizqTestCase
   def test_payload_filter_exact_match
     filter = ExtendedActiveJob.zizq_payload_filter(42, template: "welcome")
     # ActiveJob serializes kwargs with _aj_ruby2_keywords marker.
-    expected_payload = ExtendedActiveJob.zizq_serialize(42, template: "welcome")
-    assert_equal ".arguments == #{JSON.generate(expected_payload)}", filter
+    # The filter targets .arguments, not the full serialized payload.
+    expected_args = ExtendedActiveJob.zizq_serialize(42, template: "welcome")["arguments"]
+    assert_equal ".arguments == #{JSON.generate(expected_args)}", filter
   end
 
   # --- zizq_payload_subset_filter ---
