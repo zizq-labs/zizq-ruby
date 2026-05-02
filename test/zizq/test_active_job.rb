@@ -279,4 +279,60 @@ class TestActiveJob < ZizqTestCase
     assert_equal 1, PlainActiveJob.executions[0][:user_id]
     assert_equal 2, PlainActiveJob.executions[1][:user_id]
   end
+
+  # --- Zizq.enqueue with ActiveJob classes ---
+
+  def test_enqueue_active_job_class
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["type"] == "ExtendedActiveJob" &&
+          body["queue"] == "emails" &&
+          body["payload"].is_a?(Hash) &&
+          body["payload"]["job_class"] == "ExtendedActiveJob" &&
+          body["payload"]["arguments"] == [42, { "template" => "welcome", "_aj_ruby2_keywords" => ["template"] }]
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
+    assert_equal "x", result.id
+  end
+
+  def test_enqueue_active_job_uses_class_queue
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["queue"] == "emails" }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
+  end
+
+  def test_enqueue_active_job_includes_unique_key
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["unique_key"].is_a?(String) &&
+          body["unique_while"] == "active"
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
+  end
+
+  def test_enqueue_active_job_with_block_override
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["priority"] == 0 }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome") { |o| o.priority = 0 }
+  end
+
+  def test_enqueue_rejects_non_job_config_class
+    assert_raises(ArgumentError) do
+      Zizq.enqueue(String)
+    end
+  end
 end

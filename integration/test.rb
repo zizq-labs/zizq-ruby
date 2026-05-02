@@ -176,6 +176,36 @@ class IntegrationTest < Minitest::Test
     assert_equal (1..count).to_a, received.sort
   end
 
+  def test_activejob_worker_round_trip_via_enqueue
+    Zizq.configure do |c|
+      c.dispatcher = ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher
+    end
+
+    count = 10
+
+    Zizq.enqueue_bulk do |b|
+      count.times { |i| b.enqueue(ActiveJobTestJob, i+1, label: "test") }
+    end
+
+    worker = Zizq::Worker.new(
+      thread_count: 1,
+      fiber_count: 1,
+      queues: ["activejob-integration"],
+    )
+
+    received = []
+
+    ActiveJobTestJob.mock_perform = ->(n, label:) do
+      received << n
+      worker.stop if n >= count
+    end
+
+    worker.run
+
+    assert_equal count, received.length
+    assert_equal (1..count).to_a, received.sort
+  end
+
   def test_query_jobs
     job = Zizq.enqueue_raw(
       queue: "query-integration",
