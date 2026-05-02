@@ -253,8 +253,8 @@ module Zizq
     # @rbs &block: ?(EnqueueRequest) -> void
     # @rbs return: EnqueueRequest
     def build_enqueue_request(job_class, *args, **kwargs, &block)
-      unless job_class.is_a?(Class) && job_class < Zizq::Job
-        raise ArgumentError, "#{job_class.inspect} must include Zizq::Job"
+      unless job_class.is_a?(Class) && job_class.is_a?(Zizq::JobConfig)
+        raise ArgumentError, "#{job_class.inspect} must include Zizq::Job or extend Zizq::ActiveJobConfig"
       end
 
       zizq_job_class = job_class #: Zizq::job_class

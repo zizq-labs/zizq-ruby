@@ -9,8 +9,9 @@ require_relative "job_config"
 module Zizq
   # Zizq configuration DSL for ActiveJob classes.
   #
-  # Extend this module in an ActiveJob subclass to gain access to Zizq
-  # features like unique jobs, backoff, and retention:
+  # Extend this module in an ActiveJob subclass to allow enqueueing jobs via
+  # `Zizq.enqueue` and to gain access to Zizq features like unique jobs,
+  # backoff, and retention:
   #
   #   class SendEmailJob < ApplicationJob
   #     extend Zizq::ActiveJobConfig
@@ -36,6 +37,19 @@ module Zizq
     # @rbs!
     #   # ActiveJob::Base.new — invisible to steep without this.
     #   def new: (*untyped, **untyped) -> untyped
+    #
+    #   # ActiveJob::Base.queue_name — invisible to steep without this.
+    #   def queue_name: () -> String?
+
+    # Use ActiveJob's `queue_name` as the default queue, falling back to
+    # any explicit `zizq_queue` setting, then "default".
+    def zizq_queue(name = nil) #: (?String?) -> String
+      if name
+        super
+      else
+        @zizq_queue || queue_name || "default"
+      end
+    end
 
     # Serialize using ActiveJob's own format.
     #
