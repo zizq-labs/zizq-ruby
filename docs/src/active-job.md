@@ -10,6 +10,10 @@ to use Zizq as its backend.
 > much slower than using Zizq directly. You should consider just using
 > `Zizq::Job` directly instead.
 
+> [!TIP]
+> Extend your class with the `Zizq::ActiveJobConfig` module in order to access
+> standard Zizq features.
+
 ## Configuring Rails to Use Zizq
 
 Active Job requires the queue adapter be configured either in
@@ -107,3 +111,14 @@ class SendEmailJob < ApplicationJob
   end
 end
 ```
+
+Active Job classes that extend `Zizq::ActiveJobConfig` can also be enqueued
+like regular `Zizq::Job` based classes:
+
+``` ruby
+Zizq.enqueue(SendEmailJob, 42, template: "welcome")
+```
+
+You will still need to configure the dispatcher to use
+`ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher` because Active Job
+fundamentally dispatches jobs differently to regular `Zizq::Job` classes.

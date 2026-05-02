@@ -2,6 +2,7 @@
 
 ## 0.2.1
 
+- Support enqueueing Active Job classes through `Zizq.enqueue`
 
 ## 0.2.0
 
