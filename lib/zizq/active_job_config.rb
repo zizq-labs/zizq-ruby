@@ -37,16 +37,14 @@ module Zizq
     #   # ActiveJob::Base.new — invisible to steep without this.
     #   def new: (*untyped, **untyped) -> untyped
 
-    # Serialize arguments using ActiveJob's serialization format.
+    # Serialize using ActiveJob's own format.
     #
     # Creates a temporary ActiveJob instance to produce the canonical
-    # serialized form, including `_aj_ruby2_keywords` markers for kwargs.
-    # This ensures unique key generation uses the same format as the
-    # enqueued payload.
-    #
-    # This is needed so that unique job keys can be correctly generated.
-    def zizq_serialize(*args, **kwargs) #: (*untyped, **untyped) -> Array[untyped]
-      new(*args, **kwargs).serialize["arguments"]
+    # serialized form. Returns the full serialized hash (including
+    # `job_class`, `arguments`, `queue_name`, etc.) so that the payload
+    # stored in Zizq matches what `ActiveJob::Base.execute` expects.
+    def zizq_serialize(*args, **kwargs) #: (*untyped, **untyped) -> Hash[String, untyped]
+      new(*args, **kwargs).serialize
     end
 
     # Deserialization is handled by ActiveJob::Base.execute on the worker
@@ -54,6 +52,15 @@ module Zizq
     def zizq_deserialize(_payload) #: (untyped) -> [Array[untyped], Hash[Symbol, untyped]]
       raise NotImplementedError,
         "ActiveJob handles deserialization via ActiveJob::Base.execute"
+    end
+
+    # Override unique key generation to hash only the arguments portion
+    # of the serialized payload. The full payload contains volatile fields
+    # (job_id, enqueued_at, etc.) that change per instance.
+    def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
+      arguments = new(*args, **kwargs).serialize["arguments"]
+      payload = normalize_payload(arguments)
+      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
     end
 
     # Generate a jq expression that exactly matches payloads with the given
@@ -65,8 +72,8 @@ module Zizq
     #
     #   .arguments == ["a","b",{"example":true,"_aj_ruby2_keywords":["example"]}]
     def zizq_payload_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
-      payload = zizq_serialize(*args, **kwargs)
-      ".arguments == #{JSON.generate(payload)}"
+      arguments = zizq_serialize(*args, **kwargs)["arguments"]
+      ".arguments == #{JSON.generate(arguments)}"
     end
 
     # Generate a jq expression that matches jobs whose positional args
@@ -85,27 +92,27 @@ module Zizq
     #   (.arguments[-1] | has("_aj_ruby2_keywords")) and
     #   (.arguments[-1] | contains({"example":true}))
     def zizq_payload_subset_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
-      payload = zizq_serialize(*args, **kwargs)
+      arguments = zizq_serialize(*args, **kwargs)["arguments"]
 
       # ActiveJob flattens arguments into a single array, but marks kwargs with
       # "_aj_ruby2_keywords" => ["key1", "key2", ...] in the last element of
       # the array where kwargs are present. We need to detect this to generate
       # a suitable expression.
       serialized_args, serialized_kwargs =
-        if payload.size > 0
+        if arguments.size > 0
           # See what the last argument looks like. It might be kwargs.
-          maybe_kwargs = payload.pop
+          maybe_kwargs = arguments.pop
 
           # If it's got "_aj_ruby2_keywords" then it is kwargs.
           if maybe_kwargs.is_a?(Hash) && maybe_kwargs["_aj_ruby2_keywords"]
             # We only want the actual kwargs, not the marker.
-            [payload, maybe_kwargs.except("_aj_ruby2_keywords")]
+            [arguments, maybe_kwargs.except("_aj_ruby2_keywords")]
           else
             # It wasn't kwargs, so put it back.
-            [payload.push(maybe_kwargs), nil]
+            [arguments.push(maybe_kwargs), nil]
           end
         else
-          [payload, nil]
+          [arguments, nil]
         end
 
       parts = [] #: Array[String]
