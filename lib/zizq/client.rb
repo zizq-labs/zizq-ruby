@@ -204,7 +204,7 @@ module Zizq
 
     # Get a single job by ID.
     def get_job(id) #: (String) -> Resources::Job
-      response = get("/jobs/#{id}")
+      response = get("/jobs/#{enc(id)}")
       data = handle_response!(response, expected: 200)
       Resources::Job.new(self, data)
     end
@@ -285,7 +285,7 @@ module Zizq
     # @rbs id: String
     # @rbs return: void
     def delete_job(id)
-      response = delete("/jobs/#{id}")
+      response = delete("/jobs/#{enc(id)}")
       handle_response!(response, expected: [200, 204])
       nil
     end
@@ -342,7 +342,7 @@ module Zizq
         queue:, priority:, ready_at:,
         retry_limit:, backoff:, retention:
       )
-      response = patch("/jobs/#{id}", body)
+      response = patch("/jobs/#{enc(id)}", body)
       data = handle_response!(response, expected: 200)
       Resources::Job.new(self, data)
     end
@@ -383,7 +383,7 @@ module Zizq
     # @rbs attempt: Integer
     # @rbs return: Resources::ErrorRecord
     def get_error(id, attempt:)
-      response = get("/jobs/#{id}/errors/#{attempt}")
+      response = get("/jobs/#{enc(id)}/errors/#{enc(attempt.to_s)}")
       data = handle_response!(response, expected: 200)
       Resources::ErrorRecord.new(self, data)
     end
@@ -397,7 +397,7 @@ module Zizq
     # @rbs return: Resources::ErrorPage
     def list_errors(id, from: nil, order: nil, limit: nil)
       params = { from:, order:, limit: }.compact #: Hash[Symbol, untyped]
-      response = get("/jobs/#{id}/errors", params:)
+      response = get("/jobs/#{enc(id)}/errors", params:)
       data = handle_response!(response, expected: 200)
       Resources::ErrorPage.new(self, data)
     end
@@ -422,6 +422,136 @@ module Zizq
       data["queues"]
     end
 
+    # List all cron group names.
+    #
+    # @rbs return: Array[String]
+    def list_cron_groups
+      response = get("/crons")
+      data = handle_response!(response, expected: 200)
+      data["crons"]
+    end
+
+    # Fetch a cron group and all its entries.
+    #
+    # @rbs name: String
+    # @rbs return: Resources::CronGroup
+    def get_cron_group(name)
+      response = get("/crons/#{enc(name)}")
+      data = handle_response!(response, expected: 200)
+      Resources::CronGroup.new(self, data)
+    end
+
+    # Create or replace an entire cron group.
+    #
+    # Entries not present in the request are removed. Entries with unchanged
+    # expressions preserve their scheduling state.
+    #
+    # @rbs name: String
+    # @rbs paused: bool?
+    # @rbs entries: Array[Zizq::cron_entry_params]
+    # @rbs return: Resources::CronGroup
+    def replace_cron_group(name, paused: nil, entries: [])
+      body = {
+        paused:,
+        entries: entries.map { |entry| build_cron_entry(**entry) }
+      }.compact
+      response = put("/crons/#{enc(name)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::CronGroup.new(self, data)
+    end
+
+    # Update group-level fields (currently just pause/unpause).
+    #
+    # @rbs name: String
+    # @rbs paused: bool?
+    # @rbs return: Resources::CronGroup
+    def update_cron_group(name, paused: nil)
+      response = patch("/crons/#{enc(name)}", { paused: }.compact)
+      data = handle_response!(response, expected: 200)
+      Resources::CronGroup.new(self, data)
+    end
+
+    # Delete a cron group and all its entries.
+    #
+    # @rbs name: String
+    # @rbs return: void
+    def delete_cron_group(name)
+      response = delete("/crons/#{enc(name)}")
+      handle_response!(response, expected: 204)
+      nil
+    end
+
+    # Fetch a single cron entry.
+    #
+    # @rbs group: String
+    # @rbs entry: String
+    # @rbs return: Resources::CronEntry
+    def get_cron_group_entry(group, entry)
+      response = get("/crons/#{enc(group)}/entries/#{enc(entry)}")
+      data = handle_response!(response, expected: 200)
+      Resources::CronEntry.new(self, data)
+    end
+
+    # Add a single entry to a cron group (creates the group if needed).
+    #
+    # Raises a ClientError (409 Conflict) if an entry with the same name
+    # already exists.
+    #
+    # @rbs group: String
+    # @rbs name: String
+    # @rbs expression: String
+    # @rbs job: Zizq::cron_job_params
+    # @rbs timezone: String?
+    # @rbs paused: bool?
+    # @rbs return: Resources::CronEntry
+    def add_cron_group_entry(group, name:, expression:, job:, timezone: nil, paused: nil)
+      body = build_cron_entry(name:, expression:, job:, timezone:, paused:)
+      response = post("/crons/#{enc(group)}/entries", body)
+      data = handle_response!(response, expected: 201)
+      Resources::CronEntry.new(self, data)
+    end
+
+    # Create or replace a single cron entry.
+    #
+    # Preserves scheduling state if the expression is unchanged.
+    #
+    # @rbs group: String
+    # @rbs entry: String
+    # @rbs expression: String
+    # @rbs job: Zizq::cron_job_params
+    # @rbs timezone: String?
+    # @rbs paused: bool?
+    # @rbs return: Resources::CronEntry
+    def replace_cron_group_entry(group, entry, expression:, job:, timezone: nil, paused: nil)
+      body = build_cron_entry(name: entry, expression:, job:, timezone:, paused:)
+      response = put("/crons/#{enc(group)}/entries/#{enc(entry)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::CronEntry.new(self, data)
+    end
+
+    # Update entry-level fields (currently just pause/unpause).
+    #
+    # @rbs group: String
+    # @rbs entry: String
+    # @rbs paused: bool
+    # @rbs return: Resources::CronEntry
+    def update_cron_group_entry(group, entry, paused:)
+      response = patch("/crons/#{enc(group)}/entries/#{enc(entry)}", { paused: })
+      data = handle_response!(response, expected: 200)
+      Resources::CronEntry.new(self, data)
+    end
+
+    # Delete a single cron entry.
+    #
+    # @rbs group: String
+    # @rbs entry: String
+    # @rbs return: void
+    def delete_cron_group_entry(group, entry)
+      response = delete("/crons/#{enc(group)}/entries/#{enc(entry)}")
+      handle_response!(response, expected: 204)
+      nil
+    end
+
     # Mark a job as successfully completed (ack).
     #
     # If this method (or [`#report_failure`]) is not called upon job
@@ -439,7 +569,7 @@ module Zizq
     # The Zizq server sends heartbeat messages to connected workers so that
     # it can quickly detect and handle disconnected clients.
     def report_success(id) #: (String) -> nil
-      response = raw_post("/jobs/#{id}/success")
+      response = raw_post("/jobs/#{enc(id)}/success")
       handle_response!(response, expected: 204)
       nil
     end
@@ -503,7 +633,7 @@ module Zizq
       body[:retry_at] = (retry_at * 1000).to_i if retry_at
       body[:kill] = kill if kill
 
-      response = post("/jobs/#{id}/failure", body)
+      response = post("/jobs/#{enc(id)}/failure", body)
       data = handle_response!(response, expected: 200)
       Resources::Job.new(self, data)
     end
@@ -660,12 +790,68 @@ module Zizq
 
     private
 
+    # URL-encode a single path segment.
+    def enc(value) #: (String) -> String
+      URI.encode_uri_component(value)
+    end
+
     # Build a relative path with optional query parameters.
     def build_path(path, params: {}) #: (String, ?params: Hash[Symbol, untyped]) -> String
       unless params.empty?
         path = "#{path}?#{URI.encode_www_form(params)}"
       end
       path
+    end
+
+    # Validate and build a cron entry body from keyword arguments.
+    #
+    # @rbs name: String
+    # @rbs expression: String
+    # @rbs job: Zizq::cron_job_params
+    # @rbs timezone: String?
+    # @rbs paused: bool?
+    # @rbs return: Hash[Symbol, untyped]
+    def build_cron_entry(name: nil, expression: nil, job: nil, timezone: nil, paused: nil)
+      {
+        name:,
+        expression:,
+        timezone:,
+        paused:,
+        job: build_cron_job(**job),
+      }.compact
+    end
+
+    # Validate and build a cron job template from keyword arguments.
+    #
+    # Uses keyword args so that unknown keys raise ArgumentError.
+    #
+    # @rbs type: String
+    # @rbs queue: String
+    # @rbs payload: untyped
+    # @rbs priority: Integer?
+    # @rbs retry_limit: Integer?
+    # @rbs backoff: Zizq::backoff?
+    # @rbs retention: Zizq::retention?
+    # @rbs unique_key: String?
+    # @rbs unique_while: Zizq::unique_scope?
+    # @rbs return: Hash[Symbol, untyped]
+    def build_cron_job(type: nil,
+                       queue: nil,
+                       payload: nil,
+                       priority: nil,
+                       retry_limit: nil,
+                       backoff: nil,
+                       retention: nil,
+                       unique_key: nil,
+                       unique_while: nil)
+      job = { type:, queue:, payload: } #: Hash[Symbol, untyped]
+      job[:priority] = priority if priority
+      job[:retry_limit] = retry_limit if retry_limit
+      job[:backoff] = backoff if backoff
+      job[:retention] = retention if retention
+      job[:unique_key] = unique_key if unique_key
+      job[:unique_while] = unique_while.to_s if unique_while
+      job
     end
 
     # Validate and normalize filter parameters for bulk operations.
@@ -937,6 +1123,18 @@ module Zizq
           http.post(
             build_path(path),
             {"accept" => @content_type}
+          )
+        )
+      end
+    end
+
+    def put(path, body) #: (String, Hash[Symbol, untyped]) -> RawResponse
+      request do |http|
+        consume_response(
+          http.put(
+            build_path(path),
+            {"content-type" => @content_type, "accept" => @content_type},
+            Protocol::HTTP::Body::Buffered.wrap(encode_body(body))
           )
         )
       end
