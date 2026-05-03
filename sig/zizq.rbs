@@ -45,6 +45,28 @@ module Zizq
     ?retention: (retention | singleton(RESET) | singleton(UNCHANGED))?
   }
 
+  # Job template for cron entry definitions.
+  type cron_job_params = {
+    type: String,
+    queue: String,
+    payload: untyped,
+    ?priority: Integer?,
+    ?retry_limit: Integer?,
+    ?backoff: backoff?,
+    ?retention: retention?,
+    ?unique_key: String?,
+    ?unique_while: unique_scope?
+  }
+
+  # Parameters for a single cron entry.
+  type cron_entry_params = {
+    name: String,
+    expression: String,
+    job: cron_job_params,
+    ?timezone: String?,
+    ?paused: bool?
+  }
+
   # TLS options for connecting over HTTPS. Values are PEM strings or file paths.
   type tls_options = { ?ca: String, ?client_cert: String, ?client_key: String }
 

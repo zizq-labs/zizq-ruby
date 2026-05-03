@@ -853,4 +853,140 @@ class TestClient < ZizqTestCase
       client.close
     end
   end
+
+  # --- Cron scheduling ---
+
+  CRON_GROUP_RESPONSE = {
+    "name" => "default",
+    "paused" => false,
+    "entries" => [
+      {
+        "name" => "e1",
+        "expression" => "* * * * *",
+        "paused" => false,
+        "job" => { "type" => "test", "queue" => "q", "payload" => {} },
+        "next_enqueue_at" => 1_700_000_060_000,
+      },
+    ],
+  }.freeze
+
+  CRON_ENTRY_RESPONSE = CRON_GROUP_RESPONSE["entries"][0].freeze
+
+  def test_list_cron_groups
+    stub_request(:get, "#{URL}/crons")
+      .to_return(status: 200, body: JSON.generate({ "crons" => ["default", "billing"] }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.list_cron_groups
+    assert_equal ["default", "billing"], result
+  end
+
+  def test_get_cron_group
+    stub_request(:get, "#{URL}/crons/default")
+      .to_return(status: 200, body: JSON.generate(CRON_GROUP_RESPONSE),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.get_cron_group("default")
+    assert_instance_of Zizq::Resources::CronGroup, result
+    assert_equal "default", result.name
+    assert_equal false, result.paused?
+    assert_equal 1, result.entries.size
+    assert_equal "e1", result.entries[0].name
+  end
+
+  def test_replace_cron_group
+    stub_request(:put, "#{URL}/crons/default")
+      .with(
+        body: JSON.generate({
+          entries: [{ name: "e1", expression: "* * * * *",
+                      job: { type: "test", queue: "q", payload: {} } }],
+        }),
+        headers: { "Content-Type" => "application/json" },
+      )
+      .to_return(status: 200, body: JSON.generate(CRON_GROUP_RESPONSE),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.replace_cron_group("default",
+      entries: [{ name: "e1", expression: "* * * * *",
+                  job: { type: "test", queue: "q", payload: {} } }])
+    assert_instance_of Zizq::Resources::CronGroup, result
+    assert_equal "default", result.name
+  end
+
+  def test_update_cron_group
+    paused_response = CRON_GROUP_RESPONSE.merge("paused" => true, "paused_at" => 1_700_000_000_000)
+    stub_request(:patch, "#{URL}/crons/default")
+      .with(body: JSON.generate({ paused: true }))
+      .to_return(status: 200, body: JSON.generate(paused_response),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.update_cron_group("default", paused: true)
+    assert_instance_of Zizq::Resources::CronGroup, result
+    assert result.paused?
+  end
+
+  def test_delete_cron_group
+    stub_request(:delete, "#{URL}/crons/default")
+      .to_return(status: 204, body: "", headers: {})
+
+    assert_nil @json_client.delete_cron_group("default")
+  end
+
+  def test_get_cron_group_entry
+    stub_request(:get, "#{URL}/crons/default/entries/e1")
+      .to_return(status: 200, body: JSON.generate(CRON_ENTRY_RESPONSE),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.get_cron_group_entry("default", "e1")
+    assert_instance_of Zizq::Resources::CronEntry, result
+    assert_equal "e1", result.name
+    assert_equal "* * * * *", result.expression
+  end
+
+  def test_add_cron_group_entry
+    stub_request(:post, "#{URL}/crons/default/entries")
+      .with(body: JSON.generate({
+        name: "e1", expression: "* * * * *",
+        job: { type: "test", queue: "q", payload: {} },
+      }))
+      .to_return(status: 201, body: JSON.generate(CRON_ENTRY_RESPONSE),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.add_cron_group_entry("default",
+      name: "e1", expression: "* * * * *",
+      job: { type: "test", queue: "q", payload: {} })
+    assert_instance_of Zizq::Resources::CronEntry, result
+    assert_equal "e1", result.name
+  end
+
+  def test_replace_cron_group_entry
+    stub_request(:put, "#{URL}/crons/default/entries/e1")
+      .to_return(status: 200, body: JSON.generate(CRON_ENTRY_RESPONSE),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.replace_cron_group_entry("default", "e1",
+      expression: "* * * * *",
+      job: { type: "test", queue: "q", payload: {} })
+    assert_instance_of Zizq::Resources::CronEntry, result
+    assert_equal "e1", result.name
+  end
+
+  def test_update_cron_group_entry
+    paused_entry = CRON_ENTRY_RESPONSE.merge("paused" => true, "paused_at" => 1_700_000_000_000)
+    stub_request(:patch, "#{URL}/crons/default/entries/e1")
+      .with(body: JSON.generate({ paused: true }))
+      .to_return(status: 200, body: JSON.generate(paused_entry),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.update_cron_group_entry("default", "e1", paused: true)
+    assert_instance_of Zizq::Resources::CronEntry, result
+    assert result.paused?
+  end
+
+  def test_delete_cron_group_entry
+    stub_request(:delete, "#{URL}/crons/default/entries/e1")
+      .to_return(status: 204, body: "", headers: {})
+
+    assert_nil @json_client.delete_cron_group_entry("default", "e1")
+  end
 end
