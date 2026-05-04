@@ -18,8 +18,27 @@ This is the official Zizq client library for Ruby.
 * Scheduled jobs
 * Configurable backoff policies
 * Configurable job retention policies
+* Recurring jobs (cron)
 * Job introspection and management APIs, with support for `jq` query filters
 * Unique jobs
+
+## Installation
+
+> [!NOTE]
+> If you have not yet installed the Zizq server, follow the
+> [Getting Started](https://zizq.io/docs/getting-started) guide first.
+
+Add it to your application's `Gemfile`.
+
+``` ruby
+gem 'zizq', '~> 0.3.0'
+```
+
+Or install it manually:
+
+```shell
+$ gem install zizq -v 0.3.0
+```
 
 ## Example
 

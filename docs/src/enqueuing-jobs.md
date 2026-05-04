@@ -1,10 +1,15 @@
 # Enqueuing Jobs
 
-Jobs that use `Zizq::Job` are enqueued via `Zizq.enqueue` which builds the
-necessary inputs to send to the Zizq server. Jobs that do not use `Zizq::Job`
-can be enqueued via `Zizq.enqueue_raw`, which is a much more bare bones method
-intended for advanced use cases, such as cross-language jobs where e.g. a Ruby
-application enqueues a job that is ultimately processed by a Go application.
+Job classes that use `Zizq::Job` are enqueued via `Zizq.enqueue`.
+
+More generic jobs can be enqueued via `Zizq.enqueue_raw`, which is a much more
+bare bones method intended for advanced use cases, such as cross-language
+support where e.g. a Ruby application enqueues a job that is ultimately
+processed by a Go application.
+
+> [!TIP]
+> Active Job classes can also be enqueued via `Zizq.enqueue` provided they
+> `extend Zizq::ActiveJobConfig`.
 
 ## Using `Zizq::Job`
 
@@ -38,9 +43,10 @@ job.perform(42, template: "welcome")
 ### Configuration Overrides
 
 All options that can be configured on the job can also be overridden at
-enqueue-time by providing a block to `Zizq.enqueue`. The block receives the
-default `Zizq::EnqueueRequest` object based on the job class, and the caller
-can modify it as needed (e.g. to specify a higher priority).
+enqueue-time by using `Zizq.enqueue_with` with a list of options, or by
+providing a block to `Zizq.enqueue`. The block receives the default
+`Zizq::EnqueueRequest` object based on the job class, and the caller can modify
+it as needed (e.g. to specify a higher priority).
 
 > [!TIP]
 > Job classes can also do dynamic configuration, such as dynamic prioritisation
@@ -48,14 +54,16 @@ can modify it as needed (e.g. to specify a higher priority).
 > [Dynamic Job Configuration](./job-classes.md#dynamic-config) for more info.
 
 ``` ruby
-# Override the priority on this job.
+# Disable retries on this job using enqueue_with.
+Zizq.enqueue_with(retry_limit: 0).enqueue(
+  SendEmailJob,
+  user.id
+  template: "welcome",
+)
+
+# Override the priority on this job using the block syntax.
 Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
   req.priority = 100
-end
-
-# Disable retries on this job.
-Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
-  req.retry_limit = 0
 end
 ```
 
@@ -67,16 +75,20 @@ either the `ready_at` timestamp (seconds since the Unix epoch), or a `delay`
 
 ``` ruby
 # Schedule the job to run in 1 hour.
-Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
-  req.delay = 3600
-end
+Zizq.enqueue_with(delay: 3600).enqueue(
+  SendEmailJob,
+  user.id,
+  template: "welcome",
+)
 ```
 
 ``` ruby
 # Schedule the job to run at a specific time.
-Zizq.enqueue(SendEmailJob, user.id, template: "welcome") do |req|
-  req.ready_at = Time.new(2027, 3, 15, 14, 30).to_f
-end
+Zizq.enqueue_with(ready_at: Time.new(2027, 3, 15, 14, 30)).enqueue(
+  SendEmailJob,
+  user.id,
+  template: "welcome",
+)
 ```
 
 ## Raw Job Enqueueing

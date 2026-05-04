@@ -43,6 +43,12 @@ echo "Bumping version: ${CURRENT} -> ${NEW}"
 sed -i "s/VERSION = \"${CURRENT}\"/VERSION = \"${NEW}\"/" lib/zizq/version.rb
 echo "  Updated lib/zizq/version.rb"
 
+# Update docs
+sed -i "s/'~> ${CURRENT}'/'~> ${NEW}'/" docs/src/installation.md
+sed -i "s/-v ${CURRENT}/-v ${NEW}/" docs/src/installation.md
+sed -i "s/'~> ${CURRENT}'/'~> ${NEW}'/" README.md
+sed -i "s/-v ${CURRENT}/-v ${NEW}/" README.md
+
 # Update Gemfile.lock.
 bundle install --quiet
 echo "  Updated Gemfile.lock"
