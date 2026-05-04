@@ -237,7 +237,7 @@ module Zizq
     #     end
     #   end
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
@@ -335,7 +335,7 @@ module Zizq
     # @api private
     # Build an EnqueueRequest for a single job class enqueue.
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
@@ -345,7 +345,7 @@ module Zizq
         raise ArgumentError, "#{job_class.inspect} must include Zizq::Job or extend Zizq::ActiveJobConfig"
       end
 
-      zizq_job_class = job_class #: Zizq::job_class
+      zizq_job_class = job_class #: Zizq::JobConfig
       req = zizq_job_class.zizq_enqueue_request(*args, **kwargs)
       yield req if block_given?
       req

@@ -63,7 +63,7 @@ module Zizq
     # Enqueue a Zizq::Job or ActiveJob class using Zizq::ActiveJobConfig via
     # this entry.
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void

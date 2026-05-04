@@ -161,7 +161,7 @@ module Zizq
     # Sets the type filter to the class name and adds a jq payload filter
     # for an exact match of the serialized arguments.
     #
-    # @rbs job_class: Zizq::job_class
+    # @rbs job_class: Class && Zizq::JobConfig
     # @rbs *args: untyped
     # @rbs **kwargs: untyped
     # @rbs return: Query
@@ -179,7 +179,7 @@ module Zizq
     # The job class must include `Zizq::Job` or for Active Job classes must
     # extend `Zizq::ActiveJobConfig`.
     #
-    # @rbs job_class: Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs *args: untyped
     # @rbs **kwargs: untyped
     # @rbs return: Query
