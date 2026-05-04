@@ -63,7 +63,9 @@ module Zizq
     def configure #: () { (Configuration) -> void } -> void
       yield configuration
     ensure
-      @client = nil # shared client is potentially stale
+      # shared client is potentially stale
+      @client&.close
+      @client = nil
     end
 
     # Returns a shared client instance built from the global configuration.
