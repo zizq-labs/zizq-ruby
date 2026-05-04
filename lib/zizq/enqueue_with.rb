@@ -68,7 +68,7 @@ module Zizq
     # Enqueue a job class via the underlying target, applying the scoped
     # overrides before invoking any caller-supplied block.
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
