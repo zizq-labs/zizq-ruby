@@ -12,6 +12,7 @@ module Zizq
       def expression      = @data["expression"]      #: () -> String
       def timezone        = @data["timezone"]        #: () -> String?
       def paused          = @data["paused"]          #: () -> bool
+      def paused?         = paused                   #: () -> bool
       def paused_at       = ms_to_seconds(@data["paused_at"])   #: () -> Float?
       def resumed_at      = ms_to_seconds(@data["resumed_at"])  #: () -> Float?
       def next_enqueue_at = ms_to_seconds(@data["next_enqueue_at"]) #: () -> Float?
@@ -21,8 +22,6 @@ module Zizq
       def job #: () -> JobTemplate
         JobTemplate.new(client, @data["job"])
       end
-
-      alias_method :paused?, :paused
     end
   end
 end

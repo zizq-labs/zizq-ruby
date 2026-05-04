@@ -117,10 +117,14 @@ jobs:
 
       - name: Run integration tests
         working-directory: client
+        env:
+          ZIZQ_LICENSE_KEY: ${{ secrets.ZIZQ_LICENSE_KEY }}
         run: |
-          ./integration/run.sh \
-            --binary ${{ github.workspace }}/server/zizq \
-            --gem ${{ github.workspace }}/artifact/zizq-*.gem
+          ARGS=(--binary ${{ github.workspace }}/server/zizq --gem ${{ github.workspace }}/artifact/zizq-*.gem)
+          if [[ -n "$ZIZQ_LICENSE_KEY" ]]; then
+            ARGS+=(--license-key "$ZIZQ_LICENSE_KEY")
+          fi
+          ./integration/run.sh "${ARGS[@]}"
 
   # --- Gate (stable check name for branch protection) ---
 

@@ -405,4 +405,100 @@ class IntegrationTest < Minitest::Test
     assert_equal 3, deleted
     assert_equal 0, Zizq.query.count
   end
+
+  # --- Crontab CRUD ---
+  #
+  # These tests require a Pro license on the server. They are skipped if
+  # the server returns 403 Forbidden.
+
+  def test_crontab_define_and_refetch
+    tab = Zizq.define_crontab("integration-test") do |cron|
+      cron.define_entry("entry-a", "* * * * *").enqueue(IntegrationTestJob, 1, label: "a")
+      cron.define_entry("entry-b", "*/5 * * * *").enqueue(ActiveJobTestJob, 2, label: "b")
+      cron.define_entry("entry-c", "0 0 * * *").enqueue_raw(
+        type: "cron_test_c", queue: "cron-integration", payload: {},
+      )
+    end
+
+    assert_equal 3, tab.entries.size
+
+    # Re-fetch from the server and verify.
+    refetched = Zizq.crontab("integration-test")
+    assert_equal 3, refetched.entries.size
+    assert refetched.entries.key?("entry-a")
+    assert refetched.entries.key?("entry-b")
+    assert refetched.entries.key?("entry-c")
+    assert_equal "* * * * *", refetched.entry("entry-a").expression
+    assert_equal "*/5 * * * *", refetched.entry("entry-b").expression
+    assert_equal "0 0 * * *", refetched.entry("entry-c").expression
+
+    # Verify job types were serialised correctly.
+    assert_equal "IntegrationTestJob", refetched.entry("entry-a").job.type
+    assert_equal "worker-integration", refetched.entry("entry-a").job.queue
+    assert_equal "ActiveJobTestJob", refetched.entry("entry-b").job.type
+    assert_equal "activejob-integration", refetched.entry("entry-b").job.queue
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
+  ensure
+    Zizq.crontab("integration-test").delete! rescue nil
+  end
+
+  def test_crontab_redefine_removes_absent_entries
+    # Define with three entries.
+    Zizq.define_crontab("integration-test") do |cron|
+      cron.define_entry("keep-a", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+      cron.define_entry("keep-b", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+      cron.define_entry("remove-c", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+    end
+
+    # Redefine with only two entries.
+    Zizq.define_crontab("integration-test") do |cron|
+      cron.define_entry("keep-a", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+      cron.define_entry("keep-b", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+    end
+
+    # Re-fetch and verify remove-c is gone.
+    refetched = Zizq.crontab("integration-test")
+    assert_equal 2, refetched.entries.size
+    assert refetched.entries.key?("keep-a")
+    assert refetched.entries.key?("keep-b")
+    refute refetched.entries.key?("remove-c")
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
+  ensure
+    Zizq.crontab("integration-test").delete! rescue nil
+  end
+
+  def test_crontab_entry_pause
+    Zizq.define_crontab("integration-test") do |cron|
+      cron.define_entry("pausable", "* * * * *").enqueue_raw(
+        type: "cron_test", queue: "cron-integration", payload: {},
+      )
+    end
+
+    tab = Zizq.crontab("integration-test")
+    refute tab.entry("pausable").paused
+
+    tab.entry("pausable").pause!
+    assert tab.entry("pausable").paused
+
+    # Re-fetch to confirm it persisted.
+    refetched = Zizq.crontab("integration-test")
+    assert refetched.entry("pausable").paused
+    assert_kind_of Float, refetched.entry("pausable").paused_at
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
+  ensure
+    Zizq.crontab("integration-test").delete! rescue nil
+  end
 end

@@ -14,17 +14,19 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
 BINARY=""
 GEM=""
+LICENSE_KEY=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --binary) BINARY="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
-        --gem)    GEM="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
-        *)        echo "Unknown arg: $1"; exit 1 ;;
+        --binary)      BINARY="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
+        --gem)         GEM="$(cd "$(dirname "$2")" && pwd)/$(basename "$2")"; shift 2 ;;
+        --license-key) LICENSE_KEY="$2"; shift 2 ;;
+        *)             echo "Unknown arg: $1"; exit 1 ;;
     esac
 done
 
 if [[ -z "$BINARY" || -z "$GEM" ]]; then
-    echo "Usage: ./run.sh --binary /path/to/zizq --gem /path/to/zizq-x.y.z.gem"
+    echo "Usage: ./run.sh --binary /path/to/zizq --gem /path/to/zizq-x.y.z.gem [--license-key KEY]"
     exit 1
 fi
 
@@ -69,13 +71,12 @@ gem install --no-document activejob -v '~> 8.0' 2>&1 | sed 's/^/    /'
 echo "    Starting Zizq server..."
 
 SERVER_LOG="$(mktemp)"
-"$BINARY" serve \
-    --port 0 \
-    --no-admin \
-    --root-dir "$SERVER_ROOT" \
-    --log-format json \
-    --log-level info \
-    > "$SERVER_LOG" 2>&1 &
+SERVER_ARGS=(serve --port 0 --no-admin --root-dir "$SERVER_ROOT" --log-format json --log-level info)
+if [[ -n "$LICENSE_KEY" ]]; then
+    SERVER_ARGS+=(--license-key "$LICENSE_KEY")
+fi
+
+"$BINARY" "${SERVER_ARGS[@]}" > "$SERVER_LOG" 2>&1 &
 SERVER_PID=$!
 
 # Wait for the "listening" log line with api="primary" and extract the
