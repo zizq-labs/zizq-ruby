@@ -12,20 +12,24 @@ require_relative "zizq/configuration"
 autoload :MessagePack, "msgpack"
 
 module Zizq
-  autoload :AckProcessor,    "zizq/ack_processor"
-  autoload :ActiveJobConfig, "zizq/active_job_config"
-  autoload :Backoff,         "zizq/backoff"
-  autoload :BulkEnqueue,     "zizq/bulk_enqueue"
-  autoload :Client,          "zizq/client"
-  autoload :EnqueueRequest,  "zizq/enqueue_request"
-  autoload :EnqueueWith,     "zizq/enqueue_with"
-  autoload :Job,             "zizq/job"
-  autoload :JobConfig,       "zizq/job_config"
-  autoload :Middleware,      "zizq/middleware"
-  autoload :Lifecycle,       "zizq/lifecycle"
-  autoload :Query,           "zizq/query"
-  autoload :Resources,       "zizq/resources"
-  autoload :Worker,          "zizq/worker"
+  autoload :AckProcessor,        "zizq/ack_processor"
+  autoload :ActiveJobConfig,     "zizq/active_job_config"
+  autoload :Backoff,             "zizq/backoff"
+  autoload :BulkEnqueue,         "zizq/bulk_enqueue"
+  autoload :Client,              "zizq/client"
+  autoload :Crontab,             "zizq/crontab"
+  autoload :CrontabBuilder,      "zizq/crontab_builder"
+  autoload :CrontabEntry,        "zizq/crontab_entry"
+  autoload :CrontabEntryBuilder, "zizq/crontab_entry_builder"
+  autoload :EnqueueRequest,      "zizq/enqueue_request"
+  autoload :EnqueueWith,         "zizq/enqueue_with"
+  autoload :Job,                 "zizq/job"
+  autoload :JobConfig,           "zizq/job_config"
+  autoload :Middleware,          "zizq/middleware"
+  autoload :Lifecycle,           "zizq/lifecycle"
+  autoload :Query,               "zizq/query"
+  autoload :Resources,           "zizq/resources"
+  autoload :Worker,              "zizq/worker"
 
   # Sentinel indicating a field should not be included in the request.
   # Used as the default for update parameters.
@@ -59,7 +63,9 @@ module Zizq
     def configure #: () { (Configuration) -> void } -> void
       yield configuration
     ensure
-      @client = nil # shared client is potentially stale
+      # shared client is potentially stale
+      @client&.close
+      @client = nil
     end
 
     # Returns a shared client instance built from the global configuration.
@@ -114,6 +120,88 @@ module Zizq
       Query.new(...)
     end
 
+    # Return a list of all available Crontab schedules.
+    def crontabs #: () -> Array[String]
+      Zizq.client.list_cron_groups
+    end
+
+    # Define (or redefine) a Crontab schedule.
+    #
+    # This requires a Pro license on the Zizq server.
+    #
+    # Crontabs are used to define collections of recurring jobs that run on a
+    # specified schedule, such as at 2am on every Monday. Each entry on the
+    # Crontab is a single job enqueue, which the Zizq server automatically
+    # triggers at the correct point in time. Zizq uses standard Cron expression
+    # syntax (with support for seconds via 6-fields) to define entries.
+    #
+    # This is designed to be idempotent. You can define a schedule somewhere in
+    # your application startup process (after `Zizq.configure`) and it doesn't
+    # matter if multiple process all define the same schedule. Zizq is smart
+    # enough to handle this correctly.
+    #
+    # Entire schedules, and individual entries on a schedule, can be paused and
+    # resumed.
+    #
+    # By default schedules operate in the system time zone of the Zizq server
+    # but an explicit IANA timezone name can be specified when defining the
+    # Crontab.
+    #
+    # This method sends exactly *one* request to the Zizq server upon
+    # completion of the block. Any existing entries are retained. Any new
+    # entries are added, any absent entries are removed, and any modified
+    # entries are replaced. In short, whatever the block defines is what the
+    # entire resulting Crontab schedule will look like.
+    #
+    #   Zizq.define_crontab("example", timezone: "Europe/Rome") do |cron|
+    #     cron.define_entry(
+    #       "refresh_data_warehose",
+    #       "*/15 * * * *"
+    #     ).enqueue(RefreshDataWarehoseJob, incremental: true)
+    #
+    #     cron.define_entry(
+    #       "expire_acess_tokens",
+    #       "*/10 * * * * *"
+    #     ).enqueue_raw(
+    #       queue: "identity-server",
+    #       type: "expire_access_tokens",
+    #       priority: 100,
+    #       payload: {},
+    #     )
+    #   end
+    #
+    # When jobs are pushed to the queue at their execution time, Zizq handles
+    # this atomically, so there is no risk of a duplicate enqueue for the same
+    # schedule tick. However, if you have long-running jobs that should not be
+    # permitted to overlap, such as in the case your schedule runs every 10
+    # seconds but jobs can take 30 seconds to execute, you should consider
+    # using unique jobs.
+    #
+    # @rbs name: String
+    # @rbs timezone: String?
+    # @rbs paused: bool?
+    # @rbs &block: (Zizq::CrontabBuilder) -> void
+    # @rbs return: Zizq::Crontab
+    def define_crontab(name, timezone: nil, paused: nil, &block)
+      crontab = Crontab.new(name)
+      crontab.redefine(timezone:, paused:, &block)
+      crontab
+    end
+
+    # Obtain a handle for the given Crontab schedule.
+    #
+    # This is a lazy operation. The schedule data is only fetched from the Zizq
+    # server upon first accessing data within the schedule.
+    #
+    #   Zizq.crontab("default").paused?
+    #   Zizq.crontab("default").resume!
+    #
+    # @rbs name: String
+    # @rbs return: Zizq::Crontab
+    def crontab(name)
+      Crontab.new(name)
+    end
+
     # Enqueue a job by class with positional and keyword arguments.
     #
     # By default all arguments are serialized as JSON, which means hashes with
@@ -149,7 +237,7 @@ module Zizq
     #     end
     #   end
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
@@ -247,7 +335,7 @@ module Zizq
     # @api private
     # Build an EnqueueRequest for a single job class enqueue.
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
@@ -257,7 +345,7 @@ module Zizq
         raise ArgumentError, "#{job_class.inspect} must include Zizq::Job or extend Zizq::ActiveJobConfig"
       end
 
-      zizq_job_class = job_class #: Zizq::job_class
+      zizq_job_class = job_class #: Zizq::JobConfig
       req = zizq_job_class.zizq_enqueue_request(*args, **kwargs)
       yield req if block_given?
       req

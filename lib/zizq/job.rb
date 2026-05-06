@@ -46,11 +46,15 @@ module Zizq
     def self.call(job)
       job_class = Object.const_get(job.type)
 
-      unless job_class.is_a?(Class) && job_class.include?(Zizq::Job)
+      unless (
+          job_class.is_a?(Class) &&
+          job_class.include?(Zizq::Job) &&
+          job_class.is_a?(Zizq::JobConfig)
+      )
         raise "#{job.type} does not include Zizq::Job"
       end
 
-      zizq_job_class = job_class #: Zizq::job_class
+      zizq_job_class = job_class #: (Class & Zizq::JobConfig & Zizq::job_class)
       instance = zizq_job_class.new
       instance.set_zizq_job(job)
 

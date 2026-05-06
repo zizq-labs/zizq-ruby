@@ -45,6 +45,28 @@ module Zizq
     ?retention: (retention | singleton(RESET) | singleton(UNCHANGED))?
   }
 
+  # Job template for cron entry definitions.
+  type cron_job_params = {
+    type: String,
+    queue: String,
+    payload: untyped,
+    ?priority: Integer?,
+    ?retry_limit: Integer?,
+    ?backoff: backoff?,
+    ?retention: retention?,
+    ?unique_key: String?,
+    ?unique_while: unique_scope?
+  }
+
+  # Parameters for a single cron entry.
+  type cron_entry_params = {
+    name: String,
+    expression: String,
+    job: cron_job_params,
+    ?timezone: String?,
+    ?paused: bool?
+  }
+
   # TLS options for connecting over HTTPS. Values are PEM strings or file paths.
   type tls_options = { ?ca: String, ?client_cert: String, ?client_key: String }
 
@@ -58,26 +80,11 @@ module Zizq
 
   # Structural type for a class that includes Zizq::Job.
   #
-  # When a class includes Zizq::Job, the `included` callback extends
-  # ClassMethods onto the class. Steep can't infer this from the runtime
-  # `extend` call, so we describe the resulting shape as an interface.
+  # This serves only to ensure the class can be instantiated without args.
   #
   # The `_` prefix is mandatory RBS syntax for interfaces. The `job_class`
   # type alias below provides a cleaner name for use in source annotations.
   interface _JobClass
-    def zizq_queue: (?String?) -> String
-    def zizq_retry_limit: (?Integer?) -> Integer?
-    def zizq_backoff: (?exponent: Numeric?, ?base: Numeric?, ?jitter: Numeric?) -> backoff?
-    def zizq_retention: (?completed: Numeric?, ?dead: Numeric?) -> retention?
-    def zizq_unique: (?bool?, ?scope: unique_scope?) -> bool
-    def zizq_unique_scope: (?unique_scope?) -> unique_scope?
-    def zizq_unique_key: (*untyped, **untyped) -> String
-    def zizq_serialize: (*untyped, **untyped) -> Hash[String, untyped]
-    def zizq_deserialize: (Hash[String, untyped]) -> [Array[untyped], Hash[Symbol, untyped]]
-    def zizq_payload_filter: (*untyped, **untyped) -> String
-    def zizq_payload_subset_filter: (*untyped, **untyped) -> String
-    def zizq_enqueue_request: (*untyped, **untyped) -> EnqueueRequest
-    def name: () -> String?
     def new: () -> Job
   end
 
@@ -91,7 +98,7 @@ module Zizq
   # inside an existing bulk block compose naturally.
   interface _EnqueueTarget
     def enqueue: (
-      Class & job_class,
+      Class & JobConfig,
       *untyped,
       **untyped
     ) ?{ (EnqueueRequest) -> void } -> untyped

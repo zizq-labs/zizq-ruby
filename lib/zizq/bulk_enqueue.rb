@@ -22,7 +22,7 @@ module Zizq
     # Collect a job class enqueue. Accepts the same arguments as
     # `Zizq.enqueue`.
     #
-    # @rbs job_class: Class & Zizq::job_class
+    # @rbs job_class: Class & Zizq::JobConfig
     # @rbs args: Array[untyped]
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void

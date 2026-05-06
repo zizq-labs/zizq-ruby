@@ -1,7 +1,8 @@
 # Changelog
 
-## 0.2.2
+## 0.3.0
 
+- Added cron (recurring jobs) scheduling support via `Zizq.define_crontab`
 
 ## 0.2.1
 
