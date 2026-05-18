@@ -173,7 +173,8 @@ jobs:
           gh release create "v${version}" \
             --title "v${version}" \
             --notes-file release-notes.md \
-            artifacts/zizq-*
+            "artifacts/zizq-${version}.gem" \
+            "artifacts/zizq-${version}.gem.sha256"
 
       - name: Publish to RubyGems
         env:
