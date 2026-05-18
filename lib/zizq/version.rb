@@ -5,5 +5,5 @@
 # frozen_string_literal: true
 
 module Zizq
-  VERSION = "0.3.0" #: String
+  VERSION = "0.3.1" #: String
 end
