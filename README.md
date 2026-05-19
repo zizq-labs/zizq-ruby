@@ -7,6 +7,7 @@ API.
 This is the official Zizq client library for Ruby.
 
 [![CI](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml/badge.svg)](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml)
+[![Gem Version](https://img.shields.io/gem/v/zizq.svg)](https://rubygems.org/gems/zizq)
 
 ## Features
 
@@ -28,9 +29,9 @@ This is the official Zizq client library for Ruby.
 > If you have not yet installed the Zizq server, follow the
 > [Getting Started](https://zizq.io/docs/getting-started) guide first.
 
-Add it to your application's `Gemfile`.
+Add it to your application's `Gemfile`:
 
-``` ruby
+```ruby
 gem 'zizq', '~> 0.3.1'
 ```
 
@@ -40,14 +41,44 @@ Or install it manually:
 $ gem install zizq -v 0.3.1
 ```
 
-## Example
+Ruby **3.2.8 or newer** is required. Client and server share version
+numbers — keep the client's major/minor at or below the server's.
+
+## Configuration
+
+Out of the box, the client talks to a server at `http://localhost:7890` —
+fine for local development. For anything else, configure it with
+`Zizq.configure` in your application's bootstrap (e.g. a Rails initializer):
+
+```ruby
+require 'zizq'
+
+Zizq.configure do |c|
+  c.url    = 'https://zizq.your.network:7890'
+  c.tls    = { ca: '/path/to/server-ca-cert.pem' }
+  c.logger = Logger.new('log/zizq.log')
+end
+```
+
+For mutual TLS, add `client_cert:` and `client_key:` to the `tls` hash.
+
+> [!CAUTION]
+> If your server is exposed directly to the internet, it should require
+> mutual TLS — otherwise anybody can talk to it.
+
+## Usage
 
 > [!TIP]
-> The client is very flexible and supports being used in a range of different
-> ways. Read the [full documentation](https://zizq.io/docs/clients/ruby/) on
-> the website for more details.
+> This README is an overview. The
+> [full documentation](https://zizq.io/docs/clients/ruby/) covers each
+> feature in depth — middleware, custom dispatchers, Active Job, job
+> querying, and more.
 
-Mixin-based job class.
+### Defining a job
+
+In most Ruby applications, a job is a plain class that includes `Zizq::Job`.
+The class declares its defaults with the `zizq_*` DSL and implements
+`#perform`:
 
 ```ruby
 class SendEmailJob
@@ -55,54 +86,133 @@ class SendEmailJob
 
   zizq_queue 'emails'
   zizq_priority 100
+  zizq_retry_limit 5
 
   def perform(user_id, template:)
-    # your application logic here
+    user = User.find(user_id)
+    Mailer.deliver(user, template)
   end
 end
 ```
 
-Enqueueing a job.
+Every default — `zizq_queue`, `zizq_priority`, `zizq_retry_limit`,
+`zizq_backoff`, `zizq_retention`, `zizq_unique` — can be overridden per
+enqueue. The job's class name (`"SendEmailJob"`) becomes the API-level job
+type, so keep it stable once jobs are in flight.
+
+### Enqueuing jobs
+
+Enqueue a job by passing the class and the arguments your `#perform` method
+expects:
 
 ```ruby
-Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
+job = Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
+job.id  # => "03fu0wm75gxgmfyfplwvazhex"
+```
+
+Override defaults for a single call with `Zizq.enqueue_with`, or with a block
+that mutates the request:
+
+```ruby
+# Don't retry this one.
+Zizq.enqueue_with(retry_limit: 0).enqueue(SendEmailJob, 42, template: 'welcome')
+
+# Bump the priority via the block form.
+Zizq.enqueue(SendEmailJob, 42, template: 'welcome') do |req|
+  req.priority = 1000
+end
+```
+
+Schedule a job for later with `delay` (seconds from now) or an absolute
+`ready_at`:
+
+```ruby
+Zizq.enqueue_with(delay: 3600).enqueue(SendEmailJob, 42, template: 'welcome')
+Zizq.enqueue_with(ready_at: Time.new(2027, 3, 15, 14, 30)).enqueue(SendEmailJob, 42, template: 'welcome')
+```
+
+To enqueue many jobs efficiently, `Zizq.enqueue_bulk` sends them in a single
+atomic request — across queues and job types, and `enqueue_raw` enqueues can
+be mixed in too:
+
+```ruby
+Zizq.enqueue_bulk do |b|
+  signups.each { |user_id| b.enqueue(SendEmailJob, user_id, template: 'welcome') }
+end
 ```
 
 > [!NOTE]
-> Jobs can also be enqueued and processed without `Zizq::Job`, which is
-> designed to support interoperability with any programming language.
+> Jobs can also be enqueued without `Zizq::Job` via `Zizq.enqueue_raw` —
+> designed for cross-language workflows where, for example, a Ruby app
+> enqueues jobs consumed by a Go service.
 
-Using the included `zizq-worker` executable.
+### Running a worker
+
+Jobs are processed by a worker, typically in a separate process. The simplest
+way is the `zizq-worker` executable bundled with the gem — pass your
+application's entrypoint so it can load your job classes:
 
 ```shell
-$ zizq-worker --threads 5 --fibers 2 app.rb
-I, [2026-03-24T15:25:57.738131 #1331422]  INFO -- : Zizq worker starting: 5 threads, 2 fibers, prefetch=20
-I, [2026-03-24T15:25:57.738222 #1331422]  INFO -- : Queues: (all)
-I, [2026-03-24T15:25:57.739861 #1331422]  INFO -- : Worker 0:0 started
-I, [2026-03-24T15:25:57.739962 #1331422]  INFO -- : Worker 0:1 started
-I, [2026-03-24T15:25:57.740131 #1331422]  INFO -- : Worker 1:0 started
-I, [2026-03-24T15:25:57.740211 #1331422]  INFO -- : Worker 1:1 started
-I, [2026-03-24T15:25:57.740352 #1331422]  INFO -- : Worker 2:0 started
-I, [2026-03-24T15:25:57.740408 #1331422]  INFO -- : Worker 2:1 started
-I, [2026-03-24T15:25:57.740532 #1331422]  INFO -- : Worker 3:0 started
-I, [2026-03-24T15:25:57.740590 #1331422]  INFO -- : Worker 3:1 started
-I, [2026-03-24T15:25:57.740722 #1331422]  INFO -- : Worker 4:0 started
-I, [2026-03-24T15:25:57.740776 #1331422]  INFO -- : Worker 4:1 started
-I, [2026-03-24T15:25:57.740844 #1331422]  INFO -- : Zizq producer thread started
-I, [2026-03-24T15:25:57.740878 #1331422]  INFO -- : Connecting to http://localhost:7890...
-I, [2026-03-24T15:25:57.792173 #1331422]  INFO -- : Connected. Listening for jobs.
+$ bundle exec zizq-worker --threads 5 --fibers 2 config/environment.rb
+I, [...] INFO -- : Zizq worker starting: 5 threads, 2 fibers, prefetch=20
+I, [...] INFO -- : Connected. Listening for jobs.
 ```
 
-> [!NOTE]
-> Workers can also be created directly in code. There is no requirement to use
-> `zizq-worker`.
+A worker runs `threads × fibers` handlers concurrently. Leave `--fibers 1`
+if your application isn't fiber-safe — no `Async` context is loaded in that
+case. Restrict to specific queues with `--queue`. `INT` / `TERM` trigger a
+graceful shutdown (drains in-flight jobs up to `--shutdown-timeout`, default
+30s).
+
+For more control — for example running the worker in-process alongside a
+Rack app — construct `Zizq::Worker` directly:
+
+```ruby
+require 'zizq'
+
+worker = Zizq::Worker.new(
+  thread_count: 5,
+  fiber_count:  2,
+  queues:       ['emails', 'payments'],
+)
+
+Signal.trap('INT') { worker.stop }
+worker.run  # blocks until the worker stops
+```
+
+`#run` blocks until the worker terminates; `#stop` drains in-flight jobs
+gracefully, `#kill` forces an immediate stop. On any unclean shutdown the
+server returns unfinished jobs to the queue — no job is lost.
+
+### Recurring jobs (cron)
+
+Define a cron schedule in your application's startup code. Definitions are
+idempotent — every process can safely define the same schedule, and Zizq
+keeps the server in sync by adding, replacing, and removing entries as the
+definition changes. Cron requires a Pro license on the server.
+
+```ruby
+Zizq.define_crontab('maintenance', timezone: 'Europe/London') do |cron|
+  # Every 15 minutes.
+  cron.define_entry('refresh_warehouse', '*/15 * * * *').enqueue(
+    RefreshWarehouseJob, incremental: true
+  )
+
+  # 9am London time, every day.
+  cron.define_entry('daily_digest', '0 9 * * *').enqueue(SendDailyDigestJob)
+end
+```
+
+Once defined, schedules can be inspected and managed via
+`Zizq.crontab('maintenance')` — paused/resumed at the schedule level or per
+entry, and deleted entirely when no longer needed.
 
 ## Resources
 
 * [Ruby Client Docs](https://zizq.io/docs/clients/ruby/)
 * [Getting Started Docs](https://zizq.io/docs/getting-started/)
 * [Zizq Command Reference](https://zizq.io/docs/cli/)
-* [Zizq Node.js Client Source](https://github.com/zizq-labs/zizq-node)
+* [Zizq Ruby Client Source](https://github.com/zizq-labs/zizq-ruby)
 * [Zizq Source](https://github.com/zizq-labs/zizq)
 
 ## Support & Feedback
@@ -111,3 +221,7 @@ If you need help using Zizq,
 [create an issue](https://github.com/zizq-labs/zizq-ruby/issues) on the
 [zizq-ruby](https://github.com/zizq-labs/zizq-ruby) repo. Feedback is very
 welcome.
+
+## License
+
+MIT — see [LICENSE](LICENSE).
