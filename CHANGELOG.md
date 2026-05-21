@@ -2,6 +2,15 @@
 
 ## 0.3.1
 
+- Added `read_timeout` and `stream_idle_timeout` options on
+  `Zizq.configure`. `read_timeout` (default 30s) bounds per-operation
+  socket I/O for regular API calls; `stream_idle_timeout` (default 30s)
+  bounds per-operation socket I/O on the long-lived `/jobs/take`
+  stream used by `Zizq::Worker`, so dead connections are detected and
+  the worker reconnects with backoff instead of waiting forever on a zombie
+  socket. Both are reset on each read, so server heartbeats keep the
+  stream alive while only genuinely silent connections trigger a
+  reconnect.
 
 ## 0.3.0
 

@@ -42,6 +42,27 @@ module Zizq
     # Note: Mutual TLS support requires a Zizq Pro license on the server.
     attr_accessor :tls #: Zizq::tls_options?
 
+    # Per-operation socket I/O timeout (seconds) for regular API calls
+    # (enqueue, queries, mutations). Each socket read/write is bounded
+    # by this value. A request whose handshake or any single read exceeds
+    # this raises `IO::TimeoutError`.
+    #
+    # Default: 30.
+    attr_accessor :read_timeout #: Numeric
+
+    # Per-operation socket I/O timeout (seconds) for the long-lived
+    # `#take_jobs` stream. The server sends heartbeats every ~3 seconds,
+    # so each read returns within that window and keeps the connection
+    # alive; the connection only times out if the server falls silent for
+    # longer than this. The Worker catches the resulting error and
+    # reconnects with backoff.
+    #
+    # Should be comfortably above the server's heartbeat interval to
+    # avoid false-positive disconnects.
+    #
+    # Default: 30.
+    attr_accessor :stream_idle_timeout #: Numeric
+
     # Middleware chain for enqueue. Each middleware receives an
     # `EnqueueRequest` and a chain to continue.
     attr_reader :enqueue_middleware #: Middleware::Chain[EnqueueRequest, EnqueueRequest]
@@ -55,6 +76,8 @@ module Zizq
       @format = :msgpack
       @logger = Logger.new($stdout, level: Logger::INFO)
       @tls = nil
+      @read_timeout = 30
+      @stream_idle_timeout = 30
       @enqueue_middleware = Middleware::Chain.new(Identity.new)
       @dequeue_middleware = Middleware::Chain.new(Zizq::Job)
     end
@@ -87,6 +110,14 @@ module Zizq
 
       unless %i[msgpack json].include?(format)
         raise ArgumentError, "Zizq.configure: format must be :msgpack or :json, got #{format.inspect}"
+      end
+
+      unless read_timeout.is_a?(Numeric) && read_timeout > 0
+        raise ArgumentError, "Zizq.configure: read_timeout must be a positive number, got #{read_timeout.inspect}"
+      end
+
+      unless stream_idle_timeout.is_a?(Numeric) && stream_idle_timeout > 0
+        raise ArgumentError, "Zizq.configure: stream_idle_timeout must be a positive number, got #{stream_idle_timeout.inspect}"
       end
 
       tls = @tls

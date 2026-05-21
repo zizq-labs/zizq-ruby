@@ -177,6 +177,37 @@ end
         </tr>
         <tr>
             <td>
+                <div><code>read_timeout</code></div>
+                <div><pre>Numeric</pre></div>
+            </td>
+            <td>
+                Per-operation socket I/O timeout (seconds) for regular API
+                calls (e.g. enqueue, queries, mutations). A request whose dial
+                handshake or any single read exceeds this raises
+                <code>IO::TimeoutError</code>.
+                Default: <code>30</code>.
+            </td>
+        </tr>
+        <tr>
+            <td>
+                <div><code>stream_idle_timeout</code></div>
+                <div><pre>Numeric</pre></div>
+            </td>
+            <td>
+                Per-operation socket I/O timeout (seconds) for long-lived
+                streaming connections used by the <code>Zizq::Worker</code> to
+                receive jobs. The server sends heartbeats periodically, so each
+                read returns within the heartbeat window, keeping the
+                connection alive; the connection only times out if the server
+                falls silent for longer than this timeout. The worker catches
+                the resulting error and reconnects with backoff. Set well in
+                excess of the server's heartbeat interval to avoid
+                false-positive disconnects.
+                Default: <code>30</code>.
+            </td>
+        </tr>
+        <tr>
+            <td>
                 <div><code>dispatcher</code></div>
                 <div><pre>Object</pre></div>
             </td>

@@ -14,7 +14,7 @@ Gem::Specification.new do |spec|
                      "\n\n" \
                      "Zizq is a simple, single binary, zero dependency, " \
                      "language agnostic job queue." \
-                     "\n\n"
+                     "\n\n" \
                      "Features:" \
                      "\n\n" \
                      "- Enqueue and process jobs across programming languages\n" \
@@ -25,7 +25,7 @@ Gem::Specification.new do |spec|
                      "- Optional ActiveJob integration\n" \
                      "- Unique jobs\n" \
                      "- Cron scheduling (recurring jobs)\n" \
-                     "- Job introspection and management, including `jq` filters\n"
+                     "- Job introspection and management, including `jq` filters\n" \
                      "\n\n" \
                      "This client supports multi-threaded and/or multi-fiber " \
                      "concurrency and is very fast. The Zizq server provides " \

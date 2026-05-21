@@ -79,7 +79,9 @@ module Zizq
           @client = Client.new(
             url: configuration.url,
             format: configuration.format,
-            ssl_context: configuration.ssl_context
+            ssl_context: configuration.ssl_context,
+            read_timeout: configuration.read_timeout,
+            stream_idle_timeout: configuration.stream_idle_timeout
           )
         end
       end
