@@ -50,15 +50,30 @@ module Zizq
     # Initialize a new instance of the client with the given base URL and
     # optional format options.
     #
+    # `read_timeout` and `stream_idle_timeout` are per-operation socket
+    # I/O timeouts (seconds). Each individual socket read/write is
+    # bounded by the timeout. The streaming `#take_jobs` endpoint uses
+    # `stream_idle_timeout` because the server sends heartbeats at
+    # periodic intervals which keeps the connection alive.
+    #
     # @rbs url: String
     # @rbs format: Zizq::format
     # @rbs ssl_context: OpenSSL::SSL::SSLContext?
+    # @rbs read_timeout: Numeric
+    # @rbs stream_idle_timeout: Numeric
     # @rbs return: void
-    def initialize(url:, format: :msgpack, ssl_context: nil)
+    def initialize(url:,
+                   format: :msgpack,
+                   ssl_context: nil,
+                   read_timeout: 30,
+                   stream_idle_timeout: 30)
       @url = url.chomp("/")
       @format = format
 
-      endpoint_options = { protocol: Async::HTTP::Protocol::HTTP2 } #: Hash[Symbol, untyped]
+      endpoint_options = {
+        protocol: Async::HTTP::Protocol::HTTP2,
+        timeout: read_timeout,
+      } #: Hash[Symbol, untyped]
       endpoint_options[:ssl_context] = ssl_context if ssl_context
 
       @endpoint = Async::HTTP::Endpoint.parse(
@@ -73,8 +88,14 @@ module Zizq
       # on separate threads with their own HTTP/2 clients, so they're
       # unaffected either way. HTTP/1.1 gives the stream a plain TCP
       # socket with no framing tax and measurably better throughput.
+      #
+      # The stream endpoint uses `stream_idle_timeout` for its socket
+      # timeout so server heartbeats (~3s) keep it alive while only
+      # genuinely dead connections (no data for the full window)
+      # trigger a reconnect.
       stream_endpoint_options = endpoint_options.merge(
         protocol: Async::HTTP::Protocol::HTTP11,
+        timeout: stream_idle_timeout,
       )
       @stream_endpoint = Async::HTTP::Endpoint.parse(
         @url,
@@ -709,7 +730,12 @@ module Zizq
           response.close rescue nil
         end
       end
-    rescue SocketError, IOError, EOFError, Errno::ECONNRESET, Errno::EPIPE,
+    rescue SocketError,
+           IOError,
+           EOFError,
+           Errno::ECONNRESET,
+           Errno::EPIPE,
+           IO::TimeoutError,
            OpenSSL::SSL::SSLError => e
       raise ConnectionError, e.message
     end

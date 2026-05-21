@@ -11,6 +11,28 @@ class TestConfiguration < ZizqTestCase
     assert_equal "http://localhost:7890", config.url
     assert_equal :msgpack, config.format
     assert_instance_of Logger, config.logger
+    assert_equal 30, config.read_timeout
+    assert_equal 30, config.stream_idle_timeout
+  end
+
+  def test_validate_rejects_non_positive_read_timeout
+    config = Zizq::Configuration.new
+    config.url = "http://localhost:7890"
+    config.read_timeout = 0
+    assert_raises(ArgumentError) { config.validate! }
+
+    config.read_timeout = -1
+    assert_raises(ArgumentError) { config.validate! }
+  end
+
+  def test_validate_rejects_non_positive_stream_idle_timeout
+    config = Zizq::Configuration.new
+    config.url = "http://localhost:7890"
+    config.stream_idle_timeout = 0
+    assert_raises(ArgumentError) { config.validate! }
+
+    config.stream_idle_timeout = -1
+    assert_raises(ArgumentError) { config.validate! }
   end
 
   def test_configure_block
