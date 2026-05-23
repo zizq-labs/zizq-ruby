@@ -1,0 +1,27 @@
+source "https://rubygems.org"
+
+gem "rails", "~> 8.1.3"
+# Require zizq from source.
+gem "zizq", path: "../../.."
+# The modern asset pipeline for Rails
+gem "propshaft"
+# Use sqlite3 as the database for Active Record
+gem "sqlite3", ">= 2.1"
+# Faclon for multi fiber web request handling
+gem "falcon"
+# Use async-http to make web requests.
+gem "async-http", "~> 0.95.1"
+
+# Windows does not include zoneinfo files, so bundle the tzinfo-data gem
+gem "tzinfo-data", platforms: %i[ windows jruby ]
+
+group :development, :test do
+  # See https://guides.rubyonrails.org/debugging_rails_applications.html#debugging-with-the-debug-gem
+  gem "debug", platforms: %i[ mri windows ], require: "debug/prelude"
+end
+
+group :test do
+  # Intercepts HTTP at the client library level so tests don't hit the
+  # network and don't have to monkey-patch Async::HTTP themselves.
+  gem "webmock", "~> 3.26"
+end
