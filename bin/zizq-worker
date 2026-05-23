@@ -11,56 +11,94 @@ require "zizq"
 # Default deadline for a graceful `stop` before escalating to `kill`.
 DEFAULT_SHUTDOWN_DEADLINE = 30.0
 
-# --- Defaults from env vars, falling back to hardcoded defaults ---
+# --- Defaults from env vars (nil = "not set, defer to Zizq.configure then Worker default") ---
+#
+# Note: env-var-unset values stay as nil rather than being seeded
+# with the Worker's `DEFAULT_*` constants. This lets `Zizq.configure
+# { |c| c.worker.<field> = ... }` win when neither the env nor the
+# CLI explicitly set the value.
 
-thread_count = Integer(ENV.fetch("ZIZQ_THREADS", Zizq::Worker::DEFAULT_THREADS))
-fiber_count = Integer(ENV.fetch("ZIZQ_FIBERS", Zizq::Worker::DEFAULT_FIBERS))
+thread_count = ENV.key?("ZIZQ_THREADS") ? Integer(ENV["ZIZQ_THREADS"]) : nil
+fiber_count = ENV.key?("ZIZQ_FIBERS") ? Integer(ENV["ZIZQ_FIBERS"]) : nil
 prefetch = ENV.key?("ZIZQ_PREFETCH") ? Integer(ENV["ZIZQ_PREFETCH"]) : nil
 shutdown_deadline = Float(ENV.fetch("ZIZQ_SHUTDOWN_DEADLINE", DEFAULT_SHUTDOWN_DEADLINE))
-retry_min_wait = Float(ENV.fetch("ZIZQ_RETRY_MIN_WAIT", Zizq::Worker::DEFAULT_RETRY_MIN_WAIT))
-retry_max_wait = Float(ENV.fetch("ZIZQ_RETRY_MAX_WAIT", Zizq::Worker::DEFAULT_RETRY_MAX_WAIT))
-retry_multiplier = Float(ENV.fetch("ZIZQ_RETRY_MULTIPLIER", Zizq::Worker::DEFAULT_RETRY_MULTIPLIER))
+retry_min_wait = ENV.key?("ZIZQ_RETRY_MIN_WAIT") ? Float(ENV["ZIZQ_RETRY_MIN_WAIT"]) : nil
+retry_max_wait = ENV.key?("ZIZQ_RETRY_MAX_WAIT") ? Float(ENV["ZIZQ_RETRY_MAX_WAIT"]) : nil
+retry_multiplier = ENV.key?("ZIZQ_RETRY_MULTIPLIER") ? Float(ENV["ZIZQ_RETRY_MULTIPLIER"]) : nil
 
-queues = if ENV.key?("ZIZQ_QUEUES")
-  ENV["ZIZQ_QUEUES"].split(",").map(&:strip).reject(&:empty?)
-else
-  []
+# Queue state: explicit list vs. all-queues vs. unset (defer to config).
+# `queues_set_by_user` toggles to true once any CLI/env queue flag is seen.
+queues = []
+queues_set_by_user = false
+all_queues = false
+
+if ENV.key?("ZIZQ_QUEUES")
+  parsed = ENV["ZIZQ_QUEUES"].split(",").map(&:strip).reject(&:empty?)
+  queues = parsed
+  queues_set_by_user = true
 end
 
 # --- CLI flag parsing (overrides env var defaults) ---
 
 parser = OptionParser.new do |opts|
-  opts.banner = "Usage: zizq-worker [OPTIONS] <ENTRYPOINT>"
+  opts.banner = "Usage: zizq-worker [OPTIONS] [ENTRYPOINT]"
 
   opts.separator ""
-  opts.separator "Start a Zizq worker process. The ENTRYPOINT is a Ruby file that loads your"
-  opts.separator "application (e.g. config/environment.rb for a Rails app)."
+  opts.separator "Start a Zizq worker process."
   opts.separator ""
-  opts.separator "Client configuration (url, format, logger) should be set in the"
-  opts.separator "entrypoint via Zizq.configure."
+  opts.separator "The ENTRYPOINT is a Ruby file that loads your application before the"
+  opts.separator "worker starts (so Zizq.configure runs and your job classes are loaded)."
+  opts.separator "Resolved in this order:"
+  opts.separator ""
+  opts.separator "  1. The ENTRYPOINT positional argument, if given."
+  opts.separator "  2. The ZIZQ_ENTRYPOINT environment variable, if set."
+  opts.separator "  3. config/environment.rb in the current directory, if it exists."
+  opts.separator "     (This is the canonical Rails boot file, so Rails apps run with"
+  opts.separator "     no entrypoint argument at all.)"
+  opts.separator ""
+  opts.separator "Configuration:"
+  opts.separator ""
+  opts.separator "  Client config (url, format, TLS, logger) and worker defaults"
+  opts.separator "  (queues, thread/fiber count, prefetch, etc.) belong in your"
+  opts.separator "  Zizq.configure block inside the entrypoint, e.g.:"
+  opts.separator ""
+  opts.separator "    Zizq.configure do |c|"
+  opts.separator "      c.url = \"https://...\""
+  opts.separator "      c.worker.queues = [\"emails\", \"webhooks\"]"
+  opts.separator "      c.worker.fiber_count = 25"
+  opts.separator "    end"
+  opts.separator ""
+  opts.separator "  CLI flags and env vars below override whatever is configured there."
   opts.separator ""
   opts.separator "Options:"
 
-  opts.on("-t", "--threads N", Integer, "Number of worker threads (default: #{Zizq::Worker::DEFAULT_THREADS}, env: ZIZQ_THREADS)") do |n|
+  opts.on("-t", "--threads N", Integer, "Number of worker threads (fallback default: #{Zizq::Worker::DEFAULT_THREADS}, env: ZIZQ_THREADS)") do |n|
     thread_count = n
   end
 
-  opts.on("-f", "--fibers N", Integer, "Number of fibers per thread (default: #{Zizq::Worker::DEFAULT_FIBERS}, env: ZIZQ_FIBERS)") do |n|
+  opts.on("-f", "--fibers N", Integer, "Number of fibers per thread (fallback default: #{Zizq::Worker::DEFAULT_FIBERS}, env: ZIZQ_FIBERS)") do |n|
     fiber_count = n
   end
 
-  opts.on("-p", "--prefetch N", Integer, "Prefetch count (default: 2*threads*fibers, env: ZIZQ_PREFETCH)") do |n|
+  opts.on("-p", "--prefetch N", Integer, "Prefetch count (fallback default: 2*threads*fibers, env: ZIZQ_PREFETCH)") do |n|
     prefetch = n
   end
 
   queues_from_cli = false
   opts.on("-q", "--queue QUEUE", "Queue to process (repeatable or comma-separated, env: ZIZQ_QUEUES)") do |q|
-    # First -q flag replaces the env var default entirely
+    # First CLI `-q` replaces the env var default; subsequent ones
+    # accumulate. `queues_from_cli` distinguishes that from
+    # `queues_set_by_user` (which also tracks env-var input).
     unless queues_from_cli
       queues = []
       queues_from_cli = true
     end
+    queues_set_by_user = true
     queues.concat(q.split(",").map(&:strip).reject(&:empty?))
+  end
+
+  opts.on("--all-queues", "Override any configured queues to process all queues (mutually exclusive with -q)") do
+    all_queues = true
   end
 
   opts.on("--shutdown-deadline N", Float, "Graceful shutdown deadline in seconds before escalating to kill (default: #{DEFAULT_SHUTDOWN_DEADLINE}, env: ZIZQ_SHUTDOWN_DEADLINE)") do |n|
@@ -100,22 +138,38 @@ end
 
 # --- Validate options ---
 
-if thread_count < 1
+if thread_count && thread_count < 1
   warn "Error: --threads must be at least 1 (got #{thread_count})"
   exit 1
 end
 
-if fiber_count < 1
+if fiber_count && fiber_count < 1
   warn "Error: --fibers must be at least 1 (got #{fiber_count})"
   exit 1
 end
 
-# --- Validate and load entrypoint ---
+if all_queues && queues_set_by_user
+  warn "Error: --all-queues and --queue (or ZIZQ_QUEUES) are mutually exclusive."
+  exit 1
+end
 
-entrypoint = ARGV[0]
+# --- Resolve and load entrypoint ---
+#
+# Precedence:
+#   1. CLI argument: `zizq-worker path/to/entrypoint.rb`
+#   2. ZIZQ_ENTRYPOINT env var
+#   3. Auto-detect: `config/environment.rb` (Rails apps)
+
+entrypoint = ARGV[0] || ENV["ZIZQ_ENTRYPOINT"] || (
+  File.file?("config/environment.rb") ? "config/environment.rb" : nil
+)
 
 if entrypoint.nil?
-  warn "Error: missing required ENTRYPOINT argument."
+  warn "Error: no entrypoint found."
+  warn ""
+  warn "Specify one as a CLI argument or via the ZIZQ_ENTRYPOINT env var."
+  warn "Rails apps are detected automatically via the presence of"
+  warn "config/environment.rb in the current directory."
   warn ""
   warn parser.help
   exit 1
@@ -128,17 +182,33 @@ end
 
 require File.expand_path(entrypoint)
 
-# --- Start the worker ---
+# --- Resolve queues ---
+#
+#   --all-queues          -> []  (explicit "all queues" override)
+#   -q / ZIZQ_QUEUES set  -> the parsed list
+#   neither               -> nil (defer to Zizq.configure → Worker default)
 
-worker = Zizq::Worker.new(
+queues_value =
+  if all_queues
+    []
+  elsif queues_set_by_user
+    queues
+  end
+
+# --- Start the worker ---
+#
+# `.compact` drops any unset kwarg so `Zizq::Worker#initialize`'s
+# fallback chain (kwarg -> Zizq.configuration.worker -> DEFAULT_*)
+# applies for whichever values weren't given on the CLI / via env.
+worker = Zizq::Worker.new(**{
   thread_count:,
   fiber_count:,
   prefetch:,
-  queues:,
+  queues: queues_value,
   retry_min_wait:,
   retry_max_wait:,
   retry_multiplier:,
-)
+}.compact)
 
 # `Zizq::Worker#stop` is patient (waits forever for in-flight jobs and
 # acks to drain). We enforce the shutdown deadline at the CLI level: the

@@ -1,10 +1,10 @@
 # Zizq — Official Ruby Client
 
+This is the official Zizq client library for Ruby.
+
 Zizq is a simple, zero dependency, single binary job queue system that is both
 fast and durable. It is designed to work in any stack through a simple HTTP
 API.
-
-This is the official Zizq client library for Ruby.
 
 [![CI](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml/badge.svg)](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml)
 [![Gem Version](https://img.shields.io/gem/v/zizq.svg)](https://rubygems.org/gems/zizq)
@@ -32,13 +32,13 @@ This is the official Zizq client library for Ruby.
 Add it to your application's `Gemfile`:
 
 ```ruby
-gem 'zizq', '~> 0.3.1'
+gem 'zizq', '~> 0.3.2'
 ```
 
 Or install it manually:
 
 ```shell
-$ gem install zizq -v 0.3.1
+$ gem install zizq -v 0.3.2
 ```
 
 Ruby **3.2.8 or newer** is required. Client and server share version
@@ -55,12 +55,19 @@ require 'zizq'
 
 Zizq.configure do |c|
   c.url    = 'https://zizq.your.network:7890'
-  c.tls    = { ca: '/path/to/server-ca-cert.pem' }
   c.logger = Logger.new('log/zizq.log')
+
+  c.tls.ca = '/path/to/server-ca-cert.pem'
+
+  # Optional worker defaults — applied to every Zizq::Worker
+  # instance and to runs of the `zizq-worker` executable. Explicit
+  # kwargs or CLI flags override these.
+  c.worker.queues       = ['emails', 'payments']
+  c.worker.fiber_count  = 25
 end
 ```
 
-For mutual TLS, add `client_cert:` and `client_key:` to the `tls` hash.
+For mutual TLS, also set `c.tls.client_cert` and `c.tls.client_key`.
 
 > [!CAUTION]
 > If your server is exposed directly to the internet, it should require
@@ -149,20 +156,29 @@ end
 ### Running a worker
 
 Jobs are processed by a worker, typically in a separate process. The simplest
-way is the `zizq-worker` executable bundled with the gem — pass your
-application's entrypoint so it can load your job classes:
+way is the `zizq-worker` executable bundled with the gem. **Rails apps need
+no arguments** — `zizq-worker` auto-detects `config/environment.rb` when run
+from the app's root:
 
 ```shell
-$ bundle exec zizq-worker --threads 5 --fibers 2 config/environment.rb
-I, [...] INFO -- : Zizq worker starting: 5 threads, 2 fibers, prefetch=20
+$ bundle exec zizq-worker
+I, [...] INFO -- : Zizq worker starting: 1 threads, 25 fibers, prefetch=50
 I, [...] INFO -- : Connected. Listening for jobs.
 ```
 
-A worker runs `threads × fibers` handlers concurrently. Leave `--fibers 1`
-if your application isn't fiber-safe — no `Async` context is loaded in that
-case. Restrict to specific queues with `--queue`. `INT` / `TERM` trigger a
-graceful shutdown (drains in-flight jobs up to `--shutdown-timeout`, default
-30s).
+For Sinatra or other apps, pass the entrypoint explicitly:
+
+```shell
+$ bundle exec zizq-worker app.rb
+```
+
+Worker defaults (`queues`, `thread_count`, `fiber_count`, `prefetch`) come
+from your `Zizq.configure { |c| c.worker.* }` block. CLI flags
+(`--threads`, `--fibers`, `--queue`, `--all-queues`, etc.) override the
+configured defaults when needed. Leave `--fibers 1` if your application
+isn't fiber-safe — no `Async` context is loaded in that case. `INT` /
+`TERM` trigger a graceful shutdown (drains in-flight jobs up to
+`--shutdown-deadline`, default 30s).
 
 For more control — for example running the worker in-process alongside a
 Rack app — construct `Zizq::Worker` directly:
@@ -170,11 +186,9 @@ Rack app — construct `Zizq::Worker` directly:
 ```ruby
 require 'zizq'
 
-worker = Zizq::Worker.new(
-  thread_count: 5,
-  fiber_count:  2,
-  queues:       ['emails', 'payments'],
-)
+# Picks up queues, fiber_count, etc. from Zizq.configure { |c| c.worker.* };
+# any kwarg here overrides those defaults.
+worker = Zizq::Worker.new(queues: ['emails', 'payments'])
 
 Signal.trap('INT') { worker.stop }
 worker.run  # blocks until the worker stops

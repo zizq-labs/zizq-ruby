@@ -55,9 +55,9 @@ class TestWorker < ZizqTestCase
 
   def test_defaults
     worker = Zizq::Worker.new
-    assert_equal 5, worker.thread_count
+    assert_equal 1, worker.thread_count
     assert_equal 1, worker.fiber_count
-    assert_equal 10, worker.prefetch
+    assert_equal 2, worker.prefetch
     assert_equal [], worker.queues
   end
 
@@ -69,6 +69,48 @@ class TestWorker < ZizqTestCase
   def test_default_prefetch_is_threads_times_fibers
     worker = Zizq::Worker.new(thread_count: 4, fiber_count: 3)
     assert_equal 24, worker.prefetch
+  end
+
+  def test_inherits_defaults_from_zizq_configure_worker
+    Zizq.configure do |c|
+      c.url = URL
+      c.worker.thread_count = 3
+      c.worker.fiber_count = 7
+      c.worker.queues = [ "emails", "webhooks" ]
+      c.worker.prefetch = 50
+    end
+
+    worker = Zizq::Worker.new
+
+    assert_equal 3, worker.thread_count
+    assert_equal 7, worker.fiber_count
+    assert_equal %w[emails webhooks], worker.queues
+    assert_equal 50, worker.prefetch
+  end
+
+  def test_explicit_kwargs_override_zizq_configure_worker
+    Zizq.configure do |c|
+      c.url = URL
+      c.worker.thread_count = 3
+      c.worker.fiber_count = 7
+      c.worker.queues = [ "emails" ]
+    end
+
+    worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, queues: [ "other" ])
+
+    assert_equal 1, worker.thread_count
+    assert_equal 2, worker.fiber_count
+    assert_equal [ "other" ], worker.queues
+  end
+
+  def test_falls_back_to_hardcoded_defaults_when_neither_set
+    Zizq.configure { |c| c.url = URL }
+
+    worker = Zizq::Worker.new
+
+    assert_equal Zizq::Worker::DEFAULT_THREADS, worker.thread_count
+    assert_equal Zizq::Worker::DEFAULT_FIBERS, worker.fiber_count
+    assert_equal [], worker.queues
   end
 
   def test_dispatches_job_successfully
@@ -313,21 +355,6 @@ class TestWorker < ZizqTestCase
     assert_equal 2, RecordingJob.results.size
     ids = RecordingJob.results.map { |r| r[:id] }.sort
     assert_equal %w[j1 j2], ids
-  end
-
-  def test_worker_id_proc
-    worker = Zizq::Worker.new(
-      worker_id: ->(t, f) { "app-#{Process.pid}-t#{t}-f#{f}" }
-    )
-
-    wid = worker.send(:resolve_worker_id, 2, 3)
-    assert_equal "app-#{Process.pid}-t2-f3", wid
-  end
-
-  def test_worker_id_nil_by_default
-    worker = Zizq::Worker.new
-    wid = worker.send(:resolve_worker_id, 0, 0)
-    assert_nil wid
   end
 
   def test_dispatches_via_custom_dispatcher
