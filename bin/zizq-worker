@@ -154,7 +154,10 @@ stopping = false
 %w[INT TERM].each do |signal|
   Signal.trap(signal) do
     if stopping
-      exit(1)
+      # Second signal: hard exit. `exit!` (not `exit`) so SystemExit
+      # terminates the process from any thread context, including
+      # the signal trap.
+      exit!(1)
     else
       worker.stop
       stopping = true
@@ -164,7 +167,10 @@ stopping = false
         worker.logger.warn do
           "Worker did not stop within #{shutdown_deadline}s, killing..."
         end
-        exit(1)
+        # `exit!` rather than `exit`: this runs in a watchdog thread,
+        # and `exit` would only raise SystemExit in *this* thread,
+        # leaving main (joining the hung worker thread) untouched.
+        exit!(1)
       end
     end
   end
