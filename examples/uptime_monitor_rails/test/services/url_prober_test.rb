@@ -71,6 +71,15 @@ class UrlProberTest < ActiveSupport::TestCase
     assert_equal "Redirect without Location header", result.error_message
   end
 
+  test "timeout is down with a friendly message" do
+    stub_request(:get, "https://slow.example.com").to_timeout
+
+    result = UrlProber.call("https://slow.example.com")
+
+    assert_equal "down", result.status
+    assert_equal "Timed out after #{UrlProber::TIMEOUT_SECONDS}s", result.error_message
+  end
+
   test "network error is down with the exception captured" do
     stub_request(:get, "https://nonexistent.invalid")
       .to_raise(Socket::ResolutionError.new("getaddrinfo: nope"))

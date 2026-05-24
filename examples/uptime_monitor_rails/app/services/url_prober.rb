@@ -16,7 +16,8 @@ require "uri"
 # error, missing Location header on a redirect, exceeded redirect cap —
 # is "down".
 class UrlProber
-  MAX_REDIRECTS = 5
+  MAX_REDIRECTS   = 5
+  TIMEOUT_SECONDS = 10
 
   Result = Struct.new(
     :status,
@@ -37,7 +38,11 @@ class UrlProber
   end
 
   def call
-    Sync { probe }
+    # `with_timeout` bounds the whole probe — DNS, TCP/TLS, all redirect
+    # hops, and reading the response — not each step individually. If
+    # the site is slow enough that the total exceeds TIMEOUT_SECONDS,
+    # that's effectively "down" from a user-experience perspective.
+    Sync { Async::Task.current.with_timeout(TIMEOUT_SECONDS) { probe } }
   end
 
   private
@@ -72,6 +77,8 @@ class UrlProber
         response&.close
       end
     end
+  rescue Async::TimeoutError
+    failure(nil, current_url || @url, started, "Timed out after #{TIMEOUT_SECONDS}s")
   rescue => e
     failure(nil, current_url || @url, started, "#{e.class}: #{e.message}")
   end
