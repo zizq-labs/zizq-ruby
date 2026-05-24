@@ -29,19 +29,6 @@ module Zizq
     # Logger instance to which to write log messages.
     attr_accessor :logger #: Logger
 
-    # TLS options for connecting to the server over HTTPS.
-    #
-    # All values may be PEM-encoded strings or file paths.
-    #
-    #   {
-    #     ca:          "path/to/ca-cert.pem",       # CA certificate for server verification
-    #     client_cert: "path/to/client-cert.pem",   # Client certificate for mTLS
-    #     client_key:  "path/to/client-key.pem",    # Client private key for mTLS
-    #   }
-    #
-    # Note: Mutual TLS support requires a Zizq Pro license on the server.
-    attr_accessor :tls #: Zizq::tls_options?
-
     # Per-operation socket I/O timeout (seconds) for regular API calls
     # (enqueue, queries, mutations). Each socket read/write is bounded
     # by this value. A request whose handshake or any single read exceeds
@@ -76,10 +63,77 @@ module Zizq
       @format = :msgpack
       @logger = Logger.new($stdout, level: Logger::INFO)
       @tls = nil
+      @worker = nil
       @read_timeout = 30
       @stream_idle_timeout = 30
       @enqueue_middleware = Middleware::Chain.new(Identity.new)
       @dequeue_middleware = Middleware::Chain.new(Zizq::Job)
+    end
+
+    # TLS settings for connecting to the server over HTTPS.
+    #
+    # Configure via the `c.tls` accessors inside a `Zizq.configure`
+    # block:
+    #
+    #   Zizq.configure do |c|
+    #     c.tls.ca          = "/path/to/server-ca-cert.pem"
+    #     c.tls.client_cert = "/path/to/client-cert.pem"
+    #     c.tls.client_key  = "/path/to/client-key.pem"
+    #   end
+    #
+    # All values may be PEM-encoded strings or file paths. Set
+    # `c.tls = nil` to explicitly disable TLS.
+    #
+    # Note: Mutual TLS support requires a Zizq Pro license on the
+    # server.
+    def tls #: () -> TlsConfiguration
+      @tls ||= TlsConfiguration.new
+    end
+
+    def tls=(value) #: ((Hash[Symbol, String?] | TlsConfiguration)?) -> void
+      case value
+      when nil
+        @tls = nil
+      when TlsConfiguration
+        @tls = value
+      when Hash
+        @tls = TlsConfiguration.new(**value)
+      else
+        raise ArgumentError,
+          "Zizq.configure: tls= expects a Hash, Zizq::TlsConfiguration, or nil " \
+          "(got #{value.class})"
+      end
+    end
+
+    # Defaults for `Zizq::Worker` instances. Apps populate this in
+    # their `Zizq.configure` block:
+    #
+    #   Zizq.configure do |c|
+    #     c.worker.queues = ["emails"]
+    #     c.worker.fiber_count = 25
+    #   end
+    #
+    # Anything left unset here falls through to the Worker's
+    # hardcoded defaults; anything explicitly passed to `Worker.new`
+    # (or set via `zizq-worker` CLI flags / env vars) overrides
+    # whatever is configured here.
+    def worker #: () -> WorkerConfiguration
+      @worker ||= WorkerConfiguration.new
+    end
+
+    def worker=(value) #: ((Hash[Symbol, untyped] | WorkerConfiguration)?) -> void
+      case value
+      when nil
+        @worker = nil
+      when WorkerConfiguration
+        @worker = value
+      when Hash
+        @worker = WorkerConfiguration.new(**value)
+      else
+        raise ArgumentError,
+          "Zizq.configure: worker= expects a Hash, Zizq::WorkerConfiguration, or nil " \
+          "(got #{value.class})"
+      end
     end
 
     # The job dispatcher.
@@ -130,21 +184,22 @@ module Zizq
     def ssl_context #: () -> OpenSSL::SSL::SSLContext?
       tls = @tls
       return nil unless tls
+      return nil if tls.to_h.values.all?(&:nil?)
 
       ctx = OpenSSL::SSL::SSLContext.new
 
-      if (ca = tls[:ca])
+      if (ca = tls.ca)
         store = OpenSSL::X509::Store.new
         store.add_cert(load_cert(ca))
         ctx.cert_store = store
         ctx.verify_mode = OpenSSL::SSL::VERIFY_PEER
       end
 
-      if (client_cert = tls[:client_cert])
+      if (client_cert = tls.client_cert)
         ctx.cert = load_cert(client_cert)
       end
 
-      if (client_key = tls[:client_key])
+      if (client_key = tls.client_key)
         ctx.key = load_key(client_key)
       end
 
@@ -161,14 +216,13 @@ module Zizq
 
     private
 
-    # @rbs tls: Zizq::tls_options
-    def validate_tls!(tls) #: (Zizq::tls_options) -> void
-      if tls[:client_cert] && !tls[:client_key]
-        raise ArgumentError, "Zizq.configure: tls[:client_key] is required when tls[:client_cert] is set"
+    def validate_tls!(tls) #: (TlsConfiguration) -> void
+      if tls.client_cert && !tls.client_key
+        raise ArgumentError, "Zizq.configure: tls.client_key is required when tls.client_cert is set"
       end
 
-      if tls[:client_key] && !tls[:client_cert]
-        raise ArgumentError, "Zizq.configure: tls[:client_cert] is required when tls[:client_key] is set"
+      if tls.client_key && !tls.client_cert
+        raise ArgumentError, "Zizq.configure: tls.client_cert is required when tls.client_key is set"
       end
     end
 

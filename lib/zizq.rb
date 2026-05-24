@@ -29,7 +29,9 @@ module Zizq
   autoload :Lifecycle,           "zizq/lifecycle"
   autoload :Query,               "zizq/query"
   autoload :Resources,           "zizq/resources"
+  autoload :TlsConfiguration,    "zizq/tls_configuration"
   autoload :Worker,              "zizq/worker"
+  autoload :WorkerConfiguration, "zizq/worker_configuration"
 
   # Sentinel indicating a field should not be included in the request.
   # Used as the default for update parameters.

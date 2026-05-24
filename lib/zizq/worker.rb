@@ -15,7 +15,7 @@ module Zizq
   #
   # Total concurrency is calculated as `thread_count * fiber_count`.
   class Worker
-    DEFAULT_THREADS = 5 #: Integer
+    DEFAULT_THREADS = 1 #: Integer
     DEFAULT_FIBERS = 1 #: Integer
     DEFAULT_RETRY_MIN_WAIT = 1
     DEFAULT_RETRY_MAX_WAIT = 30
@@ -50,11 +50,6 @@ module Zizq
     # pipeline full while ack round-trips are in flight.
     attr_reader :prefetch #: Integer
 
-    # Proc to derive a worker ID string for each thread and fiber.
-    #
-    # When not present, the Zizq server assigns a random worker ID.
-    attr_reader :worker_id_proc #: (^(Integer, Integer) -> String?)?
-
     # An instance of a Logger to be used for worker logging.
     attr_reader :logger #: Logger
 
@@ -66,44 +61,54 @@ module Zizq
     # their own `Zizq::Middleware::Chain` if middleware needs to be applied.
     attr_reader :dispatcher #: ^(Resources::Job) -> void
 
-    # @rbs queues: Array[String]
-    # @rbs thread_count: Integer
-    # @rbs fiber_count: Integer
+    # All keyword arguments default to `nil` and follow a three-level
+    # fallback chain:
+    #
+    #   1. Explicit kwarg passed to `Worker.new`.
+    #   2. `Zizq.configuration.worker.<field>` set in the app's
+    #      `Zizq.configure` block.
+    #   3. The Worker's hardcoded `DEFAULT_*` constants.
+    #
+    # @rbs queues: Array[String]?
+    # @rbs thread_count: Integer?
+    # @rbs fiber_count: Integer?
     # @rbs prefetch: Integer?
-    # @rbs retry_min_wait: (Float | Integer)
-    # @rbs retry_max_wait: (Float | Integer)
-    # @rbs retry_multiplier: (Float | Integer)
-    # @rbs worker_id: (^(Integer, Integer) -> String?)?
+    # @rbs retry_min_wait: (Float | Integer)?
+    # @rbs retry_max_wait: (Float | Integer)?
+    # @rbs retry_multiplier: (Float | Integer)?
     # @rbs logger: Logger?
     # @rbs dispatcher: (^(Resources::Job) -> void)?
     # @rbs return: void
     def initialize(
-      queues: [],
-      thread_count: DEFAULT_THREADS,
-      fiber_count: DEFAULT_FIBERS,
+      queues: nil,
+      thread_count: nil,
+      fiber_count: nil,
       prefetch: nil,
-      retry_min_wait: DEFAULT_RETRY_MIN_WAIT,
-      retry_max_wait: DEFAULT_RETRY_MAX_WAIT,
-      retry_multiplier: DEFAULT_RETRY_MULTIPLIER,
-      worker_id: nil,
+      retry_min_wait: nil,
+      retry_max_wait: nil,
+      retry_multiplier: nil,
       logger: nil,
       dispatcher: nil
     )
-      raise ArgumentError, "thread_count must be at least 1 (got #{thread_count})" if thread_count < 1
-      raise ArgumentError, "fiber_count must be at least 1 (got #{fiber_count})" if fiber_count < 1
-
       Zizq.configuration.validate!
+      config = Zizq.configuration.worker
 
-      @queues = queues
-      @thread_count = thread_count
-      @fiber_count = fiber_count
-      @prefetch = prefetch || thread_count * fiber_count * 2
-      @retry_min_wait = retry_min_wait
-      @retry_max_wait = retry_max_wait
-      @retry_multiplier = retry_multiplier
-      @worker_id_proc = worker_id
+      @queues = queues || config.queues || []
+      @thread_count = thread_count || config.thread_count || DEFAULT_THREADS
+      @fiber_count = fiber_count || config.fiber_count || DEFAULT_FIBERS
+      @prefetch = prefetch || config.prefetch || @thread_count * @fiber_count * 2
+      @retry_min_wait = retry_min_wait || config.retry_min_wait || DEFAULT_RETRY_MIN_WAIT
+      @retry_max_wait = retry_max_wait || config.retry_max_wait || DEFAULT_RETRY_MAX_WAIT
+      @retry_multiplier = retry_multiplier || config.retry_multiplier || DEFAULT_RETRY_MULTIPLIER
       @logger = logger || Zizq.configuration.logger
       @dispatcher = dispatcher || Zizq.configuration.dequeue_middleware
+
+      if @thread_count < 1
+        raise ArgumentError, "thread_count must be at least 1 (got #{@thread_count})"
+      end
+      if @fiber_count < 1
+        raise ArgumentError, "fiber_count must be at least 1 (got #{@fiber_count})"
+      end
 
       reset_runtime_state
     end
@@ -360,14 +365,12 @@ module Zizq
         format("Worker %d:%d started", thread_idx, fiber_idx)
       end
 
-      wid = resolve_worker_id(thread_idx, fiber_idx)
-
       loop do
         # pop returns nil when queue is closed and empty
         job = @dispatch_queue.pop
         break if job.nil?
 
-        dispatch(job, wid)
+        dispatch(job)
       end
 
       logger.info do
@@ -392,7 +395,7 @@ module Zizq
     #
     # Delegates to the configured dispatcher (default: `Zizq::Job.dispatch`)
     # and reports success or failure.
-    def dispatch(job, worker_id) #: (Resources::Job, String?) -> void
+    def dispatch(job) #: (Resources::Job) -> void
       job_id, job_type = job.id, job.type
 
       begin
@@ -460,8 +463,5 @@ module Zizq
       ))
     end
 
-    def resolve_worker_id(thread_idx, fiber_idx) #: (Integer, Integer) -> String?
-      worker_id_proc&.call(thread_idx, fiber_idx)
-    end
   end
 end
