@@ -1,0 +1,34 @@
+<div id="urls">
+  <% if @monitored_urls.empty? %>
+    <p class="empty">No URLs being monitored yet. Add one above.</p>
+  <% else %>
+    <table class="urls">
+      <thead>
+        <tr>
+          <th>URL</th>
+          <th>Status</th>
+          <th>Last checked</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @monitored_urls.each do |m| %>
+          <tr>
+            <td class="url"><%= m.url %></td>
+            <td>
+              <span class="status status-<%= m.last_status || 'pending' %>">
+                <%= (m.last_status || 'pending').upcase %>
+              </span>
+            </td>
+            <td>
+              <% if m.last_checked_at %>
+                <%= time_ago_in_words(m.last_checked_at, include_seconds: true) %> ago
+              <% else %>
+                <em>pending first check</em>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+  <% end %>
+</div>

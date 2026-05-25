@@ -1,0 +1,41 @@
+<% content_for :title, "Uptime Monitor" %>
+
+<header>
+  <h1>Uptime Monitor</h1>
+</header>
+
+<main>
+  <%= form_with model: MonitoredUrl.new, local: true, class: "url-form" do |f| %>
+    <%= f.text_field :url, placeholder: "https://example.com/sitemap.xml", required: true, autofocus: true %>
+    <%= f.submit "Watch" %>
+  <% end %>
+
+  <% if flash[:notice] %><p class="flash flash-notice"><%= flash[:notice] %></p><% end %>
+  <% if flash[:alert]  %><p class="flash flash-alert"><%= flash[:alert]  %></p><% end %>
+
+  <%= render "urls" %>
+</main>
+
+<script>
+  // Re-fetch the URLs partial every 2s and swap it into the page so
+  // statuses update as the worker probes them. Skipped while the tab
+  // is hidden; serialized via setTimeout so a slow response can't
+  // stack up overlapping requests.
+  (function() {
+    function refresh() {
+      if (document.visibilityState !== 'visible') {
+        setTimeout(refresh, 2000);
+        return;
+      }
+      fetch(location.pathname, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          var el = document.getElementById('urls');
+          if (el) el.outerHTML = html;
+        })
+        .catch(function() {})
+        .finally(function() { setTimeout(refresh, 2000); });
+    }
+    setTimeout(refresh, 2000);
+  })();
+</script>
