@@ -344,8 +344,9 @@ class TestJob < ZizqTestCase
     stub_request(:post, "#{URL}/jobs")
       .with { |req|
         body = JSON.parse(req.body)
-        # 1.5s -> 1500ms, 0.5s -> 500ms
-        body["backoff"] == { "exponent" => 2.0, "base_ms" => 1500.0, "jitter_ms" => 500.0 }
+        # base/jitter convert s -> integer ms; the server expects u32.
+        # exponent stays a float (it's a ratio, not a duration).
+        body["backoff"] == { "exponent" => 2.0, "base_ms" => 1500, "jitter_ms" => 500 }
       }
       .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
                  headers: { "Content-Type" => "application/json" })
