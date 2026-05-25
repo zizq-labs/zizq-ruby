@@ -5,3 +5,4 @@
 # Local-only environment overrides; `.env` (committed) holds defaults.
 .env.local
 .env.*.local
+/Gemfile.lock
