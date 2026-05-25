@@ -13,6 +13,17 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
     assert_select "p.empty"
   end
 
+  test "index returns just the urls partial on XHR for AJAX polling" do
+    MonitoredUrl.create!(url: "https://up.example.com", last_status: "up", last_checked_at: 1.minute.ago)
+
+    get root_path, headers: { "X-Requested-With" => "XMLHttpRequest" }
+
+    assert_response :success
+    refute_match(/<html/, @response.body) # no layout
+    assert_match(/<div id="urls">/, @response.body)
+    assert_select "span.status-up", text: "UP"
+  end
+
   test "index lists existing monitored URLs with their status" do
     MonitoredUrl.create!(url: "https://up.example.com",   last_status: "up",   last_checked_at: 1.minute.ago)
     MonitoredUrl.create!(url: "https://down.example.com", last_status: "down", last_checked_at: 2.minutes.ago)

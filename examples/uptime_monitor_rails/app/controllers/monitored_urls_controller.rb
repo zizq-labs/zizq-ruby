@@ -3,6 +3,9 @@
 class MonitoredUrlsController < ApplicationController
   def index
     @monitored_urls = MonitoredUrl.order(last_checked_at: :desc, created_at: :desc)
+    # On the periodic XHR refresh we just want the table fragment, not
+    # the full page wrapper.
+    render partial: "urls", layout: false if request.xhr?
   end
 
   def create

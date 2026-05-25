@@ -13,36 +13,29 @@
   <% if flash[:notice] %><p class="flash flash-notice"><%= flash[:notice] %></p><% end %>
   <% if flash[:alert]  %><p class="flash flash-alert"><%= flash[:alert]  %></p><% end %>
 
-  <% if @monitored_urls.empty? %>
-    <p class="empty">No URLs being monitored yet. Add one above.</p>
-  <% else %>
-    <table class="urls">
-      <thead>
-        <tr>
-          <th>URL</th>
-          <th>Status</th>
-          <th>Last checked</th>
-        </tr>
-      </thead>
-      <tbody>
-        <% @monitored_urls.each do |m| %>
-          <tr>
-            <td class="url"><%= m.url %></td>
-            <td>
-              <span class="status status-<%= m.last_status || 'pending' %>">
-                <%= (m.last_status || 'pending').upcase %>
-              </span>
-            </td>
-            <td>
-              <% if m.last_checked_at %>
-                <%= time_ago_in_words(m.last_checked_at) %> ago
-              <% else %>
-                <em>pending first check</em>
-              <% end %>
-            </td>
-          </tr>
-        <% end %>
-      </tbody>
-    </table>
-  <% end %>
+  <%= render "urls" %>
 </main>
+
+<script>
+  // Re-fetch the URLs partial every 2s and swap it into the page so
+  // statuses update as the worker probes them. Skipped while the tab
+  // is hidden; serialized via setTimeout so a slow response can't
+  // stack up overlapping requests.
+  (function() {
+    function refresh() {
+      if (document.visibilityState !== 'visible') {
+        setTimeout(refresh, 2000);
+        return;
+      }
+      fetch(location.pathname, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          var el = document.getElementById('urls');
+          if (el) el.outerHTML = html;
+        })
+        .catch(function() {})
+        .finally(function() { setTimeout(refresh, 2000); });
+    }
+    setTimeout(refresh, 2000);
+  })();
+</script>
