@@ -4,6 +4,7 @@
 # rbs_inline: enabled
 # frozen_string_literal: true
 
+require "delegate"
 require "logger"
 require "openssl"
 
@@ -61,7 +62,7 @@ module Zizq
     def initialize #: () -> void
       @url = "http://localhost:7890"
       @format = :msgpack
-      @logger = Logger.new($stdout, level: Logger::INFO)
+      @logger = Logger.new(FlushingIO.new($stdout), level: Logger::INFO)
       @tls = nil
       @worker = nil
       @read_timeout = 30
@@ -211,6 +212,31 @@ module Zizq
     class Identity
       def call(arg) #: (untyped) -> untyped
         arg
+      end
+    end
+
+    # @private
+    # IO delegator that flushes the underlying IO after every write.
+    # We wrap `$stdout` in this for the default logger so log lines
+    # appear immediately when stdout is connected to a pipe (foreman,
+    # systemd, k8s). Without it, the C-stdio default switches from
+    # line-buffered to fully-buffered for pipes and log output piles
+    # up in a 4–8KB buffer until the process exits.
+    #
+    # The wrapper is local to the default logger — apps supplying
+    # their own `c.logger = ...` retain full control over flushing.
+    class FlushingIO < SimpleDelegator
+      def write(*args) #: (*untyped) -> Integer
+        result = super
+        __getobj__.flush
+        result
+      end
+
+      # Declared explicitly so the type checker sees us satisfying
+      # `Logger::_WriteCloser`; SimpleDelegator forwards `close` via
+      # `method_missing`, but Steep doesn't follow that.
+      def close #: () -> void
+        __getobj__.close
       end
     end
 

@@ -11,6 +11,12 @@ module MessagePack
   def self.unpack: (String) -> untyped
 end
 
+# stdlib's `delegate`. Only the bits we actually use.
+class SimpleDelegator
+  def initialize: (untyped) -> void
+  def __getobj__: () -> untyped
+end
+
 # Async gem — fiber-based concurrency.
 module Async
   # Raised inside a task's fiber when `Task#stop` is called. This is a
