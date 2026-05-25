@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.3.5
+
+- **New `Zizq.configuration.test_mode` flag** opting tests into an
+  in-memory `Zizq::Test::Client` (initial scaffolding). When set,
+  `Zizq.client` resolves to a `Test::Client` subclass that buffers
+  `enqueue` / `enqueue_bulk` instead of hitting a server. Read /
+  streaming operations (`get_queues`, `query`, `take_jobs`, …) raise
+  `Zizq::Test::Client::NotSupported` rather than silently returning
+  empty results — missing test setup should be obvious. The buffer
+  is reset between tests via `Zizq::Test.reset!`. Subsequent
+  releases will add drain helpers, assertion helpers, and `:fake`
+  vs `:inline` modes.
+
 ## 0.3.4
 
 - **Fixed `zizq_backoff` serialising `base_ms` / `jitter_ms` as

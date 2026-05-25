@@ -10,6 +10,7 @@ require "minitest/autorun"
 require "webmock/minitest"
 require "async/http"
 require "webmock/http_lib_adapters/async_http_client_adapter"
+require "timecop"
 
 WebMock::HttpLibAdapters::AsyncHttpClientAdapter.enable!
 

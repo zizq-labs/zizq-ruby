@@ -59,6 +59,16 @@ module Zizq
     # a `Resources::Job` and a chain to continue.
     attr_reader :dequeue_middleware #: Middleware::Chain[Resources::Job, void]
 
+    # When truthy, `Zizq.client` lazily resolves to a
+    # `Zizq::Test::Client` that buffers enqueues in memory rather than
+    # dispatching to a real server. Useful inside test suites — set it
+    # once in your test helper and the rest of the app's code uses
+    # `Zizq.enqueue` / `Zizq.enqueue_bulk` unchanged. Read operations
+    # (`Zizq.query`, `Zizq.queues`, `Client#get_job`, etc.) raise
+    # rather than silently returning empty results, so missing test
+    # setup is obvious.
+    attr_accessor :test_mode #: bool
+
     def initialize #: () -> void
       @url = "http://localhost:7890"
       @format = :msgpack
@@ -67,6 +77,7 @@ module Zizq
       @worker = nil
       @read_timeout = 30
       @stream_idle_timeout = 30
+      @test_mode = false
       @enqueue_middleware = Middleware::Chain.new(Identity.new)
       @dequeue_middleware = Middleware::Chain.new(Zizq::Job)
     end
