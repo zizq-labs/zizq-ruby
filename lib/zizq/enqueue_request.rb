@@ -157,8 +157,8 @@ module Zizq
       if backoff
         params[:backoff] = {
           exponent: backoff[:exponent].to_f,
-          base_ms: (backoff[:base].to_f * 1000).to_f,
-          jitter_ms: (backoff[:jitter].to_f * 1000).to_f
+          base_ms: (backoff[:base].to_f * 1000).to_i,
+          jitter_ms: (backoff[:jitter].to_f * 1000).to_i
         }
       end
 

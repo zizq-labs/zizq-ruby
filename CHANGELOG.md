@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.4
+
+- **Fixed `zizq_backoff` serialising `base_ms` / `jitter_ms` as
+  floats.** The server expects integer milliseconds (`u32`), and was
+  rejecting the request with
+  `invalid MessagePack: invalid type: floating point, expected u32`.
+  These fields now go over the wire as integers (matching the existing
+  treatment of `retention[:completed_ms]` / `retention[:dead_ms]`).
+  `exponent` stays a float — it's a ratio, not a duration.
+
 ## 0.3.3
 
 - **The default logger now flushes after every log line.** Under
@@ -12,7 +22,6 @@
   output appears immediately under any environment without
   globally mutating `$stdout.sync`. Apps that set their own
   `c.logger = ...` are unaffected.
-
 
 ## 0.3.2
 

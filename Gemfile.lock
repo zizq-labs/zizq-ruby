@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    zizq (0.3.3)
+    zizq (0.3.4)
       async-http (~> 0.82)
       msgpack (~> 1.7)
 

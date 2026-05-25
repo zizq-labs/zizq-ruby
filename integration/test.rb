@@ -34,6 +34,28 @@ class IntegrationTestJob
   end
 end
 
+# Jobs with backoff/retention configured. These exercise the wire
+# format used for those fields, which has bitten us before (floats
+# being sent where the server expects integer milliseconds).
+class BackoffConfiguredJob
+  include Zizq::Job
+
+  zizq_queue "integration"
+  zizq_retry_limit 3
+  zizq_backoff exponent: 2.0, base: 1.5, jitter: 0.5
+
+  def perform; end
+end
+
+class RetentionConfiguredJob
+  include Zizq::Job
+
+  zizq_queue "integration"
+  zizq_retention completed: 3600, dead: 86_400
+
+  def perform; end
+end
+
 # An ActiveJob class for testing ActiveJob-specific query methods.
 ActiveJob::Base.logger = Logger.new(File::NULL)
 
@@ -82,6 +104,26 @@ class IntegrationTest < Minitest::Test
 
     fetched = Zizq.client.get_job(job.id)
     assert_equal job.id, fetched.id
+  end
+
+  def test_enqueue_with_backoff_round_trips_correctly
+    # Regression: `base_ms` and `jitter_ms` were being sent as floats,
+    # which the server rejected with "invalid MessagePack: invalid
+    # type: floating point, expected u32". This asserts the wire
+    # format is accepted AND the values round-trip back as the
+    # configured seconds.
+    job = Zizq.enqueue(BackoffConfiguredJob)
+
+    fetched = Zizq.client.get_job(job.id)
+    assert_equal 3, fetched.retry_limit
+    assert_equal({ exponent: 2.0, base: 1.5, jitter: 0.5 }, fetched.backoff)
+  end
+
+  def test_enqueue_with_retention_round_trips_correctly
+    job = Zizq.enqueue(RetentionConfiguredJob)
+
+    fetched = Zizq.client.get_job(job.id)
+    assert_equal({ completed: 3600.0, dead: 86_400.0 }, fetched.retention)
   end
 
   def test_enqueue_raw
