@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.3
+
+- **The default logger now flushes after every log line.** Under
+  process supervisors like foreman, systemd, or Kubernetes, a Ruby
+  process's stdout is a pipe rather than a TTY, which switches the
+  default C-stdio mode from line-buffered to fully-buffered — log
+  lines pile up in a 4–8KB buffer and only flush on process exit (or
+  Ctrl-C). The default `Zizq.configuration.logger` now wraps stdout
+  in a small delegator that calls `flush` after every write, so log
+  output appears immediately under any environment without
+  globally mutating `$stdout.sync`. Apps that set their own
+  `c.logger = ...` are unaffected.
+
+
 ## 0.3.2
 
 - **TLS settings can now be configured via accessors** instead of (or in
@@ -19,8 +33,9 @@
 - **Worker defaults are now configurable via `Zizq.configure`.** Apps
   can set per-Worker defaults inside their existing `Zizq.configure`
   block via the new `c.worker.*` accessors (`queues`, `thread_count`,
-  `fiber_count`, `prefetch`, retry knobs, `worker_id`). `Zizq::Worker.new`
-  resolves each setting as `kwarg || Zizq.configuration.worker.<field> || DEFAULT_*`,
+  `fiber_count`, `prefetch`, retry knobs). `Zizq::Worker.new` resolves
+  each setting as
+  `kwarg || Zizq.configuration.worker.<field> || DEFAULT_*`,
   so explicit kwargs still override and unset fields fall through to
   the Worker's hardcoded defaults. Also accessible as
   `Zizq.configuration.worker`.
