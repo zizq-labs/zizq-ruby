@@ -1,0 +1,4 @@
+web:    bin/rails server -b ${BIND:-127.0.0.1} -p ${PORT:-3000}
+worker: bundle exec zizq-worker
+# Comment out this line out if you want to start the zizq server too.
+# zizq:   zizq serve

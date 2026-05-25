@@ -1,2 +1,12 @@
 #!/usr/bin/env ruby
-exec "./bin/rails", "server", *ARGV
+
+# Foreman only auto-loads `.env`. We also opt into `.env.local` (when
+# present) so personal overrides land in the env that's exec'd into
+# each Procfile process — matching what dotenv-rails does inside the
+# Ruby processes themselves.
+env_files = [".env", ".env.local"].select { |f| File.exist?(f) }
+
+args = ["bundle", "exec", "foreman", "start", "-f", "Procfile.dev"]
+args += ["-e", env_files.join(",")] if env_files.any?
+
+exec(*args, *ARGV)

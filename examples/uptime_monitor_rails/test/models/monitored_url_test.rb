@@ -21,6 +21,32 @@ class MonitoredUrlTest < ActiveSupport::TestCase
     assert_includes m.errors[:url], "can't be blank"
   end
 
+  test "url must use http or https" do
+    %w[ftp://example.com mailto:hi@example.com //example.com].each do |bad|
+      m = MonitoredUrl.new(url: bad)
+      refute m.valid?, "expected #{bad.inspect} to be invalid"
+      assert_includes m.errors[:url], "must be an http:// or https:// URL"
+    end
+  end
+
+  test "url must have a host" do
+    m = MonitoredUrl.new(url: "https://")
+    refute m.valid?
+    assert_includes m.errors[:url], "must be an http:// or https:// URL"
+  end
+
+  test "url must parse" do
+    m = MonitoredUrl.new(url: "https://example .com")
+    refute m.valid?
+    assert_includes m.errors[:url], "is not a valid URL"
+  end
+
+  test "valid http/https URLs are accepted" do
+    %w[http://example.com https://example.com https://example.com/path?q=1].each do |good|
+      assert MonitoredUrl.new(url: good).valid?, "expected #{good.inspect} to be valid"
+    end
+  end
+
   test "duplicate urls are rejected by the database" do
     MonitoredUrl.create!(url: "https://example.com")
     assert_raises(ActiveRecord::RecordNotUnique) do

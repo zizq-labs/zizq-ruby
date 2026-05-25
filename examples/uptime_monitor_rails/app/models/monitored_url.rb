@@ -10,6 +10,8 @@ class MonitoredUrl < ApplicationRecord
   validates :source, inclusion: { in: SOURCES }
   validates :last_status, inclusion: { in: STATUSES }, allow_nil: true
 
+  validate :url_is_http_or_https
+
   scope :enabled, -> { where(enabled: true) }
 
   # Apply the outcome of a single probe: append a Check row and update
@@ -31,5 +33,18 @@ class MonitoredUrl < ApplicationRecord
         consecutive_failures: result.status == "up" ? 0 : consecutive_failures + 1,
       )
     end
+  end
+
+  private
+
+  def url_is_http_or_https
+    return if url.blank? # `presence: true` reports that separately
+
+    uri = URI.parse(url)
+    unless uri.is_a?(URI::HTTP) && uri.host.present?
+      errors.add(:url, "must be an http:// or https:// URL")
+    end
+  rescue URI::InvalidURIError
+    errors.add(:url, "is not a valid URL")
   end
 end
