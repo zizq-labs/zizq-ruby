@@ -14,11 +14,12 @@ class MonitoredUrl < ApplicationRecord
 
   scope :enabled, -> { where(enabled: true) }
 
-  # Apply the outcome of a single probe: append a Check row and update
-  # the denormalised summary columns on this record.
+  # Apply the outcome of a single probe: append a Check row, update
+  # the denormalised summary columns on this record, and return the
+  # newly-created Check.
   def record_check!(result)
     transaction do
-      checks.create!(
+      check = checks.create!(
         checked_at:       result.checked_at,
         status:           result.status,
         http_status:      result.http_status,
@@ -32,6 +33,8 @@ class MonitoredUrl < ApplicationRecord
         last_status:          result.status,
         consecutive_failures: result.status == "up" ? 0 : consecutive_failures + 1,
       )
+
+      check
     end
   end
 

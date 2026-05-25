@@ -64,4 +64,59 @@ class CheckUrlJobTest < ActiveJob::TestCase
 
     assert_no_enqueued_jobs(only: DiscoverSitemapUrlsJob)
   end
+
+  test "enqueues NotifyWebhookJob on an up -> down transition" do
+    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    stub_request(:get, "https://example.com").to_return(status: 500)
+
+    assert_enqueued_jobs(1, only: NotifyWebhookJob) do
+      perform_enqueued_jobs(only: CheckUrlJob) do
+        CheckUrlJob.perform_later(m)
+      end
+    end
+  end
+
+  test "enqueues NotifyWebhookJob on a down -> up transition" do
+    m = MonitoredUrl.create!(url: "https://example.com", last_status: "down", last_checked_at: 1.minute.ago, consecutive_failures: 3)
+    stub_request(:get, "https://example.com").to_return(status: 200)
+
+    assert_enqueued_jobs(1, only: NotifyWebhookJob) do
+      perform_enqueued_jobs(only: CheckUrlJob) do
+        CheckUrlJob.perform_later(m)
+      end
+    end
+  end
+
+  test "enqueues NotifyWebhookJob when the first ever check is down" do
+    m = MonitoredUrl.create!(url: "https://example.com") # last_status nil
+    stub_request(:get, "https://example.com").to_return(status: 500)
+
+    assert_enqueued_jobs(1, only: NotifyWebhookJob) do
+      perform_enqueued_jobs(only: CheckUrlJob) do
+        CheckUrlJob.perform_later(m)
+      end
+    end
+  end
+
+  test "does not enqueue NotifyWebhookJob when the first ever check is up" do
+    m = MonitoredUrl.create!(url: "https://example.com") # last_status nil
+    stub_request(:get, "https://example.com").to_return(status: 200)
+
+    perform_enqueued_jobs(only: CheckUrlJob) do
+      CheckUrlJob.perform_later(m)
+    end
+
+    assert_no_enqueued_jobs(only: NotifyWebhookJob)
+  end
+
+  test "does not enqueue NotifyWebhookJob when status is unchanged" do
+    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    stub_request(:get, "https://example.com").to_return(status: 200)
+
+    perform_enqueued_jobs(only: CheckUrlJob) do
+      CheckUrlJob.perform_later(m)
+    end
+
+    assert_no_enqueued_jobs(only: NotifyWebhookJob)
+  end
 end
