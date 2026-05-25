@@ -6,5 +6,7 @@ class CheckUrlJob < ApplicationJob
 
     result = UrlProber.call(monitored_url.url)
     monitored_url.record_check!(result)
+
+    DiscoverSitemapUrlsJob.perform_later(monitored_url) if result.is_sitemap
   end
 end

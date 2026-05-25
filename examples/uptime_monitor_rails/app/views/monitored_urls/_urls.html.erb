@@ -21,7 +21,7 @@
             </td>
             <td>
               <% if m.last_checked_at %>
-                <%= time_ago_in_words(m.last_checked_at) %> ago
+                <%= time_ago_in_words(m.last_checked_at, include_seconds: true) %> ago
               <% else %>
                 <em>pending first check</em>
               <% end %>

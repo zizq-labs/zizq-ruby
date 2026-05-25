@@ -2,6 +2,7 @@
 
 require "async"
 require "async/http/internet/instance"
+require "nokogiri"
 require "uri"
 
 # Performs a single HTTP probe of a URL, following up to MAX_REDIRECTS
@@ -10,14 +11,22 @@ require "uri"
 #   UrlProber.call("https://example.com")
 #   # => #<Result status="up" http_status=200 response_time_ms=42
 #   #             final_url="https://example.com/" error_message=nil
-#   #             checked_at=2026-05-24 12:34:56 UTC>
+#   #             is_sitemap=false checked_at=...>
 #
 # A 2xx final response is "up". Anything else — non-2xx final, network
 # error, missing Location header on a redirect, exceeded redirect cap —
 # is "down".
+#
+# When the final response is XML, the prober peeks at the root element
+# to flag whether the URL is a sitemap (urlset/sitemapindex). It
+# doesn't extract the URLs — DiscoverSitemapUrlsJob re-fetches and
+# parses in full.
 class UrlProber
   MAX_REDIRECTS   = 5
   TIMEOUT_SECONDS = 10
+
+  SITEMAP_ROOT_ELEMENTS = %w[urlset sitemapindex].freeze
+  XML_CONTENT_TYPE      = %r{\A(application|text)/(.*\+)?xml\b}i
 
   Result = Struct.new(
     :status,
@@ -25,6 +34,7 @@ class UrlProber
     :response_time_ms,
     :final_url,
     :error_message,
+    :is_sitemap,
     :checked_at,
     keyword_init: true,
   )
@@ -60,7 +70,7 @@ class UrlProber
 
         case status_code
         when 200..299
-          return success(status_code, current_url, started)
+          return success_with_sitemap_check(response, status_code, current_url, started)
         when 300..399
           location = response.headers["location"]
           return failure(status_code, current_url, started, "Redirect without Location header") unless location
@@ -83,21 +93,41 @@ class UrlProber
     failure(nil, current_url || @url, started, "#{e.class}: #{e.message}")
   end
 
-  def success(http_status, final_url, started)
-    build_result("up", http_status, final_url, started, nil)
+  # Build the "up" result, peeking at the body for sitemap detection
+  # when the content-type advertises XML. Body is discarded after —
+  # DiscoverSitemapUrlsJob re-fetches for actual URL extraction.
+  def success_with_sitemap_check(response, http_status, final_url, started)
+    is_sitemap = false
+    parse_error = nil
+
+    if XML_CONTENT_TYPE.match?(response.headers["content-type"])
+      body = response.read.to_s
+      begin
+        # `strict` so genuinely malformed bodies raise rather than
+        # silently parsing to something weird; `nonet` blocks
+        # network fetches during parse (XXE protection).
+        doc = Nokogiri::XML(body) { |c| c.strict.nonet }
+        is_sitemap = SITEMAP_ROOT_ELEMENTS.include?(doc.root&.name)
+      rescue Nokogiri::XML::SyntaxError => e
+        parse_error = "Body advertised XML but failed to parse: #{e.message}"
+      end
+    end
+
+    build_result("up", http_status, final_url, started, parse_error, is_sitemap: is_sitemap)
   end
 
   def failure(http_status, final_url, started, message)
     build_result("down", http_status, final_url, started, message)
   end
 
-  def build_result(status, http_status, final_url, started, message)
+  def build_result(status, http_status, final_url, started, message, is_sitemap: false)
     Result.new(
       status:           status,
       http_status:      http_status,
       response_time_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
       final_url:        final_url,
       error_message:    message,
+      is_sitemap:       is_sitemap,
       checked_at:       Time.current,
     )
   end

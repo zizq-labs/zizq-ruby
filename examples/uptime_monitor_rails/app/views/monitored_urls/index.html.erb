@@ -6,7 +6,7 @@
 
 <main>
   <%= form_with model: MonitoredUrl.new, local: true, class: "url-form" do |f| %>
-    <%= f.text_field :url, placeholder: "https://example.com", required: true, autofocus: true %>
+    <%= f.text_field :url, placeholder: "https://example.com/sitemap.xml", required: true, autofocus: true %>
     <%= f.submit "Watch" %>
   <% end %>
 

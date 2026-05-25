@@ -90,4 +90,76 @@ class UrlProberTest < ActiveSupport::TestCase
     assert_includes result.error_message, "Socket::ResolutionError"
     assert_includes result.error_message, "getaddrinfo: nope"
   end
+
+  test "XML urlset is flagged as a sitemap" do
+    body = <<~XML
+      <?xml version="1.0" encoding="UTF-8"?>
+      <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        <url><loc>https://example.com/page</loc></url>
+      </urlset>
+    XML
+    stub_request(:get, "https://example.com/sitemap.xml")
+      .to_return(status: 200, headers: { "Content-Type" => "application/xml" }, body: body)
+
+    result = UrlProber.call("https://example.com/sitemap.xml")
+
+    assert_equal "up", result.status
+    assert result.is_sitemap
+    assert_nil result.error_message
+  end
+
+  test "XML sitemapindex is flagged as a sitemap" do
+    body = <<~XML
+      <?xml version="1.0" encoding="UTF-8"?>
+      <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+        <sitemap><loc>https://example.com/sitemap-1.xml</loc></sitemap>
+      </sitemapindex>
+    XML
+    stub_request(:get, "https://example.com/sitemap.xml")
+      .to_return(status: 200, headers: { "Content-Type" => "text/xml" }, body: body)
+
+    result = UrlProber.call("https://example.com/sitemap.xml")
+
+    assert result.is_sitemap
+  end
+
+  test "non-sitemap XML (e.g. RSS) is not flagged" do
+    stub_request(:get, "https://example.com/feed.xml").to_return(
+      status: 200,
+      headers: { "Content-Type" => "application/rss+xml" },
+      body: %(<?xml version="1.0"?><rss><channel></channel></rss>),
+    )
+
+    result = UrlProber.call("https://example.com/feed.xml")
+
+    refute result.is_sitemap
+    assert_nil result.error_message
+  end
+
+  test "non-XML response is not inspected for sitemap content" do
+    stub_request(:get, "https://example.com").to_return(
+      status: 200,
+      headers: { "Content-Type" => "text/html" },
+      body: "<html></html>",
+    )
+
+    result = UrlProber.call("https://example.com")
+
+    refute result.is_sitemap
+    assert_nil result.error_message
+  end
+
+  test "malformed XML with an XML content-type captures the parse error" do
+    stub_request(:get, "https://example.com/sitemap.xml").to_return(
+      status: 200,
+      headers: { "Content-Type" => "application/xml" },
+      body: "<unclosed",
+    )
+
+    result = UrlProber.call("https://example.com/sitemap.xml")
+
+    assert_equal "up", result.status # HTTP succeeded, parse problem is application-level
+    refute result.is_sitemap
+    assert_match(/Body advertised XML but failed to parse/, result.error_message)
+  end
 end
