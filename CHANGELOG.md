@@ -3,15 +3,46 @@
 ## 0.3.5
 
 - **New `Zizq.configuration.test_mode` flag** opting tests into an
-  in-memory `Zizq::Test::Client` (initial scaffolding). When set,
-  `Zizq.client` resolves to a `Test::Client` subclass that buffers
-  `enqueue` / `enqueue_bulk` instead of hitting a server. Read /
-  streaming operations (`get_queues`, `query`, `take_jobs`, …) raise
-  `Zizq::Test::Client::NotSupported` rather than silently returning
-  empty results — missing test setup should be obvious. The buffer
-  is reset between tests via `Zizq::Test.reset!`. Subsequent
-  releases will add drain helpers, assertion helpers, and `:fake`
-  vs `:inline` modes.
+  in-memory `Zizq::Test::Client`. When set, `Zizq.client` resolves
+  to a `Test::Client` subclass that buffers `enqueue` /
+  `enqueue_bulk` instead of hitting a server. Buffered jobs have a
+  valid status (`scheduled`, `ready`, `in_flight`, `completed`,
+  `dead`) and progress through the lifecycle as the test drains them.
+  Read / streaming operations (`get_queues`, `query`, `take_jobs`, …)
+  raise `Zizq::Test::Client::NotSupported` rather than silently
+  returning empty results — incorrect usage should be obvious.
+  Callers should either switch to a real Zizq instance, or stub the
+  methods as needed.
+
+  `Zizq::Test` provides:
+
+  * `client` — the active test client.
+  * `client.enqueued_jobs` / `enqueued_requests` — full submission
+    history.
+  * `client.pending_jobs` / `in_flight_jobs` / `completed_jobs` /
+    `dead_jobs` — status-filtered views over the buffer.
+  * `dispatch_enqueued_jobs(**filters) { … }` — drain pending entries
+    (ready + scheduled whose `ready_at` has elapsed) through the
+    configured dequeue middleware chain
+    (`Zizq.configuration.dequeue_middleware` — same path the real
+    worker uses, so registered middlewares run in tests too),
+    looping until nothing matching the filters is pending. With a
+    block, yields first (test code enqueues) and then drains; without
+    one, drains immediately. Handler exceptions transition the entry
+    to `dead` and re-raise; a block exception propagates without
+    draining. There are no automatic retries in test mode.
+  * **Filter kwargs**, shared between `dispatch_enqueued_jobs` and
+    every accessor above (`enqueued_jobs`, `enqueued_requests`,
+    `pending_jobs`, `in_flight_jobs`, `completed_jobs`, `dead_jobs`)
+    so the action and assertion sides read symmetrically:
+    * `only_queues:` / `except_queues:` — String or Array of Strings.
+    * `only_types:`  / `except_types:`  — String, Class, or Array of
+      those (Class names match the API serialized-format `type` via
+      `.to_s`, so passing an ActiveJob class works directly).
+    * `filter:` — `->(job)` predicate returning truthy to keep.
+      Defaults to pass-all; ANDs with the named filters and opens
+      the door to custom matchers.
+  * `reset!` — clears the buffer between tests.
 
 ## 0.3.4
 

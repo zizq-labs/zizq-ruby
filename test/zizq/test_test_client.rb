@@ -165,4 +165,317 @@ class TestTestClient < ZizqTestCase
     end
     assert_match(/take_jobs/, error.message)
   end
+
+  # --- Status filters ---
+
+  def test_pending_jobs_includes_ready_and_scheduled
+    Zizq.enqueue_raw(queue: "q", type: "Ready",     payload: {})
+    Zizq.enqueue_raw(queue: "q", type: "Scheduled", payload: {}, ready_at: Time.now + 60)
+
+    pending = Zizq::Test.client.pending_jobs
+    assert_equal %w[Ready Scheduled].sort, pending.map(&:type).sort
+    assert_empty Zizq::Test.client.in_flight_jobs
+    assert_empty Zizq::Test.client.completed_jobs
+    assert_empty Zizq::Test.client.dead_jobs
+  end
+
+  # --- dispatch_enqueued_jobs ---
+
+  def test_dispatch_enqueued_jobs_drains_pending_and_transitions_to_completed
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Zizq.enqueue_raw(queue: "q", type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "q", type: "B", payload: {})
+
+    performed = Zizq::Test.dispatch_enqueued_jobs
+
+    assert_equal 2, performed
+    assert_equal %w[A B], dispatched
+    assert_empty Zizq::Test.client.pending_jobs
+    assert_equal 2, Zizq::Test.client.completed_jobs.size
+  end
+
+  def test_dispatch_enqueued_jobs_block_form_yields_then_drains
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Zizq::Test.dispatch_enqueued_jobs do
+      # During the block: enqueues buffer, nothing has run yet.
+      Zizq.enqueue_raw(queue: "q", type: "A", payload: {})
+      Zizq.enqueue_raw(queue: "q", type: "B", payload: {})
+      assert_empty dispatched
+    end
+
+    assert_equal %w[A B], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_skips_scheduled_until_due
+    Zizq.configure { |c| c.dispatcher = ->(_) {} }
+
+    Zizq.enqueue_raw(queue: "q", type: "Future", payload: {}, ready_at: Time.now + 60)
+
+    assert_equal 0, Zizq::Test.dispatch_enqueued_jobs
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+  end
+
+  def test_dispatch_enqueued_jobs_picks_up_scheduled_after_timecop_advances
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Timecop.freeze(Time.at(1_780_000_000)) do
+      Zizq.enqueue_raw(queue: "q", type: "Future", payload: {}, ready_at: Time.now + 60)
+
+      Timecop.travel(120) do
+        assert_equal 1, Zizq::Test.dispatch_enqueued_jobs
+        assert_equal %w[Future], dispatched
+      end
+    end
+  end
+
+  def test_dispatch_enqueued_jobs_drains_handler_reenqueues_recursively
+    Zizq.configure do |c|
+      c.dispatcher = ->(job) do
+        if job.type == "Parent"
+          Zizq.enqueue_raw(queue: "q", type: "Child", payload: {})
+        end
+      end
+    end
+
+    Zizq.enqueue_raw(queue: "q", type: "Parent", payload: {})
+
+    # Both the parent and its re-enqueued child should drain in one call.
+    assert_equal 2, Zizq::Test.dispatch_enqueued_jobs
+    assert_empty Zizq::Test.client.pending_jobs
+    assert_equal %w[Parent Child].sort,
+                 Zizq::Test.client.completed_jobs.map(&:type).sort
+  end
+
+  def test_dispatch_enqueued_jobs_runs_the_full_dequeue_middleware_chain
+    # Test mode should mirror the real worker, which dispatches via
+    # `Zizq.configuration.dequeue_middleware.call` — so any middleware
+    # registered with `c.dequeue_middleware.use(...)` runs in tests too.
+    trace = []
+    middleware = Object.new
+    middleware.define_singleton_method(:call) do |job, chain|
+      trace << "before-#{job.type}"
+      result = chain.call(job)
+      trace << "after-#{job.type}"
+      result
+    end
+    Zizq.configure do |c|
+      c.dispatcher = ->(job) { trace << "dispatch-#{job.type}" }
+      c.dequeue_middleware.use(middleware)
+    end
+
+    Zizq.enqueue_raw(queue: "q", type: "A", payload: {})
+    Zizq::Test.dispatch_enqueued_jobs
+
+    assert_equal %w[before-A dispatch-A after-A], trace
+  end
+
+  def test_dispatch_enqueued_jobs_marks_handler_failure_as_dead_and_reraises
+    boom = Class.new(StandardError)
+    Zizq.configure { |c| c.dispatcher = ->(_) { raise boom, "kaboom" } }
+
+    Zizq.enqueue_raw(queue: "q", type: "Failing", payload: {})
+
+    assert_raises(boom) { Zizq::Test.dispatch_enqueued_jobs }
+
+    dead = Zizq::Test.client.dead_jobs
+    assert_equal 1, dead.size
+    assert_equal "Failing", dead.first.type
+    assert_empty Zizq::Test.client.in_flight_jobs
+  end
+
+  def test_dispatch_enqueued_jobs_block_exception_skips_drain
+    Zizq.configure { |c| c.dispatcher = ->(_) {} }
+    Zizq.enqueue_raw(queue: "q", type: "A", payload: {})
+
+    assert_raises(RuntimeError) do
+      Zizq::Test.dispatch_enqueued_jobs { raise "block boom" }
+    end
+
+    # Block raised before we got to drain; pending stays as-is.
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+  end
+
+  # --- Filters ---
+
+  def test_dispatch_enqueued_jobs_filters_by_only_queues
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.queue } }
+
+    Zizq.enqueue_raw(queue: "emails",   type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "B", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_queues: "emails")
+
+    assert_equal %w[emails], dispatched
+    assert_equal 1, Zizq::Test.client.completed_jobs.size
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+    assert_equal "webhooks", Zizq::Test.client.pending_jobs.first.queue
+  end
+
+  def test_dispatch_enqueued_jobs_filters_by_except_queues
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.queue } }
+
+    Zizq.enqueue_raw(queue: "emails",   type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "B", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(except_queues: "webhooks")
+
+    assert_equal %w[emails], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_filters_by_only_types
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Zizq.enqueue_raw(queue: "q", type: "SendEmail",   payload: {})
+    Zizq.enqueue_raw(queue: "q", type: "PostWebhook", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_types: "SendEmail")
+
+    assert_equal %w[SendEmail], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_filters_by_except_types
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Zizq.enqueue_raw(queue: "q", type: "SendEmail",   payload: {})
+    Zizq.enqueue_raw(queue: "q", type: "PostWebhook", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(except_types: "SendEmail")
+
+    assert_equal %w[PostWebhook], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_accepts_class_for_type_filter
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    klass = Class.new
+    klass.define_singleton_method(:to_s) { "SendEmail" }
+
+    Zizq.enqueue_raw(queue: "q", type: "SendEmail", payload: {})
+    Zizq.enqueue_raw(queue: "q", type: "Other",     payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_types: klass)
+
+    assert_equal %w[SendEmail], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_accepts_array_filters
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.queue } }
+
+    Zizq.enqueue_raw(queue: "a", type: "T", payload: {})
+    Zizq.enqueue_raw(queue: "b", type: "T", payload: {})
+    Zizq.enqueue_raw(queue: "c", type: "T", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_queues: %w[a c])
+
+    assert_equal %w[a c], dispatched.sort
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+  end
+
+  def test_dispatch_enqueued_jobs_filter_lambda_ANDs_with_named_filters
+    dispatched = []
+    Zizq.configure { |c| c.dispatcher = ->(job) { dispatched << job.type } }
+
+    Zizq.enqueue_raw(queue: "emails", type: "Urgent",  payload: { urgent: true })
+    Zizq.enqueue_raw(queue: "emails", type: "Routine", payload: { urgent: false })
+    Zizq.enqueue_raw(queue: "other",  type: "Urgent",  payload: { urgent: true })
+
+    Zizq::Test.dispatch_enqueued_jobs(
+      only_queues: "emails",
+      filter:      ->(job) { job.payload["urgent"] || job.payload[:urgent] },
+    )
+
+    # `emails` AND `urgent` — only the first job.
+    assert_equal %w[Urgent], dispatched
+  end
+
+  def test_dispatch_enqueued_jobs_combining_only_and_except_for_same_queue_drains_nothing
+    Zizq.configure { |c| c.dispatcher = ->(_) {} }
+    Zizq.enqueue_raw(queue: "a", type: "T", payload: {})
+
+    # Logically nonsensical but we don't validate — empty result is
+    # the natural consequence.
+    assert_equal 0, Zizq::Test.dispatch_enqueued_jobs(only_queues: "a", except_queues: "a")
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+  end
+
+  def test_dispatch_enqueued_jobs_filter_leaves_off_filter_reenqueues_pending
+    Zizq.configure do |c|
+      c.dispatcher = ->(job) do
+        Zizq.enqueue_raw(queue: "webhooks", type: "Child", payload: {}) if job.type == "Parent"
+      end
+    end
+
+    Zizq.enqueue_raw(queue: "emails", type: "Parent", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_queues: "emails")
+
+    assert_equal 1, Zizq::Test.client.pending_jobs.size
+    assert_equal "webhooks", Zizq::Test.client.pending_jobs.first.queue
+  end
+
+  # --- Zizq::Test convenience proxies ---
+
+  def test_zizq_test_module_proxies_accessors_onto_the_client
+    Zizq.configure { |c| c.dispatcher = ->(_) {} }
+
+    Zizq.enqueue_raw(queue: "emails",   type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "B", payload: {})
+
+    # Same results as going through client.* directly, but shorter.
+    assert_equal Zizq::Test.client.enqueued_jobs.map(&:id),
+                 Zizq::Test.enqueued_jobs.map(&:id)
+    assert_equal 1, Zizq::Test.pending_jobs(only_queues: "emails").size
+
+    Zizq::Test.dispatch_enqueued_jobs(only_queues: "emails")
+    assert_equal 1, Zizq::Test.completed_jobs.size
+    assert_equal 1, Zizq::Test.pending_jobs.size
+    assert_empty  Zizq::Test.in_flight_jobs
+    assert_empty  Zizq::Test.dead_jobs
+  end
+
+  # --- Filters on accessors ---
+
+  def test_filter_kwargs_work_on_pending_jobs
+    Zizq.enqueue_raw(queue: "emails",   type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "B", payload: {})
+
+    assert_equal 1, Zizq::Test.client.pending_jobs(only_queues: "emails").size
+    assert_equal "emails", Zizq::Test.client.pending_jobs(only_queues: "emails").first.queue
+
+    assert_equal 1, Zizq::Test.client.pending_jobs(except_queues: "emails").size
+    assert_equal "webhooks", Zizq::Test.client.pending_jobs(except_queues: "emails").first.queue
+  end
+
+  def test_filter_kwargs_work_on_enqueued_jobs_across_all_statuses
+    Zizq.configure { |c| c.dispatcher = ->(_) {} }
+
+    Zizq.enqueue_raw(queue: "emails",   type: "A", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "B", payload: {})
+
+    Zizq::Test.dispatch_enqueued_jobs(only_queues: "emails")
+
+    # `enqueued_jobs` shows everything regardless of status, but the
+    # queue filter still narrows the view.
+    assert_equal %w[emails], Zizq::Test.client.enqueued_jobs(only_queues: "emails").map(&:queue)
+    assert_equal 2, Zizq::Test.client.enqueued_jobs.size
+  end
+
+  def test_filter_lambda_works_on_accessors
+    Zizq.enqueue_raw(queue: "q", type: "A", payload: { important: true })
+    Zizq.enqueue_raw(queue: "q", type: "B", payload: { important: false })
+
+    important = Zizq::Test.client.pending_jobs(filter: ->(job) { job.payload[:important] })
+    assert_equal %w[A], important.map(&:type)
+  end
 end

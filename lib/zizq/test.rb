@@ -16,10 +16,28 @@ module Zizq
   #   end
   #
   #   class MyTestCase
-  #     setup    { Zizq::Test.reset! }
+  #     setup { Zizq::Test.reset! }
   #   end
   #
-  # Inspect what was enqueued via `Zizq::Test.client.enqueued_jobs`.
+  # In a test:
+  #
+  #   def test_signup_fans_out
+  #     # Default buffered mode — assert what was enqueued.
+  #     SignupService.new.run
+  #     assert_equal 2, Zizq::Test.client.pending_jobs.size
+  #
+  #     # Drain whatever's pending (handler re-enqueues fall through
+  #     # naturally — drain loops until pending is empty).
+  #     Zizq::Test.dispatch_enqueued_jobs
+  #
+  #     # Block form: run the work, then drain. Matches ActiveJob's
+  #     # `perform_enqueued_jobs do ... end`.
+  #     Zizq::Test.dispatch_enqueued_jobs { SignupService.new.run }
+  #
+  #     # Filter by queue and/or type when only a subset should fire.
+  #     Zizq::Test.dispatch_enqueued_jobs(queue: "emails")
+  #     Zizq::Test.dispatch_enqueued_jobs(type: SendEmailJob)
+  #   end
   module Test
     autoload :Client, "zizq/test/client"
 
@@ -34,10 +52,52 @@ module Zizq
     end
 
     # Reset buffered state between tests. Keeps the configured
-    # `test_mode` flag so the next `Zizq.client` access still resolves
-    # to the test client.
+    # `test_mode` flag.
     def self.reset! #: () -> void
       client.clear!
+    end
+
+    # Dispatch pending jobs through the configured dequeue middleware
+    # chain (`Zizq.configuration.dequeue_middleware` — same path the
+    # real worker uses, so any registered middlewares run in tests
+    # too), looping until no more pending entries match the filters.
+    #
+    # * No block: drain whatever's pending now.
+    # * With block: yield first (test code enqueues), then drain.
+    # * `only_queues:` / `except_queues:` — String or Array of Strings.
+    # * `only_types:`  / `except_types:`  — String, Class, or Array of
+    #   those (Class names match the serialized-format `type` via `.to_s`,
+    #   so passing an ActiveJob class works directly).
+    # * `filter:` — a lambda `->(job)` returning truthy to keep an
+    #   entry. Defaults to "pass all". Combines with the named
+    #   filters via AND.
+    #
+    # Returns the number of jobs dispatched. A block exception
+    # propagates without draining; a handler exception during drain
+    # transitions that entry to `dead` and re-raises.
+    def self.dispatch_enqueued_jobs(**filters, &block) #: (**untyped) ?{ () -> void } -> Integer
+      yield if block
+      client.drain(**filters)
+    end
+
+    # Convenience proxies onto the active test client, so test code
+    # can read `Zizq::Test.pending_jobs(only_queues: "emails")`
+    # instead of routing through `Zizq::Test.client.pending_jobs(...)`.
+    # Each forwards `**filters` to the corresponding Client accessor;
+    # see `Test::Client` for the supported filter kwargs.
+    #
+    # All accept the same filter kwargs as `#dispatch_enqueued_jobs`.
+    %i[
+      enqueued_jobs
+      enqueued_requests
+      pending_jobs
+      in_flight_jobs
+      completed_jobs
+      dead_jobs
+    ].each do |name|
+      define_singleton_method(name) do |**filters|
+        client.public_send(name, **filters)
+      end
     end
   end
 end
