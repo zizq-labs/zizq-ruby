@@ -221,6 +221,38 @@ Once defined, schedules can be inspected and managed via
 `Zizq.crontab('maintenance')` — paused/resumed at the schedule level or per
 entry, and deleted entirely when no longer needed.
 
+### Testing
+
+Set `c.test_mode = true` in your test helper and Zizq swaps the real
+client out for an in-memory `Zizq::Test::Client` that buffers enqueues
+instead of dispatching them. Tests can then assert on what was
+enqueued and drain the buffer through the configured dispatcher —
+no running server required.
+
+```ruby
+# test/test_helper.rb (or spec/spec_helper.rb)
+Zizq::Test.enable!
+
+class ActiveSupport::TestCase
+  setup { Zizq::Test.reset! }
+end
+
+# In a test
+def test_signup_fans_out
+  SignupService.new.run
+
+  assert Zizq::Test.enqueued?(SendWelcomeEmailJob, user_id: 42)
+  assert_equal 2, Zizq::Test.pending_jobs(only_queues: 'emails').size
+
+  # Drain the buffer through Zizq.configuration.dequeue_middleware
+  # (same path the real worker takes — registered middleware runs too).
+  Zizq::Test.dispatch_enqueued_jobs
+end
+```
+
+See [Testing](https://zizq.io/docs/clients/ruby/testing.html) for
+full details.
+
 ## Resources
 
 * [Ruby Client Docs](https://zizq.io/docs/clients/ruby/)
