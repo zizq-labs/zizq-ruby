@@ -29,6 +29,7 @@ module Zizq
   autoload :Lifecycle,           "zizq/lifecycle"
   autoload :Query,               "zizq/query"
   autoload :Resources,           "zizq/resources"
+  autoload :Test,                "zizq/test"
   autoload :TlsConfiguration,    "zizq/tls_configuration"
   autoload :Worker,              "zizq/worker"
   autoload :WorkerConfiguration, "zizq/worker_configuration"
@@ -74,19 +75,27 @@ module Zizq
     #
     # The client is memoized so that persistent HTTP connections are reused
     # across calls, reducing TCP connection overhead.
+    #
+    # When `configuration.test_mode` is set, a `Zizq::Test::Client` is
+    # returned instead — buffering enqueues in memory rather than
+    # talking to a real server.
     def client #: () -> Client
       @client ||= begin
         @client_mutex.synchronize do
           break @client if @client
 
           configuration.validate!
-          @client = Client.new(
-            url: configuration.url,
-            format: configuration.format,
-            ssl_context: configuration.ssl_context,
-            read_timeout: configuration.read_timeout,
-            stream_idle_timeout: configuration.stream_idle_timeout
-          )
+          @client = if configuration.test_mode
+            Test::Client.new
+          else
+            Client.new(
+              url: configuration.url,
+              format: configuration.format,
+              ssl_context: configuration.ssl_context,
+              read_timeout: configuration.read_timeout,
+              stream_idle_timeout: configuration.stream_idle_timeout
+            )
+          end
         end
       end
     end
