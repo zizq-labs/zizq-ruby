@@ -424,6 +424,101 @@ class TestTestClient < ZizqTestCase
     assert_equal "webhooks", Zizq::Test.client.pending_jobs.first.queue
   end
 
+  # --- Predicate helpers: enqueued_raw? / enqueued_raw_count ---
+
+  def test_enqueued_raw_matches_by_type_only
+    Zizq.enqueue_raw(queue: "q", type: "send_email", payload: { user_id: 1 })
+
+    assert Zizq::Test.enqueued_raw?(type: "send_email")
+    refute Zizq::Test.enqueued_raw?(type: "post_webhook")
+  end
+
+  def test_enqueued_raw_matches_by_type_and_payload
+    Zizq.enqueue_raw(queue: "q", type: "send_email", payload: { user_id: 42 })
+    Zizq.enqueue_raw(queue: "q", type: "send_email", payload: { user_id: 99 })
+
+    assert Zizq::Test.enqueued_raw?(type: "send_email", payload: { user_id: 42 })
+    refute Zizq::Test.enqueued_raw?(type: "send_email", payload: { user_id: 7 })
+  end
+
+  def test_enqueued_raw_matches_by_queue
+    Zizq.enqueue_raw(queue: "emails",   type: "send_email", payload: {})
+    Zizq.enqueue_raw(queue: "webhooks", type: "send_email", payload: {})
+
+    assert Zizq::Test.enqueued_raw?(queue: "emails", type: "send_email")
+    refute Zizq::Test.enqueued_raw?(queue: "missing", type: "send_email")
+  end
+
+  def test_enqueued_raw_count_counts_matches
+    3.times { Zizq.enqueue_raw(queue: "q", type: "x", payload: { n: 1 }) }
+    2.times { Zizq.enqueue_raw(queue: "q", type: "x", payload: { n: 2 }) }
+    1.times { Zizq.enqueue_raw(queue: "q", type: "y", payload: {}) }
+
+    assert_equal 5, Zizq::Test.enqueued_raw_count(type: "x")
+    assert_equal 3, Zizq::Test.enqueued_raw_count(type: "x", payload: { n: 1 })
+    assert_equal 1, Zizq::Test.enqueued_raw_count(type: "y")
+    assert_equal 0, Zizq::Test.enqueued_raw_count(type: "missing")
+  end
+
+  # --- Predicate helpers: enqueued? / enqueued_count (class form) ---
+
+  # An ad-hoc Zizq::Job class for the predicate tests.
+  class FakeJob
+    include Zizq::Job
+    zizq_queue "fake-queue"
+    def perform(*); end
+  end
+
+  def test_enqueued_matches_by_class_only
+    Zizq.enqueue(FakeJob, 1)
+
+    assert Zizq::Test.enqueued?(FakeJob)
+    refute Zizq::Test.enqueued?(self.class) # arbitrary unrelated class
+  end
+
+  def test_enqueued_matches_with_positional_args
+    Zizq.enqueue(FakeJob, 42)
+
+    assert Zizq::Test.enqueued?(FakeJob, 42)
+    refute Zizq::Test.enqueued?(FakeJob, 99)
+  end
+
+  def test_enqueued_matches_with_kwargs
+    Zizq.enqueue(FakeJob, 42, template: "welcome")
+
+    assert Zizq::Test.enqueued?(FakeJob, 42, template: "welcome")
+    refute Zizq::Test.enqueued?(FakeJob, 42, template: "other")
+  end
+
+  def test_enqueued_count_counts_matches
+    Zizq.enqueue(FakeJob, 1)
+    Zizq.enqueue(FakeJob, 2)
+    Zizq.enqueue(FakeJob, 2)
+
+    assert_equal 3, Zizq::Test.enqueued_count(FakeJob)
+    assert_equal 2, Zizq::Test.enqueued_count(FakeJob, 2)
+    assert_equal 1, Zizq::Test.enqueued_count(FakeJob, 1)
+    assert_equal 0, Zizq::Test.enqueued_count(FakeJob, 99)
+  end
+
+  def test_enqueued_raises_for_class_without_zizq_serialize
+    klass = Class.new # bare Ruby class, no Zizq::Job mixin
+
+    error = assert_raises(ArgumentError) do
+      Zizq::Test.enqueued?(klass, 1, 2)
+    end
+    assert_match(/zizq_serialize/, error.message)
+  end
+
+  def test_enqueued_with_no_args_uses_type_only_match_even_without_zizq_serialize
+    # The no-args path delegates to enqueued_raw?(type:), so it doesn't
+    # need the class to be serializable. Handy for "did *something* of
+    # this class get enqueued".
+    Zizq.enqueue(FakeJob, 1)
+
+    assert Zizq::Test.enqueued?(FakeJob)
+  end
+
   # --- Zizq::Test convenience proxies ---
 
   def test_zizq_test_module_proxies_accessors_onto_the_client

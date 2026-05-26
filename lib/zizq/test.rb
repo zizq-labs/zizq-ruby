@@ -99,5 +99,78 @@ module Zizq
         client.public_send(name, **filters)
       end
     end
+
+    # Was a job of `job_class` enqueued (optionally with matching
+    # args)?
+    #
+    #   Zizq::Test.enqueued?(SendEmailJob)                            # any args
+    #   Zizq::Test.enqueued?(SendEmailJob, 42, template: "welcome")   # exact args
+    #
+    # With no args, matches by class/type only. With args/kwargs,
+    # uses the class's own `zizq_serialize` to compute the expected
+    # payload — so it works for both `Zizq::Job` and AJ classes
+    # (AJ's volatile fields like `job_id` are ignored, only the
+    # `arguments` subset is compared).
+    #
+    # For anything fuzzier (matchers, subset matching, custom
+    # predicates), drop down to
+    # `client.enqueued_jobs(only_types: ..., filter: ->(job) { ... })`.
+    def self.enqueued?(job_class, *args, **kwargs) #: (Class, *untyped, **untyped) -> bool
+      enqueued_count(job_class, *args, **kwargs) > 0
+    end
+
+    # How many times was a job of `job_class` enqueued (optionally
+    # with matching args)? Same argument semantics as `#enqueued?`.
+    def self.enqueued_count(job_class, *args, **kwargs) #: (Class, *untyped, **untyped) -> Integer
+      type = job_class.to_s
+      return enqueued_raw_count(type: type) if args.empty? && kwargs.empty?
+
+      unless job_class.respond_to?(:zizq_serialize)
+        raise ArgumentError,
+          "#{job_class} doesn't implement zizq_serialize — " \
+          "include Zizq::Job or extend Zizq::ActiveJobConfig, " \
+          "or use Zizq::Test.enqueued_raw? for raw enqueues."
+      end
+
+      expected = job_class.zizq_serialize(*args, **kwargs)
+      client.enqueued_jobs(only_types: type).count do |job|
+        payloads_equivalent?(expected, job.payload)
+      end
+    end
+
+    # Was a raw job (queue + type + payload) enqueued? Each kwarg is
+    # optional; unspecified means "don't filter on this axis."
+    #
+    #   Zizq::Test.enqueued_raw?(type: "send_email")
+    #   Zizq::Test.enqueued_raw?(type: "send_email", payload: { user_id: 42 })
+    #   Zizq::Test.enqueued_raw?(queue: "emails", type: "send_email")
+    def self.enqueued_raw?(queue: nil, type: nil, payload: nil) #: (?queue: String?, ?type: String?, ?payload: untyped) -> bool
+      enqueued_raw_count(queue: queue, type: type, payload: payload) > 0
+    end
+
+    # How many raw jobs match (queue + type + payload)? Same
+    # argument semantics as `#enqueued_raw?`.
+    def self.enqueued_raw_count(queue: nil, type: nil, payload: nil) #: (?queue: String?, ?type: String?, ?payload: untyped) -> Integer
+      filters = {}
+      filters[:only_queues] = queue if queue
+      filters[:only_types]  = type  if type
+      filters[:filter]      = ->(job) { job.payload == payload } unless payload.nil?
+      client.enqueued_jobs(**filters).size
+    end
+
+    # Heuristic payload comparison that handles both `Zizq::Job`'s
+    # serialized format (`{"args" => [...], "kwargs" => {...}}`) and
+    # ActiveJob's (`{"job_class" => ..., "arguments" => [...],
+    # "job_id" => ..., "enqueued_at" => ..., ...}`). The AJ shape
+    # always has an `"arguments"` key while `Zizq::Job`'s doesn't, so
+    # we use that to pick whether to compare the full hash or only the
+    # `arguments` subset (dropping AJ's volatile per-enqueue fields).
+    def self.payloads_equivalent?(expected, actual) #: (untyped, untyped) -> bool
+      if expected.is_a?(Hash) && expected.key?("arguments")
+        actual.is_a?(Hash) && actual["arguments"] == expected["arguments"]
+      else
+        actual == expected
+      end
+    end
   end
 end

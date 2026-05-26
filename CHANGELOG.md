@@ -42,6 +42,23 @@
     * `filter:` — `->(job)` predicate returning truthy to keep.
       Defaults to pass-all; ANDs with the named filters and opens
       the door to custom matchers.
+  * `enqueued?` / `enqueued_count` — predicate + counter taking a job
+    class (and optional positional/keyword args matching the
+    `perform` signature). Uses the class's own `zizq_serialize` to
+    compute the expected payload, so works for both `Zizq::Job` and
+    `extend Zizq::ActiveJobConfig` classes (ActiveJob's volatile
+    fields like `job_id` and `enqueued_at` are ignored — only the
+    `arguments` subset is compared). With no args, matches by class
+    name only.
+  * `enqueued_raw?` / `enqueued_raw_count` — symmetric predicate +
+    counter for `Zizq.enqueue_raw` calls, taking `queue:`, `type:`,
+    `payload:` directly. Each kwarg optional; unspecified means
+    "don't filter on this axis."
+  * For fuzzier matching (RSpec matchers, subset comparisons, custom
+    predicates), users drop down to
+    `client.enqueued_jobs(only_types: ..., filter: ->(job) { ... })`
+    — fully framework-agnostic, and an RSpec user can wrap that in a
+    custom matcher in ~5 lines.
   * `reset!` — clears the buffer between tests.
 
 ## 0.3.4
