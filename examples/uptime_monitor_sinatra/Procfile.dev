@@ -1,0 +1,4 @@
+web:    bundle exec puma
+# Worker runs embedded inside the web process for this example;
+# uncomment the next line to start the zizq server too.
+# zizq:   zizq serve

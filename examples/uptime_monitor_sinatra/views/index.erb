@@ -1,0 +1,39 @@
+<header>
+  <h1>Uptime Monitor</h1>
+</header>
+
+<main>
+  <form action="/monitored_urls" method="post" class="url-form">
+    <input type="text" name="url" placeholder="https://example.com/sitemap.xml" required autofocus>
+    <input type="submit" value="Watch">
+  </form>
+
+  <% if (notice = session.delete(:notice)) %><p class="flash flash-notice"><%= notice %></p><% end %>
+  <% if (alert  = session.delete(:alert))  %><p class="flash flash-alert"><%=  alert  %></p><% end %>
+
+  <%= erb :_urls, layout: false %>
+</main>
+
+<script>
+  // Re-fetch the URLs partial every 2s and swap it into the page so
+  // statuses update as the worker probes them. Paused while the tab
+  // is hidden; serialised via setTimeout so a slow response can't
+  // stack up overlapping requests.
+  (function() {
+    function refresh() {
+      if (document.visibilityState !== 'visible') {
+        setTimeout(refresh, 2000);
+        return;
+      }
+      fetch(location.pathname, { headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+        .then(function(r) { return r.text(); })
+        .then(function(html) {
+          var el = document.getElementById('urls');
+          if (el) el.outerHTML = html;
+        })
+        .catch(function() {})
+        .finally(function() { setTimeout(refresh, 2000); });
+    }
+    setTimeout(refresh, 2000);
+  })();
+</script>
