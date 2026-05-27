@@ -8,13 +8,13 @@ The official [Zizq Ruby Client](https://rubygems.org/gems/zizq) is available
 through RubyGems. Add it to your application's `Gemfile`.
 
 ``` ruby
-gem 'zizq', '~> 0.3.5'
+gem 'zizq', '~> 0.3.6'
 ```
 
 Or install it manually:
 
 ```shell
-$ gem install zizq -v 0.3.5
+$ gem install zizq -v 0.3.6
 ```
 
 ## Versioning

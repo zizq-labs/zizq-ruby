@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.6
+
+- **New `Zizq::Router`** — a built-in dispatcher that maps `type`
+  strings to handler blocks, for low-level and cross-language
+  workflows where `Zizq::Job`'s class-name dispatch doesn't fit.
+  Plain JSON payloads, explicit type registrations, no mixin.
+
+      Zizq.configure do |c|
+        c.dispatcher = Zizq::Router.new do
+          route("send_email") do |payload|
+            Mailer.deliver(payload["user_id"], payload["template"])
+          end
+
+          route("generate_report") do |payload, job|
+            Reports.run(payload["id"], attempts: job.attempts)
+          end
+
+          # Optional. When set, types with no registered route fall
+          # through to this handler instead of raising
+          # `Zizq::Router::UnknownJobType`. Apps that mix the two
+          # styles typically delegate the fallback to `Zizq::Job`.
+          fallback { |job| Zizq::Job.call(job) }
+        end
+      end
+
+  Handlers are invoked as `handler.call(payload, job)` —
+  block-form procs ignore either arg via Ruby's lax block arity;
+  strict-arity lambdas need to declare both. Routes captured inside
+  the constructor block have lexical `self == router`, so `def`-d
+  helpers in that block are reachable from those routes; routes
+  added outside (`router.route("…") { … }`) keep their own lexical
+  `self`. Routes can also be added/replaced after construction.
+
+  See [Custom Dispatchers](https://zizq.io/docs/clients/ruby/dispatchers.html)
+  for the full surface.
+
 ## 0.3.5
 
 - **New `Zizq.configuration.test_mode` flag** opting tests into an

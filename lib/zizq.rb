@@ -29,6 +29,7 @@ module Zizq
   autoload :Lifecycle,           "zizq/lifecycle"
   autoload :Query,               "zizq/query"
   autoload :Resources,           "zizq/resources"
+  autoload :Router,              "zizq/router"
   autoload :Test,                "zizq/test"
   autoload :TlsConfiguration,    "zizq/tls_configuration"
   autoload :Worker,              "zizq/worker"
