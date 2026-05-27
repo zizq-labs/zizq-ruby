@@ -161,7 +161,7 @@ Zizq.enqueue_raw(
 )
 ```
 
-### Cross-language and low-level dispatch { #router }
+### Cross-language and low-level dispatch
 
 When a Ruby app needs to *process* jobs enqueued by another language
 (or by `Zizq.enqueue_raw`), `Zizq::Router` maps `type` strings to
