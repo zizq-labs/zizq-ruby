@@ -41,6 +41,20 @@ module Zizq
   module Test
     autoload :Client, "zizq/test/client"
 
+    # Switch Zizq into test mode. After this, `Zizq.client` resolves
+    # to a `Zizq::Test::Client` that buffers enqueues in memory.
+    # Typically called once in a test helper.
+    def self.enable! #: () -> void
+      Zizq.configure { |c| c.test_mode = true }
+    end
+
+    # Switch back to the real client. The buffered state is dropped
+    # along with the test client (the next `Zizq.client` access
+    # builds a fresh `Zizq::Client`).
+    def self.disable! #: () -> void
+      Zizq.configure { |c| c.test_mode = false }
+    end
+
     # The active test client. Raises if test mode is not enabled —
     # better to fail loudly than return a stale or wrong client.
     def self.client #: () -> Client

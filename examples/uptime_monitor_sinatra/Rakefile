@@ -1,0 +1,51 @@
+# frozen_string_literal: true
+
+require "dotenv/load" if ENV["RACK_ENV"] != "production"
+require "sequel"
+require "rake/testtask"
+
+Sequel.extension :migration
+
+DATABASE_URL = ENV.fetch(
+  "DATABASE_URL",
+  "sqlite://storage/#{ENV.fetch('RACK_ENV', 'development')}.sqlite3",
+)
+
+namespace :db do
+  desc "Run any pending Sequel migrations under db/migrate."
+  task :migrate do
+    Sequel.connect(DATABASE_URL) do |db|
+      Sequel::Migrator.run(db, "db/migrate")
+      # `schema_migrations` is the TimestampMigrator table; rows = applied filenames.
+      applied = db.table_exists?(:schema_migrations) ? db[:schema_migrations].count : 0
+      puts "Migrations applied. #{applied} total."
+    end
+  end
+
+  desc "Roll back the most recent Sequel migration."
+  task :rollback do
+    Sequel.connect(DATABASE_URL) do |db|
+      applied = db[:schema_migrations].order(:filename).all
+      raise "No migrations to roll back." if applied.empty?
+
+      target_file = applied[-2]&.fetch(:filename) || ""
+      target = target_file.empty? ? 0 : Integer(target_file.split("_").first)
+      Sequel::Migrator.run(db, "db/migrate", target: target)
+    end
+  end
+
+  desc "Drop the SQLite database file."
+  task :drop do
+    path = DATABASE_URL.sub(%r{\Asqlite://}, "")
+    File.delete(path) if File.exist?(path)
+    puts "Dropped #{path}"
+  end
+end
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << "test"
+  t.libs << "."
+  t.test_files = FileList["test/**/test_*.rb"]
+end
+
+task default: :test

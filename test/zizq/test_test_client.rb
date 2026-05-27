@@ -15,6 +15,27 @@ class TestTestClient < ZizqTestCase
     Zizq.configure { |c| c.test_mode = true }
   end
 
+  # --- enable! / disable! ---
+
+  def test_enable_switches_into_test_mode
+    Zizq.reset!
+    Zizq.configure { |c| c.url = "http://example:7890" }
+    refute Zizq.configuration.test_mode
+
+    Zizq::Test.enable!
+
+    assert Zizq.configuration.test_mode
+    assert_kind_of Zizq::Test::Client, Zizq.client
+  end
+
+  def test_disable_switches_back_to_the_real_client
+    Zizq::Test.disable!
+
+    refute Zizq.configuration.test_mode
+    assert_kind_of Zizq::Client, Zizq.client
+    refute_kind_of Zizq::Test::Client, Zizq.client
+  end
+
   # --- Configuration plumbing ---
 
   def test_test_mode_defaults_to_false
