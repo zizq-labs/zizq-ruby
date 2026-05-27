@@ -12,7 +12,7 @@ API.
 ## Features
 
 * Multi-thread and/or multi-fiber concurrent worker (via [`async`](https://github.com/socketry/async))
-* `Zizq::Job` based job classes, Active Job support, or completely custom
+* `Zizq::Job` based job classes, Active Job support, or low-level/custom
 * Enqueue and process jobs from one language to another
 * Arbitrary named queues
 * Granular job priorities
@@ -22,6 +22,7 @@ API.
 * Recurring jobs (cron)
 * Job introspection and management APIs, with support for `jq` query filters
 * Unique jobs
+* Testing helpers
 
 ## Installation
 
@@ -32,13 +33,13 @@ API.
 Add it to your application's `Gemfile`:
 
 ```ruby
-gem 'zizq', '~> 0.3.5'
+gem 'zizq', '~> 0.3.6'
 ```
 
 Or install it manually:
 
 ```shell
-$ gem install zizq -v 0.3.5
+$ gem install zizq -v 0.3.6
 ```
 
 Ruby **3.2.8 or newer** is required. Client and server share version
@@ -62,7 +63,7 @@ Zizq.configure do |c|
   # Optional worker defaults — applied to every Zizq::Worker
   # instance and to runs of the `zizq-worker` executable. Explicit
   # kwargs or CLI flags override these.
-  c.worker.queues       = ['emails', 'payments']
+  c.worker.queues = ['emails', 'payments']
   c.worker.fiber_count  = 25
 end
 ```
@@ -148,10 +149,42 @@ Zizq.enqueue_bulk do |b|
 end
 ```
 
-> [!NOTE]
-> Jobs can also be enqueued without `Zizq::Job` via `Zizq.enqueue_raw` —
-> designed for cross-language workflows where, for example, a Ruby app
-> enqueues jobs consumed by a Go service.
+Jobs can also be enqueued without `Zizq::Job` via `Zizq.enqueue_raw` —
+designed for lower-level code style, and for cross-language workflows where,
+for example, a Ruby app enqueues jobs consumed by a Go service.
+
+```ruby
+Zizq.enqueue_raw(
+  type: "send_email",
+  queue: "comms",
+  payload: { user_id: 42, template: "welcome" }
+)
+```
+
+### Cross-language and low-level dispatch { #router }
+
+When a Ruby app needs to *process* jobs enqueued by another language
+(or by `Zizq.enqueue_raw`), `Zizq::Router` maps `type` strings to
+handler blocks operating on plain JSON payloads:
+
+```ruby
+Zizq.configure do |c|
+  c.dispatcher = Zizq::Router.new do
+    route('send_email') do |payload|
+      Mailer.deliver(payload['user_id'], payload['template'])
+    end
+
+    # Apps that mix the two styles can fall back to Zizq::Job
+    # for anything not handled by an explicit route.
+    fallback { |job| Zizq::Job.call(job) }
+  end
+end
+```
+
+See [Custom Dispatchers](https://zizq.io/docs/clients/ruby/dispatchers.html)
+for full details. Dispatchers in Zizq are just objects that implement `#call`
+with a single `Zizq::Resources::Job` argument, and `Zizq::Router` is just a
+dispatcher itself.
 
 ### Running a worker
 
