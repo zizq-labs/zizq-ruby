@@ -76,6 +76,34 @@ class CheckUrlJobTest < ActiveJob::TestCase
     end
   end
 
+  test "emits a url.status.changed audit event on a status transition" do
+    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    stub_request(:get, "https://example.com").to_return(status: 500)
+
+    perform_enqueued_jobs(only: CheckUrlJob) do
+      CheckUrlJob.perform_later(m)
+    end
+
+    event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
+    refute_nil event
+    assert_equal "url.status.changed", event.payload["event_type"]
+    assert_equal "system",             event.payload["actor"]
+    assert_equal "monitored_url:#{m.id}", event.payload["resource"]
+    assert_equal "up",   event.payload["data"]["from"]
+    assert_equal "down", event.payload["data"]["to"]
+  end
+
+  test "does not emit a url.status.changed audit event when status is unchanged" do
+    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    stub_request(:get, "https://example.com").to_return(status: 200)
+
+    perform_enqueued_jobs(only: CheckUrlJob) do
+      CheckUrlJob.perform_later(m)
+    end
+
+    assert_empty Zizq::Test.enqueued_jobs(only_types: "audit.create")
+  end
+
   test "enqueues NotifyWebhookJob on a down -> up transition" do
     m = MonitoredUrl.create!(url: "https://example.com", last_status: "down", last_checked_at: 1.minute.ago, consecutive_failures: 3)
     stub_request(:get, "https://example.com").to_return(status: 200)

@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+
+# Boot a zizq-worker for this app. Loads `app.rb` so `Zizq.configure`
+# (including `c.dispatcher = AuditRouter`) and the model classes are
+# available before the worker starts pulling jobs.
+exec bundle exec zizq-worker "$(dirname "$0")/../app.rb" "$@"

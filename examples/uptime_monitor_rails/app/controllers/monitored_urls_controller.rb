@@ -15,7 +15,19 @@ class MonitoredUrlsController < ApplicationController
     monitored = MonitoredUrl.create_or_find_by!(url: url)
     CheckUrlJob.perform_later(monitored)
 
-    notice = monitored.previously_new_record? ? "Now monitoring #{url}" : "Re-checking #{url}"
+    if monitored.previously_new_record?
+      Audit.emit(
+        event_type: "url.added",
+        actor:      "user",
+        resource:   "monitored_url:#{monitored.id}",
+        text:       "Started monitoring #{url}",
+        data:       { "url" => url },
+      )
+      notice = "Now monitoring #{url}"
+    else
+      notice = "Re-checking #{url}"
+    end
+
     redirect_to root_path, notice: notice
   rescue ActiveRecord::RecordInvalid => e
     redirect_to root_path, alert: e.record.errors.full_messages.to_sentence

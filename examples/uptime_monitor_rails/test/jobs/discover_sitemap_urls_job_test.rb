@@ -100,6 +100,20 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
     end
   end
 
+  test "emits a sitemap.scanned audit event with the discovered count" do
+    sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
+    stub_sitemap("https://example.com/a", "https://example.com/b", "https://example.com/c")
+
+    DiscoverSitemapUrlsJob.new.perform(sitemap)
+
+    event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
+    refute_nil event
+    assert_equal "sitemap.scanned",    event.payload["event_type"]
+    assert_equal "system",             event.payload["actor"]
+    assert_equal SITEMAP_URL,          event.payload["data"]["sitemap_url"]
+    assert_equal 3,                    event.payload["data"]["discovered_count"]
+  end
+
   test "doesn't enqueue checks for newly-disabled children" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
     MonitoredUrl.create!(

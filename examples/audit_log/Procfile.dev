@@ -1,0 +1,4 @@
+web:    bundle exec falcon serve --bind http://$BIND:$PORT --count 1
+worker: bin/worker
+# Uncomment the next line to start the zizq server too.
+# zizq:   zizq serve

@@ -78,7 +78,10 @@ class TestTestClient < ZizqTestCase
     assert_kind_of Zizq::Resources::Job, jobs.first
     assert_equal "q", jobs.first.queue
     assert_equal "Email", jobs.first.type
-    assert_equal({ user: 1 }, jobs.first.payload)
+    # Payload is normalised via JSON round-trip on enqueue so the
+    # in-memory view matches what a consumer sees on the wire —
+    # symbol keys become strings.
+    assert_equal({ "user" => 1 }, jobs.first.payload)
 
     # The returned job is the same instance as the buffered one — same
     # id flows through to whatever drain logic the test uses later.
@@ -413,7 +416,7 @@ class TestTestClient < ZizqTestCase
 
     Zizq::Test.dispatch_enqueued_jobs(
       only_queues: "emails",
-      filter:      ->(job) { job.payload["urgent"] || job.payload[:urgent] },
+      filter:      ->(job) { job.payload["urgent"] },
     )
 
     # `emails` AND `urgent` — only the first job.
@@ -591,7 +594,7 @@ class TestTestClient < ZizqTestCase
     Zizq.enqueue_raw(queue: "q", type: "A", payload: { important: true })
     Zizq.enqueue_raw(queue: "q", type: "B", payload: { important: false })
 
-    important = Zizq::Test.client.pending_jobs(filter: ->(job) { job.payload[:important] })
+    important = Zizq::Test.client.pending_jobs(filter: ->(job) { job.payload["important"] })
     assert_equal %w[A], important.map(&:type)
   end
 end

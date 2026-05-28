@@ -54,6 +54,29 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
     assert_equal "manual", created.source
   end
 
+  test "create emits a url.added audit event with actor=user" do
+    post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+
+    event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
+    refute_nil event, "expected an audit.create job"
+    assert_equal "audit",         event.queue
+    assert_equal "url.added",     event.payload["event_type"]
+    assert_equal "user",          event.payload["actor"]
+    assert_equal "uptime-monitor", event.payload["source"]
+    assert_match(/monitored_url:\d+/, event.payload["resource"])
+    assert_match(/Started monitoring/, event.payload["text"])
+    assert_equal({ "url" => "https://example.com" }, event.payload["data"])
+  end
+
+  test "create does not emit an audit event when re-checking an existing URL" do
+    MonitoredUrl.create!(url: "https://example.com")
+
+    post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+
+    assert_empty Zizq::Test.enqueued_jobs(only_types: "audit.create"),
+      "re-checking shouldn't audit-log a new URL addition"
+  end
+
   test "create strips surrounding whitespace from the URL" do
     post monitored_urls_path, params: { monitored_url: { url: "  https://example.com  " } }
 

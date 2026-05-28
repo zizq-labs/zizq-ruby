@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.3.7
+
+- **`Zizq::Test::Client` now normalises enqueued payloads to the
+  wire format** via a JSON round-trip on `enqueue` / `enqueue_bulk`.
+  Symbol keys, Symbol values, and nested structures get converted
+  to the string-keyed shape consumers actually receive, so tests
+  match production behaviour. Non-JSON-safe values (BigDecimal,
+  custom objects, raw `Time`) raise here rather than surviving in
+  test mode only to break on the wire.
+
+  **Breaking** — any test code reading symbol-keyed payloads from
+  the test buffer needs to switch to string keys.
+  `Zizq::Test.enqueued_raw?(payload: {...})` normalises the
+  *query* side too, so symbol-keyed assertion payloads keep
+  working without changes.
+
 ## 0.3.6
 
 - **New `Zizq::Router`** — a built-in dispatcher that maps `type`

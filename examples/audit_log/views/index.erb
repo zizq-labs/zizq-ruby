@@ -1,0 +1,57 @@
+<header>
+  <h1>Audit Log</h1>
+  <p class="hint">
+    Events from systems that have integrated with this sink.
+    Producers enqueue <code>audit.create</code> jobs to the
+    <code><%= ZIZQ_QUEUE %></code> queue.
+  </p>
+</header>
+
+<main>
+  <% if @events.empty? %>
+    <p class="empty">No audit events yet.</p>
+  <% else %>
+    <table class="events">
+      <thead>
+        <tr>
+          <th>When</th>
+          <th>Source</th>
+          <th>Type</th>
+          <th>Actor</th>
+          <th>Resource</th>
+          <th>Text</th>
+          <th>Data</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% @events.each do |e| %>
+          <tr>
+            <td class="when" title="<%= e.occurred_at.utc.iso8601 %>"><%= time_ago(e.occurred_at) %></td>
+            <td class="source"><%= e.source %></td>
+            <td class="type"><code><%= e.event_type %></code></td>
+            <td><%= e.actor %></td>
+            <td class="resource"><%= e.resource %></td>
+            <td><%= e.text %></td>
+            <td class="data">
+              <% formatted = format_data(e.data) %>
+              <% unless formatted.empty? %>
+                <pre><%= formatted %></pre>
+              <% end %>
+            </td>
+          </tr>
+        <% end %>
+      </tbody>
+    </table>
+
+    <% if params[:cursor] || @next_cursor %>
+      <p class="pagination">
+        <% if params[:cursor] %>
+          <a href="/">&larr; Newest</a>
+        <% end %>
+        <% if @next_cursor %>
+          <a href="/?cursor=<%= @next_cursor %>">Older &rarr;</a>
+        <% end %>
+      </p>
+    <% end %>
+  <% end %>
+</main>

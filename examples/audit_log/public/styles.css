@@ -1,0 +1,94 @@
+*, *::before, *::after { box-sizing: border-box; }
+
+body {
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+  margin: 0;
+  background: #f7f7f7;
+  color: #222;
+  line-height: 1.4;
+}
+
+header {
+  background: #1a1a2e;
+  color: white;
+  padding: 1rem 2rem;
+}
+header h1 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+header .hint { margin: 0; font-size: 0.85rem; color: #c0c0d0; }
+header code { background: rgba(255, 255, 255, 0.1); padding: 0.05rem 0.3rem; border-radius: 3px; }
+
+main {
+  max-width: 80rem;
+  margin: 2rem auto;
+  padding: 0 1rem;
+}
+
+.empty {
+  text-align: center;
+  padding: 2rem;
+  background: white;
+  border-radius: 4px;
+  color: #666;
+}
+
+table.events {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 4px;
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  font-size: 0.9rem;
+}
+table.events th,
+table.events td {
+  padding: 0.6rem 0.85rem;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+  vertical-align: top;
+}
+table.events th {
+  background: #fafafa;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #666;
+}
+table.events tbody tr:last-child td { border-bottom: 0; }
+
+table.events td.when    { white-space: nowrap; color: #666; }
+table.events td.source  { font-weight: 600; }
+table.events td.type code,
+table.events td.resource {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85rem;
+}
+table.events td.data pre {
+  margin: 0;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.75rem;
+  background: #f4f4f8;
+  padding: 0.4rem 0.5rem;
+  border-radius: 3px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-width: 24rem;
+}
+
+.pagination {
+  text-align: center;
+  margin-top: 1.5rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: center;
+}
+.pagination a {
+  display: inline-block;
+  padding: 0.5rem 1rem;
+  background: #1a1a2e;
+  color: white;
+  text-decoration: none;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+.pagination a:hover { background: #2a2a48; }
