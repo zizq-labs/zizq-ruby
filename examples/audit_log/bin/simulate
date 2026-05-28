@@ -1,0 +1,148 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# Fire one (or N) fake-but-plausible `audit.create` job(s) at the
+# local Zizq server. Run via:
+#
+#   bin/simulate              # one event
+#   bin/simulate 50           # fifty events
+#
+# To stream events at variable intervals from a shell loop:
+#
+#   while true; do bin/simulate; sleep $((RANDOM % 3 + 1)); done
+#
+# This is a *producer* — it shares no code with the audit app. If
+# you ported it to Node, Python, or Go, the audit app would still
+# happily ingest the events it produces.
+
+ENV["BUNDLE_GEMFILE"] ||= File.expand_path("../Gemfile", __dir__)
+require "bundler/setup"
+require "dotenv/load"
+require "zizq"
+require "time"
+
+Zizq.configure { |c| c.url = ENV.fetch("ZIZQ_URL", "http://127.0.0.1:7890") }
+
+USERS  = %w[alice@example.com bob@example.com chris@example.com diana@example.com eve@example.com]
+ADMINS = %w[ops@example.com admin@example.com]
+IPS    = ["203.0.113.7", "198.51.100.12", "192.0.2.99", "10.0.0.45", nil]
+
+# Each builder returns a hash with :resource, :text, :data and may
+# override :actor. random_event below stitches that together with
+# the shared envelope (occurred_at, source, event_type, ip).
+EVENTS = {
+  ["billing_api", "invoice.refunded"] => -> {
+    cents = rand(100..50_000)
+    card  = format("%04d", rand(10_000))
+    {
+      resource: "invoice:#{rand(1000..9999)}",
+      text:     "Refunded $#{format('%.2f', cents / 100.0)} to card ending #{card}",
+      data:     { "amount_cents" => cents, "card_last4" => card },
+    }
+  },
+  ["billing_api", "invoice.created"] => -> {
+    cents = rand(500..120_000)
+    items = rand(1..8)
+    {
+      resource: "invoice:#{rand(1000..9999)}",
+      text:     "Invoiced $#{format('%.2f', cents / 100.0)} across #{items} item(s)",
+      data:     { "amount_cents" => cents, "items_count" => items },
+    }
+  },
+  ["billing_api", "payment.failed"] => -> {
+    cents  = rand(500..50_000)
+    reason = %w[insufficient_funds card_declined expired_card processor_timeout].sample
+    {
+      actor:    "system",
+      resource: "invoice:#{rand(1000..9999)}",
+      text:     "Payment of $#{format('%.2f', cents / 100.0)} failed: #{reason}",
+      data:     { "amount_cents" => cents, "reason" => reason },
+    }
+  },
+  ["auth_service", "user.login.success"] => -> {
+    method = %w[password sso mfa].sample
+    {
+      resource: "user:#{rand(100..999)}",
+      text:     "Signed in via #{method}",
+      data:     { "method" => method },
+    }
+  },
+  ["auth_service", "user.login.failed"] => -> {
+    reason = %w[bad_password user_locked mfa_failed].sample
+    {
+      resource: "user:#{rand(100..999)}",
+      text:     "Failed sign-in: #{reason}",
+      data:     { "reason" => reason, "attempts_today" => rand(1..7) },
+    }
+  },
+  ["auth_service", "mfa.enabled"] => -> {
+    method = %w[totp webauthn sms].sample
+    {
+      resource: "user:#{rand(100..999)}",
+      text:     "Enabled MFA via #{method}",
+      data:     { "method" => method },
+    }
+  },
+  ["admin_console", "permission.granted"] => -> {
+    role   = %w[admin auditor billing_manager support].sample
+    target = "user:#{rand(100..999)}"
+    {
+      actor:    ADMINS.sample,
+      resource: target,
+      text:     "Granted role #{role}",
+      data:     { "role" => role, "target" => target },
+    }
+  },
+  ["admin_console", "user.suspended"] => -> {
+    reason = %w[fraud_review tos_violation manual_request].sample
+    {
+      actor:    ADMINS.sample,
+      resource: "user:#{rand(100..999)}",
+      text:     "Suspended: #{reason}",
+      data:     { "reason" => reason },
+    }
+  },
+  ["crm", "contact.created"] => -> {
+    first = %w[Alex Sam Robin Jordan Riley Pat Casey Morgan].sample
+    last  = %w[Brown Smith Lee Patel Garcia Nguyen Cohen Davis].sample
+    {
+      resource: "contact:#{rand(10_000..99_999)}",
+      text:     "Created contact #{first} #{last}",
+      data:     {
+        "first_name" => first,
+        "last_name"  => last,
+        "email"      => "#{first.downcase}.#{last.downcase}@example.org",
+      },
+    }
+  },
+  ["crm", "deal.won"] => -> {
+    cents = rand(50_000..500_000)
+    {
+      resource: "deal:#{rand(1000..9999)}",
+      text:     "Closed deal for $#{format('%.2f', cents / 100.0)}",
+      data:     { "value_cents" => cents, "stage" => "closed_won" },
+    }
+  },
+}
+
+def random_event
+  (source, type), build = EVENTS.to_a.sample
+  spec = build.call
+  {
+    "occurred_at" => (Time.now - rand(0..30)).utc.iso8601,
+    "source"      => source,
+    "event_type"  => type,
+    "actor"       => spec[:actor] || USERS.sample,
+    "ip"          => IPS.sample,
+    "resource"    => spec[:resource],
+    "text"        => spec[:text],
+    "data"        => spec[:data],
+  }
+end
+
+count = Integer(ARGV[0] || 1)
+count.times do
+  payload = random_event
+  Zizq.enqueue_raw(type: "audit.create", queue: "audit", payload: payload)
+  puts "#{payload['source']}/#{payload['event_type']} <- #{payload['text']}"
+end

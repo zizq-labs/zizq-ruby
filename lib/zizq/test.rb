@@ -168,7 +168,13 @@ module Zizq
       filters = {}
       filters[:only_queues] = queue if queue
       filters[:only_types]  = type  if type
-      filters[:filter]      = ->(job) { job.payload == payload } unless payload.nil?
+      unless payload.nil?
+        # Normalize the assertion-side payload the same way enqueue
+        # normalizes the buffered one, so symbol-keyed test payloads
+        # still match the (string-keyed) wire-format buffer.
+        normalized = Client.normalize_payload(payload)
+        filters[:filter] = ->(job) { job.payload == normalized }
+      end
       client.enqueued_jobs(**filters).size
     end
 

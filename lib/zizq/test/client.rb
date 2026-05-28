@@ -4,6 +4,8 @@
 # rbs_inline: enabled
 # frozen_string_literal: true
 
+require "json"
+
 module Zizq
   module Test
     # A `Zizq::Client` stand-in for use in test suites.
@@ -143,7 +145,7 @@ module Zizq
         req = EnqueueRequest.new(
           queue:,
           type:,
-          payload:,
+          payload: self.class.normalize_payload(payload),
           priority:,
           ready_at:,
           retry_limit:,
@@ -162,7 +164,7 @@ module Zizq
             req = EnqueueRequest.new(
               queue:        params[:queue],
               type:         params[:type],
-              payload:      params[:payload],
+              payload:      self.class.normalize_payload(params[:payload]),
               priority:     params[:priority],
               ready_at:     params[:ready_at],
               retry_limit:  params[:retry_limit],
@@ -234,6 +236,22 @@ module Zizq
 
       def synthetic_id(counter) #: (Integer) -> String
         "#{ID_PREFIX}#{counter.to_s.rjust(ID_LENGTH - ID_PREFIX.length, '0')}"
+      end
+
+      public
+
+      # Round-trip the payload through JSON so the in-memory
+      # representation matches what a consumer would receive over the
+      # wire: symbol keys / Symbol values become strings, nested
+      # hashes and arrays are normalized recursively, and non-JSON-
+      # safe values (BigDecimal, custom objects) raise here rather
+      # than surviving in test mode only to break in production.
+      #
+      # Also used by `Zizq::Test.enqueued_raw?` / `enqueued_raw_count`
+      # to normalize the query side so symbol-keyed assertion payloads
+      # still match the (now string-keyed) buffer.
+      def self.normalize_payload(payload) #: (untyped) -> untyped
+        JSON.parse(JSON.generate(payload))
       end
 
       # Returns entries matching every named filter AND the predicate.
