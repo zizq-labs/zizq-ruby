@@ -33,13 +33,13 @@ API.
 Add it to your application's `Gemfile`:
 
 ```ruby
-gem 'zizq', '~> 0.3.7'
+gem 'zizq', '~> 0.4.0'
 ```
 
 Or install it manually:
 
 ```shell
-$ gem install zizq -v 0.3.7
+$ gem install zizq -v 0.4.0
 ```
 
 Ruby **3.2.8 or newer** is required. Client and server share version

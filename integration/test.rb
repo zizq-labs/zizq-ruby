@@ -82,7 +82,11 @@ class IntegrationTest < Minitest::Test
       c.logger = Logger.new(File::NULL)
     end
 
-    Zizq.query.delete_all
+    # Wipe both jobs and cron groups so each scenario starts clean.
+    # Note: `Zizq.reset!` (in `teardown`) is the unrelated module-level
+    # call that releases the shared client and configuration —
+    # `Zizq.client.erase_all_data` is the server-side wipe.
+    Zizq.client.erase_all_data
     IntegrationTestJob.mock_perform = nil
   end
 
@@ -519,6 +523,20 @@ class IntegrationTest < Minitest::Test
     skip "Cron scheduling requires a Pro license" if e.status == 403
   ensure
     Zizq.crontab("integration-test").delete! rescue nil
+  end
+
+  def test_delete_all_crons_wipes_every_group
+    %w[wipe-a wipe-b].each do |name|
+      Zizq.define_crontab(name) do |cron|
+        cron.define_entry("e", "* * * * *").enqueue(IntegrationTestJob, 1)
+      end
+    end
+
+    deleted = Zizq.client.delete_all_crons
+    assert_equal 2, deleted
+    assert_empty Zizq.crontabs
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
   end
 
   def test_crontab_entry_pause

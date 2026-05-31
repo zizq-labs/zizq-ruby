@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.4.0
+
+- **`Client#delete_all_crons`** (`DELETE /crons`) — wipes every cron
+  group on the server in a single call, returning the deleted-group
+  count. Pro-only.
+- **`Client#erase_all_data`** (`POST /reset`) — wipes every cron group
+  and every job in one request. Primarily intended as a setup/teardown
+  step for test suites that want a known-empty server between scenarios.
+  - Named `erase_all_data` rather than `reset` to avoid colliding
+    with the module-level `Zizq.reset!`, which already exists and
+    means "release the shared client and clear configuration"
+    (purely client-side SDK state, unrelated to the server).
+- Requires Zizq server **0.4.0** or later for the new endpoints.
+
 ## 0.3.7
 
 - **`Zizq::Test::Client` now normalises enqueued payloads to the

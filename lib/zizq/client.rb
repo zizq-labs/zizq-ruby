@@ -336,6 +336,26 @@ module Zizq
       data.fetch("deleted")
     end
 
+    # Wipe *every* cron group and *every* job on the server.
+    #
+    # Equivalent to calling `delete_all_crons` followed by
+    # `delete_all_jobs` (no filter), but in a single request. Useful
+    # primarily as a setup/teardown step in tests where you want a
+    # known-empty server between scenarios.
+    #
+    # **Destructive.** No filters, no escape hatch, no confirmation —
+    # the server-side operation simply returns once everything is gone.
+    #
+    # Named `erase_all_data` rather than `reset` because `Zizq.reset!`
+    # already exists at the module level for client-side SDK state.
+    #
+    # @rbs return: void
+    def erase_all_data
+      response = raw_post("/reset")
+      handle_response!(response, expected: 204)
+      nil
+    end
+
     # Update a single job's mutable fields.
     #
     # Fields not provided are left unchanged. Use `Zizq::RESET` to clear
@@ -500,6 +520,23 @@ module Zizq
       response = delete("/crons/#{enc(name)}")
       handle_response!(response, expected: 204)
       nil
+    end
+
+    # Delete every cron group on the server in a single call.
+    #
+    # Returns the number of cron groups removed.
+    #
+    # **Destructive.** This deletes *every cron group on the server*.
+    # For granular deletes, use `delete_cron_group` with a specific
+    # name.
+    #
+    # Requires a Pro license on the server.
+    #
+    # @rbs return: Integer
+    def delete_all_crons
+      response = delete("/crons")
+      data = handle_response!(response, expected: 200)
+      data.fetch("deleted")
     end
 
     # Fetch a single cron entry.
