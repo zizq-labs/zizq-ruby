@@ -329,6 +329,21 @@ class TestClient < ZizqTestCase
     assert_equal 0, count
   end
 
+  def test_erase_all_data
+    stub_request(:post, "#{URL}/reset")
+      .to_return(status: 204, body: "", headers: {})
+
+    assert_nil @json_client.erase_all_data
+  end
+
+  def test_erase_all_data_raises_on_non_204
+    stub_request(:post, "#{URL}/reset")
+      .to_return(status: 500, body: JSON.generate({ "error" => "boom" }),
+                 headers: { "Content-Type" => "application/json" })
+
+    assert_raises(Zizq::ServerError) { @json_client.erase_all_data }
+  end
+
   def test_delete_all_jobs_rejects_unknown_filter
     assert_raises(ArgumentError) { @json_client.delete_all_jobs(where: { typo: "x" }) }
   end
@@ -930,6 +945,15 @@ class TestClient < ZizqTestCase
       .to_return(status: 204, body: "", headers: {})
 
     assert_nil @json_client.delete_cron_group("default")
+  end
+
+  def test_delete_all_crons
+    stub_request(:delete, "#{URL}/crons")
+      .to_return(status: 200, body: JSON.generate({ "deleted" => 3 }),
+                 headers: { "Content-Type" => "application/json" })
+
+    count = @json_client.delete_all_crons
+    assert_equal 3, count
   end
 
   def test_get_cron_group_entry
