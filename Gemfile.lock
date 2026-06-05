@@ -180,7 +180,7 @@ GEM
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
     webrick (1.9.2)
-    yard (0.9.38)
+    yard (0.9.42)
 
 PLATFORMS
   aarch64-linux-gnu
