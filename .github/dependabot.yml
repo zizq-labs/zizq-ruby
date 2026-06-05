@@ -2,10 +2,18 @@
 # Security advisories + Dependabot alerts are configured separately
 # in Settings → Code security and analysis.
 #
-# Strategy: weekly grouped patch+minor PRs per ecosystem so noise stays
-# low. Major version bumps come through as individual PRs since they
-# typically deserve a closer look (changelog read, Ruby version check,
-# etc.).
+# Strategy: weekly grouped patch+minor PRs, `versioning-strategy:
+# lockfile-only` so neither Gemfile nor gemspec constraints get auto-
+# bumped — only Gemfile.lock moves, keeping dev/CI on the latest
+# resolved versions. Public-facing gemspec stays stable for gem users.
+# Most existing dev constraints in Gemfile are wide enough (`~> 13.0`
+# etc.) to accept future patch/minor releases via the lockfile alone.
+#
+# Note: Dependabot doesn't support per-dependency-type versioning
+# strategy in a single bundler entry, and entries with the same
+# ecosystem + directory must be unique — so we accept that Gemfile
+# manifest constraints don't auto-widen. Security advisories override
+# this and PR regardless via Dependabot security updates.
 version: 2
 updates:
   - package-ecosystem: "bundler"
@@ -16,6 +24,7 @@ updates:
     open-pull-requests-limit: 10
     commit-message:
       prefix: "deps"
+    versioning-strategy: "lockfile-only"
     groups:
       bundler-patch-minor:
         update-types:
