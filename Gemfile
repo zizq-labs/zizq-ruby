@@ -11,7 +11,7 @@ group :development, :test do
   # For local testing with fibers
   gem "async", "~> 2.37"
   # Testing
-  gem "minitest", "~> 5.0"
+  gem "minitest", "~> 6.0"
   gem "webmock", "~> 3.26"
   gem "timecop", "~> 0.9"
   gem "activejob", ">= 7.0"
