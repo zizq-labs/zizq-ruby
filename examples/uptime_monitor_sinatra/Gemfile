@@ -17,7 +17,7 @@ gem "faraday",          "~> 2.10"
 gem "faraday-follow_redirects", "~> 0.3"
 
 # Sitemap parsing.
-gem "nokogiri",         "~> 1.16"
+gem "nokogiri",         ">= 1.19.4", "< 2.0"
 
 # `rake db:migrate` etc.
 gem "rake",             "~> 13.0"
