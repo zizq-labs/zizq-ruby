@@ -32,7 +32,10 @@ module Zizq
     ?status: (String | Array[String])?,
     ?queue: (String | Array[String])?,
     ?type: (String | Array[String])?,
-    ?filter: String?
+    ?filter: String?,
+    ?priority: (Integer | Range[Integer?])?,
+    ?ready_at: (to_f | Range[to_f?])?,
+    ?attempts: (Integer | Range[Integer?])?
   }
 
   # Update parameters for single and bulk update operations.

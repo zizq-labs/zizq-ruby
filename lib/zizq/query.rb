@@ -55,6 +55,9 @@ module Zizq
     # @rbs type: (String | Array[String])?
     # @rbs status: (String | Array[String])?
     # @rbs jq_filter: String?
+    # @rbs priority: (Integer | Range[Integer?])?
+    # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
+    # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs order: Zizq::sort_direction?
     # @rbs limit: Integer?
     # @rbs page_size: Integer?
@@ -64,6 +67,9 @@ module Zizq
                    type: nil,
                    status: nil,
                    jq_filter: nil,
+                   priority: nil,
+                   ready_at: nil,
+                   attempts: nil,
                    order: nil,
                    limit: nil,
                    page_size: nil)
@@ -72,6 +78,9 @@ module Zizq
       @type = type
       @status = status
       @jq_filter = jq_filter
+      @priority = priority
+      @ready_at = ready_at
+      @attempts = attempts
       @order = order
       @limit = limit
       @page_size = page_size
@@ -151,6 +160,62 @@ module Zizq
     # @rbs return: Query
     def add_status(status)
       rebuild(status: Array(@status) + Array(status))
+    end
+
+    # Filter by priority range (replaces any existing priority filter).
+    #
+    # Accepts an Integer (exact match) or an inclusive Range. Lower numbers
+    # are higher priority. Exclusive ranges (e.g. `0...100`) raise
+    # `ArgumentError` — the server only supports inclusive bounds.
+    #
+    # Examples:
+    #
+    #   .by_priority(50)        # exactly priority 50
+    #   .by_priority(0..100)    # between 0 and 100 inclusive
+    #   .by_priority(100..)     # 100 or greater
+    #   .by_priority(..100)     # 100 or less
+    #
+    # @rbs priority: (Integer | Range[Integer?])?
+    # @rbs return: Query
+    def by_priority(priority)
+      rebuild(priority:)
+    end
+
+    # Filter by `ready_at` range (replaces any existing `ready_at` filter).
+    #
+    # Accepts a value (`Time`, `Numeric`, anything that responds to `to_f`)
+    # for an exact match, or an inclusive Range. Values are interpreted as
+    # fractional seconds on the Ruby side and converted to milliseconds for
+    # the server. Exclusive ranges raise `ArgumentError`.
+    #
+    # Examples:
+    #
+    #   .by_ready_at(Time.now..)         # ready to run now or later
+    #   .by_ready_at(..Time.now)         # was ready to run by now
+    #   .by_ready_at(t1..t2)             # ready between t1 and t2
+    #
+    # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
+    # @rbs return: Query
+    def by_ready_at(ready_at)
+      rebuild(ready_at:)
+    end
+
+    # Filter by `attempts` range (replaces any existing `attempts` filter).
+    #
+    # Accepts an Integer (exact match) or an inclusive Range. `attempts` is
+    # the number of times the job has failed. Exclusive ranges raise
+    # `ArgumentError`.
+    #
+    # Examples:
+    #
+    #   .by_attempts(0)         # never failed
+    #   .by_attempts(1..)       # has failed at least once
+    #   .by_attempts(1..3)      # has failed 1, 2, or 3 times
+    #
+    # @rbs attempts: (Integer | Range[Integer?])?
+    # @rbs return: Query
+    def by_attempts(attempts)
+      rebuild(attempts:)
     end
 
     # Filter by job class and exact arguments.
@@ -304,6 +369,9 @@ module Zizq
         type: @type,
         status: @status,
         filter: @jq_filter,
+        priority: @priority,
+        ready_at: @ready_at,
+        attempts: @attempts,
       )
 
       @limit ? [total, @limit].min : total
@@ -421,6 +489,9 @@ module Zizq
           type: @type,
           status: @status,
           filter: @jq_filter,
+          priority: @priority,
+          ready_at: @ready_at,
+          attempts: @attempts,
           limit: [@page_size, @limit, (@page_size || @limit) && MAX_PAGE_SIZE].compact.min,
           order: @order,
         )
@@ -470,6 +541,9 @@ module Zizq
         type: @type,
         status: @status,
         filter: @jq_filter,
+        priority: @priority,
+        ready_at: @ready_at,
+        attempts: @attempts,
       }
 
       apply = {
@@ -527,6 +601,9 @@ module Zizq
         type: @type,
         status: @status,
         filter: @jq_filter,
+        priority: @priority,
+        ready_at: @ready_at,
+        attempts: @attempts,
       }
 
       if @limit || @page_size
@@ -564,6 +641,9 @@ module Zizq
                 type: @type,
                 status: @status,
                 jq_filter: @jq_filter,
+                priority: @priority,
+                ready_at: @ready_at,
+                attempts: @attempts,
                 order: @order,
                 limit: @limit,
                 page_size: @page_size)
@@ -573,6 +653,9 @@ module Zizq
         type:,
         status:,
         jq_filter:,
+        priority:,
+        ready_at:,
+        attempts:,
         limit:,
         order:,
         page_size:,

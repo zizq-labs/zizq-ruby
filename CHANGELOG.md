@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.0
+
+- **Three new `Zizq::Query` range filters**: `#by_priority`,
+  `#by_ready_at`, and `#by_attempts`. Each accepts either a single
+  value (exact match) or an inclusive Ruby `Range` — beginless
+  (`(..b)`) and endless (`(a..)`) ranges are supported and map to
+  the server's `..B` / `A..` syntax.
+
+      Zizq.query.by_priority(100..200)             # bounded
+      Zizq.query.by_attempts(1..)                  # has failed at least once
+      Zizq.query.by_ready_at(..Time.now)           # eligible to run now
+
+  Exclusive ranges (`(a...b)`, `(a...)`, `(...b)`) raise
+  `ArgumentError` — the server only supports inclusive bounds.
+  `#by_ready_at` accepts anything that responds to `#to_f` (Time,
+  Numeric, Duration-like values); inputs are interpreted as
+  fractional seconds and converted to milliseconds on the wire,
+  consistent with the existing `ready_at:` enqueue option.
+
+- **`Client#list_jobs`, `Client#count_jobs`, `Client#delete_all_jobs`,
+  and `Client#update_all_jobs`** all gain matching `priority:`,
+  `ready_at:`, and `attempts:` keyword arguments backed by the same
+  encoding rules. `where_params` in `sig/zizq.rbs` was extended to
+  cover the new keys.
+
+- Requires Zizq server **0.5.0** or later. Older servers will reject
+  requests that include any of the new query parameters with
+  `400 Bad Request`.
+
 ## 0.4.0
 
 - **`Client#delete_all_crons`** (`DELETE /crons`) — wipes every cron
