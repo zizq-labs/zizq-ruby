@@ -30,6 +30,13 @@ filter (using the `and` operator):
 * [`#by_jq_filter`](#zizqquery-by_jq_filter)
 * [`#add_jq_filter`](#zizqquery-by_jq_filter)
 
+These methods accept an `Integer` or an inclusive `Range` to filter on numeric
+job fields:
+
+* [`#by_priority`](#zizqquery-by_priority)
+* [`#by_ready_at`](#zizqquery-by_ready_at)
+* [`#by_attempts`](#zizqquery-by_attempts)
+
 These methods wrap `#by_type` and `#add_jq_filter` to find jobs enqueued using
 `Zizq::Job` or Active Job classes extending `Zizq::ActiveJobConfig`:
 
@@ -184,6 +191,80 @@ end
 # 03fvqm2ejnbjahvhaz5308g6x: {"args"=>[13, 5000], "kwargs"=>{}}
 # 03fvqm2ejnbjahvhaz6c9pt9z: {"args"=>[14, 5000], "kwargs"=>{}}
 # 03fvqm2ejnbjahvhaz93heeqc: {"args"=>[15, 5000], "kwargs"=>{}}
+```
+
+### Range filters
+
+The `#by_priority`, `#by_ready_at`, and `#by_attempts` methods all share the
+same calling convention: they accept either a single value (for an exact
+match) or an inclusive `Range` (for a bounded, lower-bounded, or upper-bounded
+match).
+
+| Argument        | Meaning                                |
+| --------------- | -------------------------------------- |
+| `n`             | Exactly `n` (sugar for `(n..n)`).      |
+| `(a..b)`        | Between `a` and `b`, inclusive.        |
+| `(a..)`         | At least `a`.                          |
+| `(..b)`         | At most `b`.                           |
+
+> [!WARNING]
+> Exclusive ranges (`(a...b)`, `(a...)`, `(...b)`) raise `ArgumentError` — the
+> server only supports inclusive bounds. Use the `..` form instead.
+
+### `#by_priority` { #zizqquery-by_priority }
+
+Narrows the query down to jobs whose `priority` falls inside the given value
+or range. Lower numbers are higher priority.
+
+``` ruby
+Zizq.query.by_priority(0).count
+# 4231
+
+Zizq.query.by_priority(100..200).count
+# 812
+
+Zizq.query.by_queue("emails").by_priority(..100).count
+# 39
+```
+
+### `#by_ready_at` { #zizqquery-by_ready_at }
+
+Narrows the query down to jobs whose `ready_at` falls inside the given value
+or range. Accepts anything that responds to `#to_f` — `Time`, `Numeric`, and
+`Duration`-like values all work. Values are interpreted as fractional seconds
+on the Ruby side and converted to milliseconds for the server.
+
+``` ruby
+# Jobs whose ready_at is in the past (i.e. eligible to run now).
+Zizq.query.by_ready_at(..Time.now).by_status("scheduled").count
+# 17
+
+# Jobs that won't be ready until at least an hour from now.
+Zizq.query.by_ready_at((Time.now + 3600)..).count
+# 4
+
+# Jobs ready within a specific window.
+Zizq.query.by_ready_at(Time.now..(Time.now + 86_400)).count
+# 132
+```
+
+### `#by_attempts` { #zizqquery-by_attempts }
+
+Narrows the query down to jobs whose failure count falls inside the given
+value or range.
+
+``` ruby
+# Jobs that have never failed.
+Zizq.query.by_attempts(0).count
+# 5021
+
+# Jobs that have failed at least once.
+Zizq.query.by_attempts(1..).count
+# 87
+
+# Jobs that have failed between 1 and 3 times (e.g. for triaging flaky work).
+Zizq.query.by_queue("webhooks").by_attempts(1..3).count
+# 14
 ```
 
 ### `#by_job_class_and_args`, `#by_job_class_and_args_subset` { #zizqquery-by_job_class_and_args }

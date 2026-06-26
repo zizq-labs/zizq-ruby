@@ -264,6 +264,97 @@ class TestClient < ZizqTestCase
     assert_equal false, result.has_next?
   end
 
+  # --- range filters ---
+
+  def test_list_jobs_with_priority_integer
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "priority" => "50" })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(priority: 50)
+  end
+
+  def test_list_jobs_with_priority_inclusive_range
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "priority" => "0..100" })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(priority: 0..100)
+  end
+
+  def test_list_jobs_with_priority_endless_range
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "priority" => "100.." })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(priority: 100..)
+  end
+
+  def test_list_jobs_with_priority_beginless_range
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "priority" => "..100" })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(priority: ..100)
+  end
+
+  def test_list_jobs_with_attempts_range
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "attempts" => "1.." })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(attempts: 1..)
+  end
+
+  def test_list_jobs_with_ready_at_range_in_seconds_converts_to_ms
+    # Times in Ruby are fractional seconds; the wire format is ms.
+    t1 = Time.at(1_700_000_000)
+    t2 = Time.at(1_800_000_000)
+    stub_request(:get, "#{URL}/jobs")
+      .with(query: { "ready_at" => "1700000000000..1800000000000" })
+      .to_return(status: 200,
+                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+                 headers: { "Content-Type" => "application/json" })
+    @json_client.list_jobs(ready_at: t1..t2)
+  end
+
+  def test_list_jobs_rejects_exclusive_range
+    assert_raises(ArgumentError) { @json_client.list_jobs(priority: 0...100) }
+    assert_raises(ArgumentError) { @json_client.list_jobs(priority: 0...) }
+    assert_raises(ArgumentError) { @json_client.list_jobs(priority: ...100) }
+  end
+
+  def test_count_jobs_with_range
+    stub_request(:get, "#{URL}/jobs/count")
+      .with(query: { "priority" => "0..100" })
+      .to_return(status: 200, body: JSON.generate({ "count" => 3 }),
+                 headers: { "Content-Type" => "application/json" })
+    assert_equal 3, @json_client.count_jobs(priority: 0..100)
+  end
+
+  def test_delete_all_jobs_with_range
+    stub_request(:delete, "#{URL}/jobs?attempts=1..")
+      .to_return(status: 200, body: JSON.generate({ "deleted" => 5 }),
+                 headers: { "Content-Type" => "application/json" })
+    assert_equal 5, @json_client.delete_all_jobs(where: { attempts: 1.. })
+  end
+
+  def test_update_all_jobs_with_range
+    stub_request(:patch, "#{URL}/jobs?priority=200..")
+      .with(body: JSON.generate({ priority: 100 }))
+      .to_return(status: 200, body: JSON.generate({ "patched" => 3 }),
+                 headers: { "Content-Type" => "application/json" })
+    assert_equal 3, @json_client.update_all_jobs(
+      where: { priority: 200.. },
+      apply: { priority: 100 },
+    )
+  end
+
   # --- count_jobs ---
 
   def test_count_jobs_no_filters

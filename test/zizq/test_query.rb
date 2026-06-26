@@ -68,6 +68,40 @@ class TestQuery < ZizqTestCase
     Zizq::Query.new.by_jq_filter(".user_id == 42").to_a
   end
 
+  def test_by_priority_with_integer
+    stub_list(query: { "priority" => "50" })
+    Zizq::Query.new.by_priority(50).to_a
+  end
+
+  def test_by_priority_with_range
+    stub_list(query: { "priority" => "0..100" })
+    Zizq::Query.new.by_priority(0..100).to_a
+  end
+
+  def test_by_priority_with_endless_range
+    stub_list(query: { "priority" => "100.." })
+    Zizq::Query.new.by_priority(100..).to_a
+  end
+
+  def test_by_attempts_with_range
+    stub_list(query: { "attempts" => "1.." })
+    Zizq::Query.new.by_attempts(1..).to_a
+  end
+
+  def test_by_ready_at_with_range_converts_seconds_to_ms
+    t1 = Time.at(1_700_000_000)
+    t2 = Time.at(1_800_000_000)
+    stub_list(query: { "ready_at" => "1700000000000..1800000000000" })
+    Zizq::Query.new.by_ready_at(t1..t2).to_a
+  end
+
+  def test_by_priority_rejects_exclusive_range
+    # The exclusive range is only validated when the request is built, so
+    # we need to trigger an enumeration. No HTTP stub since we should fail
+    # before issuing any request.
+    assert_raises(ArgumentError) { Zizq::Query.new.by_priority(0...100).to_a }
+  end
+
   def test_add_jq_filter_combines_with_and
     stub_list(query: { "filter" => "(.x > 1) and (.x < 10)" })
     Zizq::Query.new.add_jq_filter(".x > 1").add_jq_filter(".x < 10").to_a

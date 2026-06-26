@@ -238,11 +238,17 @@ module Zizq
     # The `filter` parameter accepts a jq expression for filtering jobs by
     # payload content (e.g. `.user_id == 42`).
     #
+    # Range filters (`priority`, `attempts`, `ready_at`) accept exact values or
+    # inclusive ranges.
+    #
     # @rbs id: (String | Array[String])?
     # @rbs status: (String | Array[String])?
     # @rbs queue: (String | Array[String])?
     # @rbs type: (String | Array[String])?
     # @rbs filter: String?
+    # @rbs priority: (Integer | Range[Integer?])?
+    # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
+    # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs from: String?
     # @rbs order: Zizq::sort_direction?
     # @rbs limit: Integer?
@@ -252,10 +258,25 @@ module Zizq
                   queue: nil,
                   type: nil,
                   filter: nil,
+                  priority: nil,
+                  ready_at: nil,
+                  attempts: nil,
                   from: nil,
                   order: nil,
                   limit: nil)
-      options = { id:, status:, queue:, type:, filter:, from:, order:, limit: }.compact #: Hash[Symbol, untyped]
+      options = {
+        id:,
+        status:,
+        queue:,
+        type:,
+        filter:,
+        priority: encode_range(priority),
+        ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
+        attempts: encode_range(attempts),
+        from:,
+        order:,
+        limit:,
+      }.compact #: Hash[Symbol, untyped]
 
       multi_keys = %i[id status queue type]
       params = build_where_params(options, multi_keys:)
@@ -280,13 +301,28 @@ module Zizq
     # @rbs queue: (String | Array[String])?
     # @rbs type: (String | Array[String])?
     # @rbs filter: String?
+    # @rbs priority: (Integer | Range[Integer?])?
+    # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
+    # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs return: Integer
     def count_jobs(id: nil,
                    status: nil,
                    queue: nil,
                    type: nil,
-                   filter: nil)
-      options = { id:, status:, queue:, type:, filter: }.compact #: Hash[Symbol, untyped]
+                   filter: nil,
+                   priority: nil,
+                   ready_at: nil,
+                   attempts: nil)
+      options = {
+        id:,
+        status:,
+        queue:,
+        type:,
+        filter:,
+        priority: encode_range(priority),
+        ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
+        attempts: encode_range(attempts),
+      }.compact #: Hash[Symbol, untyped]
 
       multi_keys = %i[id status queue type]
       params = build_where_params(options, multi_keys:)
@@ -380,8 +416,12 @@ module Zizq
                    backoff: UNCHANGED,
                    retention: UNCHANGED)
       body = build_set_body(
-        queue:, priority:, ready_at:,
-        retry_limit:, backoff:, retention:
+        queue:,
+        priority:,
+        ready_at:,
+        retry_limit:,
+        backoff:,
+        retention:
       )
       response = patch("/jobs/#{enc(id)}", body)
       data = handle_response!(response, expected: 200)
@@ -926,9 +966,62 @@ module Zizq
     # @rbs queue: (String | Array[String])?
     # @rbs type: (String | Array[String])?
     # @rbs filter: String?
+    # @rbs priority: (Integer | Range[Integer?])?
+    # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
+    # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs return: Hash[Symbol, untyped]
-    def validate_where(id: nil, status: nil, queue: nil, type: nil, filter: nil)
-      { id:, status:, queue:, type:, filter: }.compact
+    def validate_where(id: nil,
+                       status: nil,
+                       queue: nil,
+                       type: nil,
+                       filter: nil,
+                       priority: nil,
+                       ready_at: nil,
+                       attempts: nil)
+      {
+        id:,
+        status:,
+        queue:,
+        type:,
+        filter:,
+        priority: encode_range(priority),
+        ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
+        attempts: encode_range(attempts),
+      }.compact
+    end
+
+    # Encode an Integer or Range filter into the server's query format.
+    #
+    # Accepted shapes:
+    #
+    # - `nil` -> `nil` (no filter sent)
+    # - `Integer` -> `"N"` (single value)
+    # - `(a..b)` -> `"A..B"` (inclusive both ends)
+    # - `(a..)` -> `"A.."` (lower bound only)
+    # - `(..b)` -> `"..B"` (upper bound only)
+    #
+    # Exclusive ranges (`a...b`, `a...`, `...b`) raise `ArgumentError` — the
+    # server only supports inclusive bounds. A bound transformation block can
+    # convert values before formatting (e.g. seconds -> ms for `ready_at`).
+    #
+    # @rbs value: untyped
+    # @rbs &block: ?(untyped) -> Integer
+    # @rbs return: String?
+    def encode_range(value, &block)
+      block ||= ->(v) { v.to_i }
+
+      case value
+      when nil
+        nil
+      when Range
+        if value.exclude_end?
+          raise ArgumentError,
+            "exclusive ranges are not supported by the server; use an inclusive range (a..b) instead"
+        end
+        "#{value.begin&.then(&block)}..#{value.end&.then(&block)}"
+      else
+        block.call(value).to_s
+      end
     end
 
     # Validate set parameters via keyword args (rejects unknown keys) and
