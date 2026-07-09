@@ -23,23 +23,27 @@ class namespaced within a module hierarchy. Classes including `Zizq::Job`
 > You *cannot* make an anonymous class a `Zizq::Job`. The worker would have no
 > way of finding it and instantiating it.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-
-  def perform(arg1, arg2)
-    puts "Hello, #{arg1} and #{arg2}"
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+> 
+>   def perform(arg1, arg2)
+>     puts "Hello, #{arg1} and #{arg2}"
+>   end
+> end
+> ```
 
 We would enqueue an instance of this job by calling `Zizq.enqueue` with the
 class and the job arguments.
 
-``` ruby
-Zizq.enqueue(MyApp::MyJob, "Bill", "Ben")
-# #<Zizq::Resources::Job @data={"id"=>"03ftfjjuhc59aliu4wadzi06j", ... }>
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.enqueue(MyApp::MyJob, "Bill", "Ben")
+> # #<Zizq::Resources::Job @data={"id"=>"03ftfjjuhc59aliu4wadzi06j", ... }>
+> ```
 
 This job isn't very interesting but it is a valid `Zizq::Job` implementation
 and allows us to highlight some concepts.
@@ -57,10 +61,12 @@ Zizq will derive the job type from the class name `"MyApp::MyJob"`.
 Because the job class does not specify a queue explicitly, jobs of this type
 will be placed onto the `default` queue.
 
-``` ruby
-MyApp::MyJob.zizq_queue
-# "default"
-```
+> Ruby:
+>
+> ``` ruby
+> MyApp::MyJob.zizq_queue
+> # "default"
+> ```
 
 There are a number of class methods added to the job class—all prefixed with
 `zizq_`—which allow getting or setting the various attributes. These can all be
@@ -74,15 +80,17 @@ cannot contain any of the following reserved characters: `,`, `*`, `?`, `[`,
 
 The default queue is `"default"`.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_queue 'example'
-end
-
-MyApp::MyJob.zizq_queue
-# "example"
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_queue 'example'
+> end
+> 
+> MyApp::MyJob.zizq_queue
+> # "example"
+> ```
 
 #### Setting the Priority
 
@@ -90,15 +98,17 @@ Use `zizq_priority` to set or get the `priority` of the job. Valid values range
 between `0` and `65536`. The default priority is not specified by the client,
 but by the Zizq server (generally `32768`).
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_priority 500
-end
-
-MyApp::MyJob.zizq_priority
-# 500
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_priority 500
+> end
+> 
+> MyApp::MyJob.zizq_priority
+> # 500
+> ```
 
 #### Setting the Backoff Policy
 
@@ -119,19 +129,21 @@ delay = base + (attempts ** exponent) + (rand(0.0..jitter) * attempts)
 The randomness in the jitter component is designed to avoid situations where a
 cascade of failures all retry at the same time. They naturally spread out.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_retry_limit 50
-  zizq_backoff base: 5, exponent: 2, jitter: 10
-end
-
-MyApp::MyJob.zizq_retry_limit
-# 50
-
-MyApp::MyJob.zizq_backoff
-# {:exponent=>2.0, :base=>5.0, :jitter=>10.0}
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_retry_limit 50
+>   zizq_backoff base: 5, exponent: 2, jitter: 10
+> end
+> 
+> MyApp::MyJob.zizq_retry_limit
+> # 50
+> 
+> MyApp::MyJob.zizq_backoff
+> # {:exponent=>2.0, :base=>5.0, :jitter=>10.0}
+> ```
 
 #### Setting the Retention Policy
 
@@ -143,15 +155,17 @@ for completed jobs, meaning only dead jobs are kept.
 
 Both arguments are optional.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_retention dead: 86_400 * 30, completed: 86_400 * 2
-end
-
-MyApp::MyJob.zizq_retention
-# {:completed=>172800.0, :dead=>2592000.0}
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_retention dead: 86_400 * 30, completed: 86_400 * 2
+> end
+> 
+> MyApp::MyJob.zizq_retention
+> # {:completed=>172800.0, :dead=>2592000.0}
+> ```
 
 #### Specifying Job Uniqueness
 
@@ -206,18 +220,20 @@ The default scope is `:queued`. Zizq does not force you to select an arbitrary
 expiry deadline for unique jobs. The implementation is _purely_ lifecycle
 based.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_unique true, scope: :active
-end
-
-MyApp::MyJob.zizq_unique
-# true
-
-MyApp::MyJob.zizq_unique_scope
-# :active
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_unique true, scope: :active
+> end
+> 
+> MyApp::MyJob.zizq_unique
+> # true
+> 
+> MyApp::MyJob.zizq_unique_scope
+> # :active
+> ```
 
 ##### Unique Keys
 
@@ -227,35 +243,39 @@ arguments as the `#perform` method and returns a string for the unique key.
 
 The default implementation is a function of the job type and its arguments.
 
-``` ruby
-MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "MyApp::MyJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
-
-MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "MyApp::MyJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
-
-MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
-# "MyApp::MyJob:3be19cc482f366dcd538c22b8536d7947672071b8c8fb3a2486ebfd04b2216b6"
-```
+> Ruby:
+>
+> ``` ruby
+> MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "MyApp::MyJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
+> 
+> MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "MyApp::MyJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
+> 
+> MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
+> # "MyApp::MyJob:3be19cc482f366dcd538c22b8536d7947672071b8c8fb3a2486ebfd04b2216b6"
+> ```
 
 If, for example, you need uniqueness only on a subset of the arguments you may
 override this method in your class:
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-  zizq_unique true, scope: :active
-
-  def self.zizq_unique_key(arg1, arg2, example:)
-    super(arg1, arg2)
-  end
-end
-
-MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "MyApp::MyJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
-MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
-# "MyApp::MyJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+>   zizq_unique true, scope: :active
+> 
+>   def self.zizq_unique_key(arg1, arg2, example:)
+>     super(arg1, arg2)
+>   end
+> end
+> 
+> MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "MyApp::MyJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
+> MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
+> # "MyApp::MyJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
+> ```
 
 ### Dynamic Job Configuration { #dynamic-config }
 
@@ -268,19 +288,21 @@ If you need to do any kind of dynamic configuration in your job classes, such
 as assigning a different priority based on time of day, or based on some of the
 arguments, you can override this method.
 
-``` ruby
-class MyApp::MyJob
-  include Zizq::Job
-
-  zizq_priority 500
-
-  def self.zizq_enqueue_request(arg1, arg2, example:)
-    req = super
-    req.priority -= 50 if arg1 == "Bill"
-    req
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class MyApp::MyJob
+>   include Zizq::Job
+> 
+>   zizq_priority 500
+> 
+>   def self.zizq_enqueue_request(arg1, arg2, example:)
+>     req = super
+>     req.priority -= 50 if arg1 == "Bill"
+>     req
+>   end
+> end
+> ```
 
 ### Payload Serialization & Deserialization
 
@@ -293,23 +315,27 @@ The default serialization implementation is done through the `zizq_serialize`
 class method, which takes the same input arguments as the `#perform` method and
 returns a JSON-serializable value encoding those arguments (i.e. a Hash).
 
-``` ruby
-MyApp::MyJob.zizq_serialize("Bill", "Ben", example: 42)
-# {"args"=>["Bill", "Ben"], "kwargs"=>{"example"=>42}}
-```
+> Ruby:
+>
+> ``` ruby
+> MyApp::MyJob.zizq_serialize("Bill", "Ben", example: 42)
+> # {"args"=>["Bill", "Ben"], "kwargs"=>{"example"=>42}}
+> ```
 
 A corresponding `zizq_deserialize` exists. This method returns two values:
 an `args` array for the positional arguments and a `kwargs` hash for any
 keyword arguments.
 
-``` ruby
-args, kwargs = MyApp::MyJob.zizq_deserialize({"args"=>["Bill", "Ben"], "kwargs"=>{"example"=>42}})
-
-args
-# ["Bill", "Ben"]
-kwargs
-# {:example=>42}
-```
+> Ruby:
+>
+> ``` ruby
+> args, kwargs = MyApp::MyJob.zizq_deserialize({"args"=>["Bill", "Ben"], "kwargs"=>{"example"=>42}})
+> 
+> args
+> # ["Bill", "Ben"]
+> kwargs
+> # {:example=>42}
+> ```
 
 Your classes may override these methods if you need custom serialization logic.
 

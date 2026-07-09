@@ -17,11 +17,13 @@ provided by `Zizq.configure { ... }`.
 
 Specify the `dispatcher` to change the default:
 
-``` ruby
-Zizq.configure do |c|
-  c.dispatcher = MyDispatcher.new
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.dispatcher = MyDispatcher.new
+> end
+> ```
 
 ## Default Dispatcher
 
@@ -44,33 +46,37 @@ one language (e.g. NodeJS) may enqueue jobs to be picked up in another language
 
 A simple example using a `case..when` based on the `type` follows:
 
-``` ruby
-class MyDispatcher
-  def call(job)
-    case job.type
-    when 'send_email'
-      command = SendEmailCommand.new(
-        job.payload.fetch('user_id'),
-        job.payload.fetch('template'),
-      )
-      command.run
-    when 'generate_report'
-      command = GenerateReportCommand.new(job.payload.fetch('month'))
-      command.run
-    else
-      # raise "Unknown Job type: #{job.type}"
-    end
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class MyDispatcher
+>   def call(job)
+>     case job.type
+>     when 'send_email'
+>       command = SendEmailCommand.new(
+>         job.payload.fetch('user_id'),
+>         job.payload.fetch('template'),
+>       )
+>       command.run
+>     when 'generate_report'
+>       command = GenerateReportCommand.new(job.payload.fetch('month'))
+>       command.run
+>     else
+>       # raise "Unknown Job type: #{job.type}"
+>     end
+>   end
+> end
+> ```
 
 Configure Zizq to use this dispatcher.
 
-``` ruby
-Zizq.configure do |c|
-  c.dispatcher = MyDispatcher.new
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.dispatcher = MyDispatcher.new
+> end
+> ```
 
 When the Zizq worker dequeues a job and needs your application to perform that
 job, it invokes the dispatcher's `#call` method with the job. Provided the
@@ -89,26 +95,28 @@ the `case`/`when` plumbing. Designed for low-level or cross-language workflows:
 payloads are plain JSON values, types are strings the producer agrees
 on with the consumer, and routes are registered explicitly.
 
-``` ruby
-Zizq.configure do |c|
-  c.dispatcher = Zizq::Router.new do
-    route("send_email") do |payload|
-      SendEmailCommand.new(
-        payload.fetch("user_id"),
-        payload.fetch("template"),
-      ).run
-    end
-
-    route("generate_report") do |payload|
-      GenerateReportCommand.new(payload.fetch("month")).run
-    end
-
-    # Optional. When set, types with no registered route fall through
-    # to this handler instead of raising `Zizq::Router::UnknownJobType`.
-    fallback { |job| Zizq::Job.call(job) }
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.dispatcher = Zizq::Router.new do
+>     route("send_email") do |payload|
+>       SendEmailCommand.new(
+>         payload.fetch("user_id"),
+>         payload.fetch("template"),
+>       ).run
+>     end
+> 
+>     route("generate_report") do |payload|
+>       GenerateReportCommand.new(payload.fetch("month")).run
+>     end
+> 
+>     # Optional. When set, types with no registered route fall through
+>     # to this handler instead of raising `Zizq::Router::UnknownJobType`.
+>     fallback { |job| Zizq::Job.call(job) }
+>   end
+> end
+> ```
 
 Handler blocks are called as `handler.call(payload, job)`:
 
@@ -123,45 +131,51 @@ Routes defined through the constructor block are bound to the router instance
 (`self` is an instance of `Zizq::Router`). Methods defined directly within
 the block are accessible to each route:
 
-``` ruby
-router = Zizq::Router.new do
-  route("send_email") do |payload|
-    normalize(payload) => {user_id:, template:}
-    SendEmailCommand.new(user_id, template:).run
-  end
-
-  def normalize(payload)
-    case payload
-    when Hash
-      payload.map { |k, v| [k.to_sym, normalize(v)] }.to_h
-    when Array
-      payload.map { |v| normalize(v) }
-    else
-      payload
-    end
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> router = Zizq::Router.new do
+>   route("send_email") do |payload|
+>     normalize(payload) => {user_id:, template:}
+>     SendEmailCommand.new(user_id, template:).run
+>   end
+> 
+>   def normalize(payload)
+>     case payload
+>     when Hash
+>       payload.map { |k, v| [k.to_sym, normalize(v)] }.to_h
+>     when Array
+>       payload.map { |v| normalize(v) }
+>     else
+>       payload
+>     end
+>   end
+> end
+> ```
 
 Routes can also be added outside the constructor block:
 
-``` ruby
-router = Zizq::Router.new
-router.route("send_email") { |payload| ... }
-```
+> Ruby:
+>
+> ``` ruby
+> router = Zizq::Router.new
+> router.route("send_email") { |payload| ... }
+> ```
 
 In this case `self` is intentionally not bound to the `Zizq::Router` instance
 so you can compose a Router that uses methods accessible to the caller. If a
 route defined outside the constructor needs access to the router instance, it
 should refer to it directly:
 
-``` ruby
-router = Zizq::Router.new
-router.route("send_email") do |payload|
-  args = router.normalize(payload)
-  # ...
-end
-```
+> Ruby:
+>
+> ``` ruby
+> router = Zizq::Router.new
+> router.route("send_email") do |payload|
+>   args = router.normalize(payload)
+>   # ...
+> end
+> ```
 
 When no route matches and no fallback is registered,
 `Zizq::Router::UnknownJobType` is raised — caught by the worker's
@@ -181,19 +195,21 @@ one particular job type, or one particular queue that receives jobs using some
 other structure. You may write a custom dispatcher that delegates to
 `Zizq::Job` conditionally.
 
-``` ruby
-class MyDispatcher
-  def call(job)
-    return Zizq::Job.call(job) unless job.queue == 'special'
-
-    case job.type
-    when 'generate_report'
-      command = GenerateReportCommand.new(job.payload.fetch('month'))
-      command.run
-    end
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class MyDispatcher
+>   def call(job)
+>     return Zizq::Job.call(job) unless job.queue == 'special'
+> 
+>     case job.type
+>     when 'generate_report'
+>       command = GenerateReportCommand.new(job.payload.fetch('month'))
+>       command.run
+>     end
+>   end
+> end
+> ```
 
 Dispatchers may be composed in any number of creative ways.
 
@@ -209,20 +225,22 @@ worker instance. Since a dispatcher is just any object that implements
 `#call(job)`, this can easily be a proc or a lambda, which is handy for
 ad-hoc worker instances.
 
-``` ruby
-require "zizq"
-
-worker = Zizq::Worker.new(
-  queues: ["generic"],
-  dispatcher: ->(job) do
-    case job.type
-    when "send_email"
-      # ...
-    when "..."
-      # ...
-    end
-  end
-)
-
-worker.run
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> 
+> worker = Zizq::Worker.new(
+>   queues: ["generic"],
+>   dispatcher: ->(job) do
+>     case job.type
+>     when "send_email"
+>       # ...
+>     when "..."
+>       # ...
+>     end
+>   end
+> )
+> 
+> worker.run
+> ```

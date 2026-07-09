@@ -72,42 +72,46 @@ like `#count`, `#reverse_each`, `#take` etc do exactly what you would expect.
 
 Narrows the query down to a given `id` or set of `id`s.
 
-``` ruby
-Zizq.query.by_id("03fvmay0zcoskwdf2sm0u94aw").each do |job|
-  puts "#{job.id}: #{job.payload.inspect}"
-end
-# 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
-
-
-Zizq.query
-  .by_id("03fvmay0zcoskwdf2sm0u94aw")
-  .add_id("03fvqg68ra0od9u1b8m0txgka").each do |job|
-    puts "#{job.id}: #{job.payload.inspect}"
-  end
-# 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
-# 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
-
-Zizq.query
-  .by_id("03fvmay0zcoskwdf2sm0u94aw")
-  .add_id("03fvqg68ra0od9u1b8m0txgka")
-  .count
-# 2
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_id("03fvmay0zcoskwdf2sm0u94aw").each do |job|
+>   puts "#{job.id}: #{job.payload.inspect}"
+> end
+> # 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
+> 
+> 
+> Zizq.query
+>   .by_id("03fvmay0zcoskwdf2sm0u94aw")
+>   .add_id("03fvqg68ra0od9u1b8m0txgka").each do |job|
+>     puts "#{job.id}: #{job.payload.inspect}"
+>   end
+> # 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
+> # 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
+> 
+> Zizq.query
+>   .by_id("03fvmay0zcoskwdf2sm0u94aw")
+>   .add_id("03fvqg68ra0od9u1b8m0txgka")
+>   .count
+> # 2
+> ```
 
 ### `#by_queue`, `#add_queue` { #zizqquery-by_queue }
 
 Narrows the query down to a given `queue` or set of `queue`s.
 
-``` ruby
-Zizq.query.by_queue("analytics").count
-# 90
-
-Zizq.query.by_queue(["analytics", "example"]).count
-# 93
-
-Zizq.query.by_queue(["analytics", "example"]).add_queue("comms").count
-# 3631
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("analytics").count
+> # 90
+> 
+> Zizq.query.by_queue(["analytics", "example"]).count
+> # 93
+> 
+> Zizq.query.by_queue(["analytics", "example"]).add_queue("comms").count
+> # 3631
+> ```
 
 ### `#by_type`, `#add_type` { #zizqquery-by_type }
 
@@ -115,17 +119,19 @@ Narrows the query down to a given `type` or set of `type`s. By default these
 are job class names but if you are using cross-language features the types can
 be arbitrary.
 
-``` ruby
-Zizq.query.by_queue("default").by_type("ProcessVideoJob").count
-# 401
-
-Zizq.query
-  .by_queue("default")
-  .by_type("ProcessVideoJob")
-  .add_type("ClearNotesJob")
-  .count
-# 491
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("default").by_type("ProcessVideoJob").count
+> # 401
+> 
+> Zizq.query
+>   .by_queue("default")
+>   .by_type("ProcessVideoJob")
+>   .add_type("ClearNotesJob")
+>   .count
+> # 491
+> ```
 
 ### `#by_status`, `#add_status` { #zizqquery-by_status }
 
@@ -139,16 +145,18 @@ Valid statuses are:
 * `completed`
 * `dead`
 
-``` ruby
-Zizq.query.by_status(["scheduled", "ready"]).count
-# 5003
-
-Zizq.query.by_status("ready").count
-# 4993
-
-Zizq.query.by_queue("default").by_status("ready").add_status("scheduled").count
-# 491
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_status(["scheduled", "ready"]).count
+> # 5003
+> 
+> Zizq.query.by_status("ready").count
+> # 4993
+> 
+> Zizq.query.by_queue("default").by_status("ready").add_status("scheduled").count
+> # 491
+> ```
 
 ### `#by_jq_filter`, `#add_jq_filter` { #zizqquery-by_jq_filter }
 
@@ -161,37 +169,39 @@ expressions.
 > on the [jaq website](https://gedenkt.at/jaq/manual/#corelang) or on
 > [jq](https://jqlang.org/manual/#basic-filters).
 
-``` ruby
-Zizq.query.by_type("hello_world").by_jq_filter('.greet == "Moon"').each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
-
-Zizq.query.by_type("hello_world").by_jq_filter('.greet | contains("o")').each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
-# 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
-
-Zizq.query.by_type("TestJob").by_jq_filter('.args[0] <= 15').each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# 03fvqm2ejnbjahvhayikrkltr: {"args"=>[1, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhayk0y3i9k: {"args"=>[2, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaykq7d4fh: {"args"=>[3, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaynwu2ije: {"args"=>[4, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaypw8nkng: {"args"=>[5, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhayr7ytglw: {"args"=>[6, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaysw8ggq1: {"args"=>[7, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhayvtolt8p: {"args"=>[8, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhayx9j2rmx: {"args"=>[9, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhayzkj79ca: {"args"=>[10, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaz26z9dgz: {"args"=>[11, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaz2yke1ga: {"args"=>[12, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaz5308g6x: {"args"=>[13, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaz6c9pt9z: {"args"=>[14, 5000], "kwargs"=>{}}
-# 03fvqm2ejnbjahvhaz93heeqc: {"args"=>[15, 5000], "kwargs"=>{}}
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_type("hello_world").by_jq_filter('.greet == "Moon"').each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
+> 
+> Zizq.query.by_type("hello_world").by_jq_filter('.greet | contains("o")').each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # 03fvmay0zcoskwdf2sm0u94aw: {"greet"=>"World"}
+> # 03fvqg68ra0od9u1b8m0txgka: {"greet"=>"Moon"}
+> 
+> Zizq.query.by_type("TestJob").by_jq_filter('.args[0] <= 15').each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # 03fvqm2ejnbjahvhayikrkltr: {"args"=>[1, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhayk0y3i9k: {"args"=>[2, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaykq7d4fh: {"args"=>[3, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaynwu2ije: {"args"=>[4, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaypw8nkng: {"args"=>[5, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhayr7ytglw: {"args"=>[6, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaysw8ggq1: {"args"=>[7, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhayvtolt8p: {"args"=>[8, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhayx9j2rmx: {"args"=>[9, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhayzkj79ca: {"args"=>[10, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaz26z9dgz: {"args"=>[11, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaz2yke1ga: {"args"=>[12, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaz5308g6x: {"args"=>[13, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaz6c9pt9z: {"args"=>[14, 5000], "kwargs"=>{}}
+> # 03fvqm2ejnbjahvhaz93heeqc: {"args"=>[15, 5000], "kwargs"=>{}}
+> ```
 
 ### Range filters
 
@@ -216,16 +226,18 @@ match).
 Narrows the query down to jobs whose `priority` falls inside the given value
 or range. Lower numbers are higher priority.
 
-``` ruby
-Zizq.query.by_priority(0).count
-# 4231
-
-Zizq.query.by_priority(100..200).count
-# 812
-
-Zizq.query.by_queue("emails").by_priority(..100).count
-# 39
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_priority(0).count
+> # 4231
+> 
+> Zizq.query.by_priority(100..200).count
+> # 812
+> 
+> Zizq.query.by_queue("emails").by_priority(..100).count
+> # 39
+> ```
 
 ### `#by_ready_at` { #zizqquery-by_ready_at }
 
@@ -234,38 +246,42 @@ or range. Accepts anything that responds to `#to_f` — `Time`, `Numeric`, and
 `Duration`-like values all work. Values are interpreted as fractional seconds
 on the Ruby side and converted to milliseconds for the server.
 
-``` ruby
-# Jobs whose ready_at is in the past (i.e. eligible to run now).
-Zizq.query.by_ready_at(..Time.now).by_status("scheduled").count
-# 17
-
-# Jobs that won't be ready until at least an hour from now.
-Zizq.query.by_ready_at((Time.now + 3600)..).count
-# 4
-
-# Jobs ready within a specific window.
-Zizq.query.by_ready_at(Time.now..(Time.now + 86_400)).count
-# 132
-```
+> Ruby:
+>
+> ``` ruby
+> # Jobs whose ready_at is in the past (i.e. eligible to run now).
+> Zizq.query.by_ready_at(..Time.now).by_status("scheduled").count
+> # 17
+> 
+> # Jobs that won't be ready until at least an hour from now.
+> Zizq.query.by_ready_at((Time.now + 3600)..).count
+> # 4
+> 
+> # Jobs ready within a specific window.
+> Zizq.query.by_ready_at(Time.now..(Time.now + 86_400)).count
+> # 132
+> ```
 
 ### `#by_attempts` { #zizqquery-by_attempts }
 
 Narrows the query down to jobs whose failure count falls inside the given
 value or range.
 
-``` ruby
-# Jobs that have never failed.
-Zizq.query.by_attempts(0).count
-# 5021
-
-# Jobs that have failed at least once.
-Zizq.query.by_attempts(1..).count
-# 87
-
-# Jobs that have failed between 1 and 3 times (e.g. for triaging flaky work).
-Zizq.query.by_queue("webhooks").by_attempts(1..3).count
-# 14
-```
+> Ruby:
+>
+> ``` ruby
+> # Jobs that have never failed.
+> Zizq.query.by_attempts(0).count
+> # 5021
+> 
+> # Jobs that have failed at least once.
+> Zizq.query.by_attempts(1..).count
+> # 87
+> 
+> # Jobs that have failed between 1 and 3 times (e.g. for triaging flaky work).
+> Zizq.query.by_queue("webhooks").by_attempts(1..3).count
+> # 14
+> ```
 
 ### `#by_job_class_and_args`, `#by_job_class_and_args_subset` { #zizqquery-by_job_class_and_args }
 
@@ -275,70 +291,76 @@ extend `Zizq::ActiveJobConfig`. They match jobs on the queue by wrapping
 argument matches, or on just a subset of the arguments (N positional arguments
 and partial keyword argument match).
 
-``` ruby
-Zizq.query.by_job_class_and_args(TestJob, 223, 5000).each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# 03fvqm2ejnbjahvhbao96krod: {"args"=>[223, 5000], "kwargs"=>{}}
-
-Zizq.query.by_job_class_and_args(TestJob, 223).each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# (no output)
-
-Zizq.query.by_job_class_and_args_subset(TestJob, 223).each do |job|
-  puts "#{job.id}: #{job.payload}"
-end
-# 03fvqm2ejnbjahvhbao96krod: {"args"=>[223, 5000], "kwargs"=>{}}
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_job_class_and_args(TestJob, 223, 5000).each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # 03fvqm2ejnbjahvhbao96krod: {"args"=>[223, 5000], "kwargs"=>{}}
+> 
+> Zizq.query.by_job_class_and_args(TestJob, 223).each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # (no output)
+> 
+> Zizq.query.by_job_class_and_args_subset(TestJob, 223).each do |job|
+>   puts "#{job.id}: #{job.payload}"
+> end
+> # 03fvqm2ejnbjahvhbao96krod: {"args"=>[223, 5000], "kwargs"=>{}}
+> ```
 
 ### `#order` { #zizqquery-order }
 
 Changes the sort order in which results are returned. Use Symbols  `:asc` or
 `:desc`. The default is `:asc`.
 
-``` ruby
-Zizq.query.by_status("scheduled").each do |job|
-  puts "#{job.id}"
-end
-# 03fvmay0zcoskwdf2sm0u94aw
-# 03fvqg4qxj39zecl43gnwwh04
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqhdcqsftfxrzb6xc8acjy
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb71cxvk13
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb75rabbrt
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb7a5g3hpm
-
-Zizq.query.by_status("scheduled").order(:desc).each do |job|
-  puts "#{job.id}"
-end
-# 03fvqhdcqsftfxrzb7a5g3hpm
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb75rabbrt
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb71cxvk13
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb6xc8acjy
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqg4qxj39zecl43gnwwh04
-# 03fvmay0zcoskwdf2sm0u94aw
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_status("scheduled").each do |job|
+>   puts "#{job.id}"
+> end
+> # 03fvmay0zcoskwdf2sm0u94aw
+> # 03fvqg4qxj39zecl43gnwwh04
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> 
+> Zizq.query.by_status("scheduled").order(:desc).each do |job|
+>   puts "#{job.id}"
+> end
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqg4qxj39zecl43gnwwh04
+> # 03fvmay0zcoskwdf2sm0u94aw
+> ```
 
 ### `#limit` { #zizqquery-limit }
 
 Changes the maximum number of total results returned by the query.
 
-``` ruby
-Zizq.query.by_status("scheduled").order(:desc).limit(3).each do |job|
-  puts "#{job.id}"
-end
-# 03fvqhdcqsftfxrzb7a5g3hpm
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb75rabbrt
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_status("scheduled").order(:desc).limit(3).each do |job|
+>   puts "#{job.id}"
+> end
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb75rabbrt
+> ```
 
 ### `#in_pages_of` { #zizqquery-in_pages_of }
 
@@ -350,66 +372,70 @@ specifying `#in_pages_of`, these operations apply to the entire result set in a
 single transaction. When `#in_pages_of` is specified, the bulk delete or update
 is done in a batched manner.
 
-``` ruby
-Zizq.query.by_status("scheduled").in_pages_of(2).each do |job|
-  puts "#{job.id}"
-end
-# 03fvmay0zcoskwdf2sm0u94aw
-# 03fvqg4qxj39zecl43gnwwh04
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqhdcqsftfxrzb6xc8acjy
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb71cxvk13
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb75rabbrt
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb7a5g3hpm
-
-Zizq.query
-  .by_status("scheduled")
-  .in_pages_of(2)
-  .each_page
-  .with_index do |page, idx|
-    puts "Page #{idx+1}"
-    page.jobs.each { |job| puts "#{job.id}" }
-  end
-# Page 1
-# 03fvmay0zcoskwdf2sm0u94aw
-# 03fvqg4qxj39zecl43gnwwh04
-# Page 2
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqhdcqsftfxrzb6xc8acjy
-# Page 3
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb71cxvk13
-# Page 4
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb75rabbrt
-# Page 5
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb7a5g3hpm
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_status("scheduled").in_pages_of(2).each do |job|
+>   puts "#{job.id}"
+> end
+> # 03fvmay0zcoskwdf2sm0u94aw
+> # 03fvqg4qxj39zecl43gnwwh04
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> 
+> Zizq.query
+>   .by_status("scheduled")
+>   .in_pages_of(2)
+>   .each_page
+>   .with_index do |page, idx|
+>     puts "Page #{idx+1}"
+>     page.jobs.each { |job| puts "#{job.id}" }
+>   end
+> # Page 1
+> # 03fvmay0zcoskwdf2sm0u94aw
+> # 03fvqg4qxj39zecl43gnwwh04
+> # Page 2
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # Page 3
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # Page 4
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # Page 5
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> ```
 
 ### `#each` { #zizqquery-each }
 
 Enumerates each `Zizq::Resources::Job` in the query result. Until this method,
 or some other `Enumerable` method is called, the query is not yet executed.
 
-``` ruby
-Zizq.query.by_status("scheduled").each do |job|
-  puts "#{job.id}"
-end
-# 03fvmay0zcoskwdf2sm0u94aw
-# 03fvqg4qxj39zecl43gnwwh04
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqhdcqsftfxrzb6xc8acjy
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb71cxvk13
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb75rabbrt
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb7a5g3hpm
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_status("scheduled").each do |job|
+>   puts "#{job.id}"
+> end
+> # 03fvmay0zcoskwdf2sm0u94aw
+> # 03fvqg4qxj39zecl43gnwwh04
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> ```
 
 ### `#each_page` { #zizqquery-each_page }
 
@@ -419,31 +445,33 @@ Enumerates each `Zizq::Resources::JobPage` in the query result.
 > When combined with `#limit`, `#each_page` stops at the page boundary but the
 > entire last page is returned even if the jobs it contains exceeds the limit.
 
-``` ruby
-Zizq.query
-  .by_status("scheduled")
-  .in_pages_of(2)
-  .each_page
-  .with_index do |page, idx|
-    puts "Page #{idx+1}"
-    page.jobs.each { |job| puts "#{job.id}" }
-  end
-# Page 1
-# 03fvmay0zcoskwdf2sm0u94aw
-# 03fvqg4qxj39zecl43gnwwh04
-# Page 2
-# 03fvqg68ra0od9u1b8m0txgka
-# 03fvqhdcqsftfxrzb6xc8acjy
-# Page 3
-# 03fvqhdcqsftfxrzb6zq57rqs
-# 03fvqhdcqsftfxrzb71cxvk13
-# Page 4
-# 03fvqhdcqsftfxrzb74afpg6x
-# 03fvqhdcqsftfxrzb75rabbrt
-# Page 5
-# 03fvqhdcqsftfxrzb78any8s1
-# 03fvqhdcqsftfxrzb7a5g3hpm
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query
+>   .by_status("scheduled")
+>   .in_pages_of(2)
+>   .each_page
+>   .with_index do |page, idx|
+>     puts "Page #{idx+1}"
+>     page.jobs.each { |job| puts "#{job.id}" }
+>   end
+> # Page 1
+> # 03fvmay0zcoskwdf2sm0u94aw
+> # 03fvqg4qxj39zecl43gnwwh04
+> # Page 2
+> # 03fvqg68ra0od9u1b8m0txgka
+> # 03fvqhdcqsftfxrzb6xc8acjy
+> # Page 3
+> # 03fvqhdcqsftfxrzb6zq57rqs
+> # 03fvqhdcqsftfxrzb71cxvk13
+> # Page 4
+> # 03fvqhdcqsftfxrzb74afpg6x
+> # 03fvqhdcqsftfxrzb75rabbrt
+> # Page 5
+> # 03fvqhdcqsftfxrzb78any8s1
+> # 03fvqhdcqsftfxrzb7a5g3hpm
+> ```
 
 ### `#delete_all` { #zizqquery-delete_all }
 
@@ -457,25 +485,27 @@ otherwise all jobs are deleted in a single transaction.
 This method also combines safely with `#limit` in order to explicitly prevent
 deleting more than a specified number of jobs (implies batch-wise deletion).
 
-``` ruby
-Zizq.query.by_queue("analytics").count
-# 90
-
-Zizq.query.by_queue("analytics").delete_all
-# 90
-
-Zizq.query.by_queue("analytics").count
-# 0
-
-Zizq.query.by_queue("comms").count
-# 3538
-
-Zizq.query.by_queue("comms").in_pages_of(20).limit(30).order(:desc).delete_all
-# 30
-
-Zizq.query.by_queue("comms").count
-# 3528
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("analytics").count
+> # 90
+> 
+> Zizq.query.by_queue("analytics").delete_all
+> # 90
+> 
+> Zizq.query.by_queue("analytics").count
+> # 0
+> 
+> Zizq.query.by_queue("comms").count
+> # 3538
+> 
+> Zizq.query.by_queue("comms").in_pages_of(20).limit(30).order(:desc).delete_all
+> # 30
+> 
+> Zizq.query.by_queue("comms").count
+> # 3528
+> ```
 
 ### `#update_all` { #zizqquery-update_all }
 
@@ -509,61 +539,67 @@ otherwise all jobs are updated in a single transaction.
 This method also combines safely with `#limit` in order to explicitly prevent
 updating more than a specified number of jobs (implies batch-wise update).
 
-``` ruby
-Zizq.query.by_queue("default").count
-# 15491
-
-Zizq.query.by_queue("analytics").count
-# 90
-
-Zizq.query.by_queue("analytics").update_all(queue: "default")
-# 90
-
-Zizq.query.by_queue("default").count
-# 15581
-
-Zizq.query.by_queue("analytics").count
-# 0
-
-Zizq.query.by_queue("payments").by_status("scheduled").count
-# 3
-
-Zizq.query.by_queue("payments").by_status("scheduled").update_all(ready_at: nil)
-# 3
-
-Zizq.query.by_queue("payments").by_status("scheduled").count
-# 0
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("default").count
+> # 15491
+> 
+> Zizq.query.by_queue("analytics").count
+> # 90
+> 
+> Zizq.query.by_queue("analytics").update_all(queue: "default")
+> # 90
+> 
+> Zizq.query.by_queue("default").count
+> # 15581
+> 
+> Zizq.query.by_queue("analytics").count
+> # 0
+> 
+> Zizq.query.by_queue("payments").by_status("scheduled").count
+> # 3
+> 
+> Zizq.query.by_queue("payments").by_status("scheduled").update_all(ready_at: nil)
+> # 3
+> 
+> Zizq.query.by_queue("payments").by_status("scheduled").count
+> # 0
+> ```
 
 ### `#delete_one` { #zizqquery-delete_one }
 
 Deletes at most the first matching result from the query.
 
-``` ruby
-Zizq.query.by_queue("payments").count
-# 881
-
-Zizq.query.by_queue("payments").order(:desc).delete_one
-# 1
-
-Zizq.query.by_queue("payments").count
-# 880
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("payments").count
+> # 881
+> 
+> Zizq.query.by_queue("payments").order(:desc).delete_one
+> # 1
+> 
+> Zizq.query.by_queue("payments").count
+> # 880
+> ```
 
 ### `#update_one` { #zizqquery-update_one }
 
 Updates at most the first matching result from the query.
 
-``` ruby
-Zizq.query.by_queue("comms").by_status("scheduled").count
-# 2
-
-Zizq.query.by_queue("comms").by_status("scheduled").update_one(ready_at: nil)
-# 1
-
-Zizq.query.by_queue("comms").by_status("scheduled").count
-# 1
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("comms").by_status("scheduled").count
+> # 2
+> 
+> Zizq.query.by_queue("comms").by_status("scheduled").update_one(ready_at: nil)
+> # 1
+> 
+> Zizq.query.by_queue("comms").by_status("scheduled").count
+> # 1
+> ```
 
 ## `Zizq::Resources::Job`
 
@@ -584,38 +620,42 @@ The following methods allow deleting or updating the job's properties:
 Enumerates the errors on this job, either in reverse or ascending order. This
 can also be done in pages.
 
-``` ruby
-job = Zizq.query.by_id("03fvqhdcqsftfxrzb7m9owqsf").first
-job.errors.in_pages_of(20).order(:desc).each do |err|
-  puts "Attempt: #{err.attempt}, Message: #{err.message}"
-end
-# Attempt: 2, Message: Something went wrong
-# Attempt: 1, Message: Something went wrong
-```
+> Ruby:
+>
+> ``` ruby
+> job = Zizq.query.by_id("03fvqhdcqsftfxrzb7m9owqsf").first
+> job.errors.in_pages_of(20).order(:desc).each do |err|
+>   puts "Attempt: #{err.attempt}, Message: #{err.message}"
+> end
+> # Attempt: 2, Message: Something went wrong
+> # Attempt: 1, Message: Something went wrong
+> ```
 
 ### `#delete`
 
 Permanently deletes this job from the server. Returns `nil` on success. Raises
 on failure (e.g. 404 - job not found).
 
-``` ruby
-job = Zizq.query.by_queue("comms").first
-
-job.id
-# 03fvqhdcqsftfxrzb7hekw4if
-
-Zizq.query.by_id("03fvqhdcqsftfxrzb7hekw4if").count
-# 1
-
-job.delete
-# nil
-
-Zizq.query.by_id("03fvqhdcqsftfxrzb7hekw4if").count
-# 0
-
-job.delete
-#! job not found (Zizq::NotFoundError)
-```
+> Ruby:
+>
+> ``` ruby
+> job = Zizq.query.by_queue("comms").first
+> 
+> job.id
+> # 03fvqhdcqsftfxrzb7hekw4if
+> 
+> Zizq.query.by_id("03fvqhdcqsftfxrzb7hekw4if").count
+> # 1
+> 
+> job.delete
+> # nil
+> 
+> Zizq.query.by_id("03fvqhdcqsftfxrzb7hekw4if").count
+> # 0
+> 
+> job.delete
+> #! job not found (Zizq::NotFoundError)
+> ```
 
 ### `#update`
 
@@ -624,24 +664,26 @@ success. Raises `Zizq::ClientError` on failure.
 
 Jobs in the `completed` or `dead` statuses are immutable and cannot be updated.
 
-``` ruby
-job = Zizq.query.by_queue("comms").first
-
-job.id
-# 03fvqhdcqsftfxrzb7nn5h57r
-
-Zizq.query.by_id("03fvqhdcqsftfxrzb7nn5h57r").map(&:queue)
-# ["comms"]
-
-job.update(queue: "default")
-# #<Zizq::Resources::Job @data={"id"=>"03fvqhdcqsftfxrzb7nn5h57r", ...}>
-
-job.queue
-# default
-
-Zizq.query.by_id("03fvqhdcqsftfxrzb7nn5h57r").map(&:queue)
-# ["default"]
-```
+> Ruby:
+>
+> ``` ruby
+> job = Zizq.query.by_queue("comms").first
+> 
+> job.id
+> # 03fvqhdcqsftfxrzb7nn5h57r
+> 
+> Zizq.query.by_id("03fvqhdcqsftfxrzb7nn5h57r").map(&:queue)
+> # ["comms"]
+> 
+> job.update(queue: "default")
+> # #<Zizq::Resources::Job @data={"id"=>"03fvqhdcqsftfxrzb7nn5h57r", ...}>
+> 
+> job.queue
+> # default
+> 
+> Zizq.query.by_id("03fvqhdcqsftfxrzb7nn5h57r").map(&:queue)
+> # ["default"]
+> ```
 
 ## `Zizq::Resources::JobPage`
 
@@ -667,9 +709,11 @@ Delete all jobs on the current page by their IDs.
 The example here deletes all jobs on the first 5 pages where the queue is
 `example`.
 
-``` ruby
-Zizq.query.by_queue("example").each_page.take(5).each(&:delete_all)
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("example").each_page.take(5).each(&:delete_all)
+> ```
 
 ### `#update_all` { #zizqresourcesjobpage-update_all }
 
@@ -684,8 +728,10 @@ Update all jobs on the current page by their IDs.
 The example here update all jobs on the first 2 pages where the queue is
 `example`.
 
-``` ruby
-Zizq.query.by_queue("example").each_page.take(5).each do |page|
-  page.update_all(queue: "other")
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.query.by_queue("example").each_page.take(5).each do |page|
+>   page.update_all(queue: "other")
+> end
+> ```

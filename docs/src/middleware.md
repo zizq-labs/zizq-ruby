@@ -19,12 +19,14 @@ to continue the middleware chain.
 To register an enqueue middleware, call `enqueue_middleware.use` within
 `Zizq.configure { ... }`.
 
-``` ruby
-Zizq.configure do |c|
-  c.enqueue_middleware.use(EnqueueMetricsMiddleware.new)
-  c.enqueue_middleware.use(EnqueueLoggingMiddleware.new)
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.enqueue_middleware.use(EnqueueMetricsMiddleware.new)
+>   c.enqueue_middleware.use(EnqueueLoggingMiddleware.new)
+> end
+> ```
 
 Middlewares are invoked in the order last-to-first, so in the above the
 `EnqueueLoggingMiddleware` is called and then the `EnqueueMetricsMiddleware` is
@@ -35,17 +37,19 @@ called.
 To write your own custom middleware, define anything that implements `#call`
 with the two arguments `req` and `chain`.
 
-``` ruby
-class EnqueueMetricsMiddleware
-  def call(req, chain)
-    MetricsService.increment(
-      metric: 'job_enqueued',
-      tags: { type: req.type, queue: req.queue }
-    )
-    chain.call(req)
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class EnqueueMetricsMiddleware
+>   def call(req, chain)
+>     MetricsService.increment(
+>       metric: 'job_enqueued',
+>       tags: { type: req.type, queue: req.queue }
+>     )
+>     chain.call(req)
+>   end
+> end
+> ```
 
 ## Dequeue Middleware
 
@@ -64,12 +68,14 @@ to continue the middleware chain.
 To register a dequeue middleware, call `dequeue_middleware.use` within
 `Zizq.configure { ... }`.
 
-``` ruby
-Zizq.configure do |c|
-  c.dequeue_middleware.use(TimingMetricsMiddleware.new)
-  c.dequeue_middleware.use(InternalRetryMiddleware.new)
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.dequeue_middleware.use(TimingMetricsMiddleware.new)
+>   c.dequeue_middleware.use(InternalRetryMiddleware.new)
+> end
+> ```
 
 Middlewares are invoked in the order last-to-first, so in the above the
 `InternalRetryMiddleware` is called and then the `TimingMetricsMiddleware` is
@@ -80,20 +86,22 @@ called.
 To write your own custom middleware, define anything that implements `#call`
 with the two arguments `job` and `chain`.
 
-``` ruby
-class TimingMetricsMiddleware
-  def call(job, chain)
-    started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-    begin
-      chain.call(job)
-    ensure
-      finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-      MetricsService.timing(
-        metric: 'job',
-        duration: finished_at - started_at,
-        tags: { type: req.type, queue: req.queue }
-      )
-    end
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class TimingMetricsMiddleware
+>   def call(job, chain)
+>     started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+>     begin
+>       chain.call(job)
+>     ensure
+>       finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+>       MetricsService.timing(
+>         metric: 'job',
+>         duration: finished_at - started_at,
+>         tags: { type: req.type, queue: req.queue }
+>       )
+>     end
+>   end
+> end
+> ```

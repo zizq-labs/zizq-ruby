@@ -28,9 +28,11 @@ file is resolved in this order:
 For Sinatra and other non-Rails apps, point `zizq-worker` at whatever Ruby
 file sets up your application (often `app.rb`):
 
-``` shell
-$ bundle exec zizq-worker app.rb
-```
+> Command:
+>
+> ```bash
+> $ bundle exec zizq-worker app.rb
+> ```
 
 ### Configuration via `Zizq.configure`
 
@@ -39,14 +41,16 @@ your application's `Zizq.configure` block — the same block that already
 configures the client. CLI flags below override the configured defaults
 on a per-run basis.
 
-``` ruby
-Zizq.configure do |c|
-  c.url = "https://zizq.your.network:7890"
-  c.worker.queues       = ["emails", "webhooks"]
-  c.worker.fiber_count  = 25
-  c.worker.prefetch     = 100
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.url = "https://zizq.your.network:7890"
+>   c.worker.queues       = ["emails", "webhooks"]
+>   c.worker.fiber_count  = 25
+>   c.worker.prefetch     = 100
+> end
+> ```
 
 Any field left unset falls through to `Zizq::Worker`'s hardcoded fallback
 defaults — `thread_count: 1`, `fiber_count: 1`, `prefetch: 2 × threads × fibers`,
@@ -56,16 +60,18 @@ all queues.
 
 For a Rails app with the above configuration:
 
-``` shell
-$ bundle exec zizq-worker
-I, [...] INFO -- : Zizq worker starting: 1 threads, 25 fibers, prefetch=100
-I, [...] INFO -- : Queues: emails, webhooks
-I, [...] INFO -- : Worker 0:0 started
-I, [...] INFO -- : Worker 0:1 started
-...
-I, [...] INFO -- : Connecting to https://zizq.your.network:7890...
-I, [...] INFO -- : Connected. Listening for jobs.
-```
+> Shell:
+>
+> ```bash
+> $ bundle exec zizq-worker
+> I, [...] INFO -- : Zizq worker starting: 1 threads, 25 fibers, prefetch=100
+> I, [...] INFO -- : Queues: emails, webhooks
+> I, [...] INFO -- : Worker 0:0 started
+> I, [...] INFO -- : Worker 0:1 started
+> ...
+> I, [...] INFO -- : Connecting to https://zizq.your.network:7890...
+> I, [...] INFO -- : Connected. Listening for jobs.
+> ```
 
 If your application is not ready for multi-fiber execution, leave
 `fiber_count` at `1` (the default). In this case the Zizq worker will
@@ -78,21 +84,25 @@ The recommended way to set this is via `Zizq.configure { |c| c.worker.queues = [
 but you can also override it on a per-run basis with the `--queue` flag.
 The flag accepts a comma-separated list, or can be repeated:
 
-``` shell
-$ bundle exec zizq-worker --queue foo,bar --queue zip
-I, [...] INFO -- : Zizq worker starting: 1 threads, 1 fibers, prefetch=2
-I, [...] INFO -- : Queues: foo, bar, zip
-...
-```
+> Shell:
+>
+> ```bash
+> $ bundle exec zizq-worker --queue foo,bar --queue zip
+> I, [...] INFO -- : Zizq worker starting: 1 threads, 1 fibers, prefetch=2
+> I, [...] INFO -- : Queues: foo, bar, zip
+> ...
+> ```
 
 To force the worker to process **all** queues — overriding any configured
 `c.worker.queues` for one run — use `--all-queues` (mutually exclusive with
 `--queue`):
 
-``` shell
-$ bundle exec zizq-worker --all-queues
-I, [...] INFO -- : Queues: (all)
-```
+> Shell:
+>
+> ```bash
+> $ bundle exec zizq-worker --all-queues
+> I, [...] INFO -- : Queues: (all)
+> ```
 
 If neither flag is given, the worker uses whatever is configured (or all
 queues if nothing is configured).
@@ -105,13 +115,15 @@ before eventually exiting forcefully. You can specify `--shutdown-timeout` to
 define how many seconds Zizq gives in-flight jobs to finish. The default is
 `30` seconds.
 
-``` shell
-I, [2026-03-25T17:50:51.481076 #1390456]  INFO -- : Shutting down. Waiting up to 30.00s for workers to finish...
-I, [2026-03-25T17:50:51.481154 #1390456]  INFO -- : Worker 0:0 stopped
-I, [2026-03-25T17:50:51.481200 #1390456]  INFO -- : Worker 1:0 stopped
-I, [2026-03-25T17:51:05.293738 #1390456]  INFO -- : Zizq producer thread stopped
-I, [2026-03-25T17:51:05.294013 #1390456]  INFO -- : Zizq worker stopped
-```
+> Shell:
+>
+> ```bash
+> I, [2026-03-25T17:50:51.481076 #1390456]  INFO -- : Shutting down. Waiting up to 30.00s for workers to finish...
+> I, [2026-03-25T17:50:51.481154 #1390456]  INFO -- : Worker 0:0 stopped
+> I, [2026-03-25T17:50:51.481200 #1390456]  INFO -- : Worker 1:0 stopped
+> I, [2026-03-25T17:51:05.293738 #1390456]  INFO -- : Zizq producer thread stopped
+> I, [2026-03-25T17:51:05.294013 #1390456]  INFO -- : Zizq worker stopped
+> ```
 
 If a second `INT` or `TERM` signal is sent to the worker process while waiting
 for a clean shutdown, the worker will immediately exit with exit code `1`.
@@ -163,97 +175,107 @@ arguments.
 
 Inheriting defaults from `Zizq.configure`:
 
-``` ruby
-require "zizq"
-
-Zizq.configure do |c|
-  c.worker.queues       = ["emails", "payments"]
-  c.worker.fiber_count  = 10
-end
-
-worker = Zizq::Worker.new   # picks up queues + fiber_count from config
-
-Signal.trap("INT") { worker.stop }
-
-worker.run
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> 
+> Zizq.configure do |c|
+>   c.worker.queues       = ["emails", "payments"]
+>   c.worker.fiber_count  = 10
+> end
+> 
+> worker = Zizq::Worker.new   # picks up queues + fiber_count from config
+> 
+> Signal.trap("INT") { worker.stop }
+> 
+> worker.run
+> ```
 
 Passing kwargs directly (ignoring whatever's configured):
 
-``` ruby
-worker = Zizq::Worker.new(
-  thread_count: 5,
-  fiber_count:  10,
-  queues:       ["emails", "payments"],
-)
-```
+> Ruby:
+>
+> ``` ruby
+> worker = Zizq::Worker.new(
+>   thread_count: 5,
+>   fiber_count:  10,
+>   queues:       ["emails", "payments"],
+> )
+> ```
 
 The above will block the main thread until a `SIGINT` is received to terminate
 the worker. If you need to run other code while the worker runs, put the worker
 into a background thread.
 
-``` ruby
-require "zizq"
-
-worker = Zizq::Worker.new(queues: ["emails", "payments"])
-
-Signal.trap("INT") { worker.stop }
-
-worker_thread = Thread.new { worker.run }
-
-# ... Other code in your application ...
-
-# Block until shutdown.
-worker_thread.join
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> 
+> worker = Zizq::Worker.new(queues: ["emails", "payments"])
+> 
+> Signal.trap("INT") { worker.stop }
+> 
+> worker_thread = Thread.new { worker.run }
+> 
+> # ... Other code in your application ...
+> 
+> # Block until shutdown.
+> worker_thread.join
+> ```
 
 By default `Zizq::Worker#stop` will wait for in-flight jobs to wrap up, with
 unbounded time. If you could have jobs that run for a long time and need to
 force the worker to terminate early, use `Zizq::Worker#kill` (or if you can
 safely do so, just `exit(status)`.
 
-``` ruby
-require "zizq"
-
-worker = Zizq::Worker.new(queues: ["emails", "payments"])
-
-worker_thread = Thread.new { worker.run }
-
-Signal.trap("INT") do
-  worker.stop
-  Thread.new do
-    Timeout::timeout(60) do
-      worker_thread.join
-    end
-  rescue Timeout::Error
-    worker.kill # or exit(1)
-  end
-end
-
-# ... Other code in your application ...
-
-worker_thread.join
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> 
+> worker = Zizq::Worker.new(queues: ["emails", "payments"])
+> 
+> worker_thread = Thread.new { worker.run }
+> 
+> Signal.trap("INT") do
+>   worker.stop
+>   Thread.new do
+>     Timeout::timeout(60) do
+>       worker_thread.join
+>     end
+>   rescue Timeout::Error
+>     worker.kill # or exit(1)
+>   end
+> end
+> 
+> # ... Other code in your application ...
+> 
+> worker_thread.join
+> ```
 
 For cross-languae/low-level worker usage, you can provide a `dispatcher`
 implementation directly to the worker.
 
-``` ruby
-require "zizq"
-
-worker = Zizq::Worker.new(
-  queues: ["generic"],
-  dispatcher: ->(job) do
-    case job.type
-    when "send_email"
-      # ...
-    when "..."
-      # ...
-    end
-  end
-)
-
-worker.run
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> 
+> worker = Zizq::Worker.new(
+>   queues: ["generic"],
+>   dispatcher: ->(job) do
+>     case job.type
+>     when "send_email"
+>       # ...
+>     when "..."
+>       # ...
+>     end
+>   end
+> )
+> 
+> worker.run
+> ```
 
 The `Zizq::Worker` automatically handles acknowledgment and failure for you.
