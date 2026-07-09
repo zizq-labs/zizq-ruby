@@ -17,12 +17,14 @@ empty results.
 
 Flip the flag in your test helper, before any tests run:
 
-``` ruby
-# test/test_helper.rb (Minitest) or spec/spec_helper.rb (RSpec)
-require "zizq"
-
-Zizq::Test.enable!
-```
+> Ruby:
+>
+> ``` ruby
+> # test/test_helper.rb (Minitest) or spec/spec_helper.rb (RSpec)
+> require "zizq"
+> 
+> Zizq::Test.enable!
+> ```
 
 `Zizq::Test.enable!` is a thin wrapper around
 `Zizq.configure { |c| c.test_mode = true }` — use whichever reads
@@ -41,11 +43,13 @@ running server).
 Call `Zizq::Test.reset!` in your setup hook to clear the buffer
 between tests:
 
-``` ruby
-class ActiveSupport::TestCase
-  setup { Zizq::Test.reset! }
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class ActiveSupport::TestCase
+>   setup { Zizq::Test.reset! }
+> end
+> ```
 
 The `test_mode` flag stays set across resets — only the buffered
 jobs are cleared.
@@ -75,17 +79,19 @@ For the common "was this job enqueued?" check, use the predicates.
 Both class-based and raw forms are supported, with optional
 positional + keyword args to match the job's serialized payload:
 
-``` ruby
-# Class-based (Zizq::Job or ActiveJob)
-assert Zizq::Test.enqueued?(SendEmailJob)                                  # any args
-assert Zizq::Test.enqueued?(SendEmailJob, 42, template: "welcome")         # exact args
-assert_equal 3, Zizq::Test.enqueued_count(SendEmailJob)                    # how many?
-
-# Raw (Zizq.enqueue_raw)
-assert Zizq::Test.enqueued_raw?(type: "send_email")
-assert Zizq::Test.enqueued_raw?(type: "send_email", payload: { user_id: 42 })
-assert_equal 2, Zizq::Test.enqueued_raw_count(queue: "emails", type: "send_email")
-```
+> Ruby:
+>
+> ``` ruby
+> # Class-based (Zizq::Job or ActiveJob)
+> assert Zizq::Test.enqueued?(SendEmailJob)                                  # any args
+> assert Zizq::Test.enqueued?(SendEmailJob, 42, template: "welcome")         # exact args
+> assert_equal 3, Zizq::Test.enqueued_count(SendEmailJob)                    # how many?
+> 
+> # Raw (Zizq.enqueue_raw)
+> assert Zizq::Test.enqueued_raw?(type: "send_email")
+> assert Zizq::Test.enqueued_raw?(type: "send_email", payload: { user_id: 42 })
+> assert_equal 2, Zizq::Test.enqueued_raw_count(queue: "emails", type: "send_email")
+> ```
 
 The class form uses the class's own `zizq_serialize` to compute the
 expected payload — so it works for both `Zizq::Job` and
@@ -105,17 +111,19 @@ worker uses, so any registered middleware runs too). It loops until
 no more pending entries match the filters, so handler re-enqueues
 fall through naturally.
 
-``` ruby
-# No block — drains whatever's pending now.
-SignupService.new.run
-Zizq::Test.dispatch_enqueued_jobs
-
-# Block form — yields first (test code enqueues), then drains.
-# Same semantics as ActiveJob's `perform_enqueued_jobs do ... end`.
-Zizq::Test.dispatch_enqueued_jobs do
-  SignupService.new.run
-end
-```
+> Ruby:
+>
+> ``` ruby
+> # No block — drains whatever's pending now.
+> SignupService.new.run
+> Zizq::Test.dispatch_enqueued_jobs
+> 
+> # Block form — yields first (test code enqueues), then drains.
+> # Same semantics as ActiveJob's `perform_enqueued_jobs do ... end`.
+> Zizq::Test.dispatch_enqueued_jobs do
+>   SignupService.new.run
+> end
+> ```
 
 Handler exceptions transition the entry's status to `dead` and
 re-raise from `dispatch_enqueued_jobs`. A block exception
@@ -125,11 +133,13 @@ Scheduled jobs (those with a future `ready_at`) are skipped until
 their time arrives. Combine with [Timecop](https://github.com/travisjeffery/timecop)
 or similar to advance the clock and drain due jobs:
 
-``` ruby
-Timecop.travel(2.hours) do
-  Zizq::Test.dispatch_enqueued_jobs    # picks up anything now due
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Timecop.travel(2.hours) do
+>   Zizq::Test.dispatch_enqueued_jobs    # picks up anything now due
+> end
+> ```
 
 ## Filter kwargs
 
@@ -152,17 +162,19 @@ The `filter:` lambda is the fallback for when the named filters
 aren't expressive enough — useful for matching on payload contents,
 RSpec/Minitest matchers, or any custom logic:
 
-``` ruby
-# RSpec-style matcher (a tiny custom matcher file is all it takes)
-RSpec::Matchers.define :have_enqueued_zizq_job do |klass|
-  match do |args_matchers|
-    Zizq::Test.enqueued_jobs(only_types: klass).any? do |job|
-      args = job.payload["arguments"] || job.payload["args"]
-      args == args_matchers
-    end
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> # RSpec-style matcher (a tiny custom matcher file is all it takes)
+> RSpec::Matchers.define :have_enqueued_zizq_job do |klass|
+>   match do |args_matchers|
+>     Zizq::Test.enqueued_jobs(only_types: klass).any? do |job|
+>       args = job.payload["arguments"] || job.payload["args"]
+>       args == args_matchers
+>     end
+>   end
+> end
+> ```
 
 ## Lifecycle states
 

@@ -45,45 +45,51 @@ handling automatically.
 
 For the common case, jobs are written using [`Zizq::Job`](/job-classes.md) like this.
 
-```ruby
-class SendEmailJob
-  include Zizq::Job
-
-  zizq_queue 'emails'
-  zizq_priority 100
-
-  def perform(user_id, template:)
-    # your application logic here
-  end
-end
-```
+> Code:
+>
+> ```ruby
+> class SendEmailJob
+>   include Zizq::Job
+> 
+>   zizq_queue 'emails'
+>   zizq_priority 100
+> 
+>   def perform(user_id, template:)
+>     # your application logic here
+>   end
+> end
+> ```
 
 Instances of those jobs are enqueued like this:
 
-```ruby
-Zizq.enqueue(SendEmailJob, user.id, template: 'welcome')
-```
+> Code:
+>
+> ```ruby
+> Zizq.enqueue(SendEmailJob, user.id, template: 'welcome')
+> ```
 
 And the worker is run to perform those jobs like this:
 
-```shell
-$ zizq-worker --threads 5 --fibers 2 app.rb
-I, [2026-03-24T15:25:57.738131 #1331422]  INFO -- : Zizq worker starting: 5 threads, 2 fibers, prefetch=20
-I, [2026-03-24T15:25:57.738222 #1331422]  INFO -- : Queues: (all)
-I, [2026-03-24T15:25:57.739861 #1331422]  INFO -- : Worker 0:0 started
-I, [2026-03-24T15:25:57.739962 #1331422]  INFO -- : Worker 0:1 started
-I, [2026-03-24T15:25:57.740131 #1331422]  INFO -- : Worker 1:0 started
-I, [2026-03-24T15:25:57.740211 #1331422]  INFO -- : Worker 1:1 started
-I, [2026-03-24T15:25:57.740352 #1331422]  INFO -- : Worker 2:0 started
-I, [2026-03-24T15:25:57.740408 #1331422]  INFO -- : Worker 2:1 started
-I, [2026-03-24T15:25:57.740532 #1331422]  INFO -- : Worker 3:0 started
-I, [2026-03-24T15:25:57.740590 #1331422]  INFO -- : Worker 3:1 started
-I, [2026-03-24T15:25:57.740722 #1331422]  INFO -- : Worker 4:0 started
-I, [2026-03-24T15:25:57.740776 #1331422]  INFO -- : Worker 4:1 started
-I, [2026-03-24T15:25:57.740844 #1331422]  INFO -- : Zizq producer thread started
-I, [2026-03-24T15:25:57.740878 #1331422]  INFO -- : Connecting to http://localhost:7890...
-I, [2026-03-24T15:25:57.792173 #1331422]  INFO -- : Connected. Listening for jobs.
-```
+> Shell:
+>
+> ```bash
+> $ zizq-worker --threads 5 --fibers 2 app.rb
+> I, [2026-03-24T15:25:57.738131 #1331422]  INFO -- : Zizq worker starting: 5 threads, 2 fibers, prefetch=20
+> I, [2026-03-24T15:25:57.738222 #1331422]  INFO -- : Queues: (all)
+> I, [2026-03-24T15:25:57.739861 #1331422]  INFO -- : Worker 0:0 started
+> I, [2026-03-24T15:25:57.739962 #1331422]  INFO -- : Worker 0:1 started
+> I, [2026-03-24T15:25:57.740131 #1331422]  INFO -- : Worker 1:0 started
+> I, [2026-03-24T15:25:57.740211 #1331422]  INFO -- : Worker 1:1 started
+> I, [2026-03-24T15:25:57.740352 #1331422]  INFO -- : Worker 2:0 started
+> I, [2026-03-24T15:25:57.740408 #1331422]  INFO -- : Worker 2:1 started
+> I, [2026-03-24T15:25:57.740532 #1331422]  INFO -- : Worker 3:0 started
+> I, [2026-03-24T15:25:57.740590 #1331422]  INFO -- : Worker 3:1 started
+> I, [2026-03-24T15:25:57.740722 #1331422]  INFO -- : Worker 4:0 started
+> I, [2026-03-24T15:25:57.740776 #1331422]  INFO -- : Worker 4:1 started
+> I, [2026-03-24T15:25:57.740844 #1331422]  INFO -- : Zizq producer thread started
+> I, [2026-03-24T15:25:57.740878 #1331422]  INFO -- : Connecting to http://localhost:7890...
+> I, [2026-03-24T15:25:57.792173 #1331422]  INFO -- : Connected. Listening for jobs.
+> ```
 
 The worker dequeues jobs from the server, loads and instantiates the job class
 and then calls the `#perform` method on that job instance. As long as no errors

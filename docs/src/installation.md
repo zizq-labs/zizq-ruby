@@ -7,15 +7,19 @@
 The official [Zizq Ruby Client](https://rubygems.org/gems/zizq) is available
 through RubyGems. Add it to your application's `Gemfile`.
 
-``` ruby
-gem 'zizq', '~> 0.5.0'
-```
+> Gemfile:
+>
+> ```ruby
+> gem 'zizq', '~> 0.5.0'
+> ```
 
 Or install it manually:
 
-```shell
-$ gem install zizq -v 0.5.0
-```
+> Command:
+>
+> ```bash
+> $ gem install zizq -v 0.5.0
+> ```
 
 ## Versioning
 
@@ -55,9 +59,11 @@ Server Version | Client Version | Supported
 
 Once installed you can load Zizq into your application by requiring `"zizq"`.
 
-``` ruby
-require "zizq"
-```
+> Ruby:
+>
+> ``` ruby
+> require "zizq"
+> ```
 
 Out of the box, Zizq will communicate with the server on
 `http://localhost:7890`, which is the default host and port. This should be
@@ -75,13 +81,15 @@ application typically bootstraps itself. In a Rails app this would be in a
 `config/initializers/zizq.rb` file. In a Sinatra app this could be at the top
 if your `app.rb` or even in your `config.ru` file.
 
-``` ruby
-Zizq.configure do |c|
-  c.url = "https://host.your.network:7890"
-  c.tls.ca = "/path/to/server-ca-cert.pem"
-  c.logger = Logger.new("log/zizq.log")
-end
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.configure do |c|
+>   c.url = "https://host.your.network:7890"
+>   c.tls.ca = "/path/to/server-ca-cert.pem"
+>   c.logger = Logger.new("log/zizq.log")
+> end
+> ```
 
 > [!CAUTION]
 > If your server is exposed directly to the internet, it should be using Mutual

@@ -21,13 +21,15 @@ Active Job requires the queue adapter be configured either in
 `ActiveJob::QueueAdapters::ZizqAdapter` implementation needed to set this up.
 You can just use `:zizq` as the name once you have required the adapter.
 
-``` ruby
-# Load the adapter.
-require 'active_job/queue_adapters/zizq_adapter'
-
-# Tell ActiveJob to use it.
-config.active_job.queue_adapter = :zizq
-```
+> Ruby:
+>
+> ``` ruby
+> # Load the adapter.
+> require 'active_job/queue_adapters/zizq_adapter'
+> 
+> # Tell ActiveJob to use it.
+> config.active_job.queue_adapter = :zizq
+> ```
 
 You also need to configure Zizq itself to dispatch jobs to `ActiveJob`.
 
@@ -39,54 +41,62 @@ that handles dispatching to Active Job internally. This is good for visibility
 and for performance, but requires explicit configuration. Set the Zizq
 dispatcher to `ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher`.
 
-``` ruby
-# Load the adapter.
-require 'active_job/queue_adapters/zizq_adapter'
-
-Zizq.configure do |c|
-  # Tell Zizq to dispatch via ActiveJob
-  c.dispatcher = ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher
-end
-```
+> Ruby:
+>
+> ``` ruby
+> # Load the adapter.
+> require 'active_job/queue_adapters/zizq_adapter'
+> 
+> Zizq.configure do |c|
+>   # Tell Zizq to dispatch via ActiveJob
+>   c.dispatcher = ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher
+> end
+> ```
 
 ## Writing Job Classes
 
 With Rails configured to use Zizq, you can now write your job classes in
 Active Job.
 
-``` ruby
-class SendEmailJob < ApplicationJob
-  def perform(user_id, template:)
-    # ...
-  end
-end
-
-# ActiveJob enqueues this job with Zizq.
-SendEmailJob.perform_later(42, template: 'welcome')
-```
+> Ruby:
+>
+> ``` ruby
+> class SendEmailJob < ApplicationJob
+>   def perform(user_id, template:)
+>     # ...
+>   end
+> end
+> 
+> # ActiveJob enqueues this job with Zizq.
+> SendEmailJob.perform_later(42, template: 'welcome')
+> ```
 
 The usual `queue_as` and `priority` options work out of the box.
 
-``` ruby
-class SendEmailJob < ApplicationJob
-  queue_as 'emails'
-  self.priority = 20
-
-  def perform(user_id, template:)
-    # ...
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class SendEmailJob < ApplicationJob
+>   queue_as 'emails'
+>   self.priority = 20
+> 
+>   def perform(user_id, template:)
+>     # ...
+>   end
+> end
+> ```
 
 Bulk enqueue works too.
 
-``` ruby
-ActiveJob.perform_all_later(
-  emails.map do |user_id, template|
-    SendEmailJob.new(user_id, template:)
-  end
-)
-```
+> Ruby:
+>
+> ``` ruby
+> ActiveJob.perform_all_later(
+>   emails.map do |user_id, template|
+>     SendEmailJob.new(user_id, template:)
+>   end
+> )
+> ```
 
 ## Accessing Zizq-Specific Features
 
@@ -96,28 +106,34 @@ necessary class methods such as `zizq_retention` and `zizq_unique` to the
 class. You can do this specific job classes, or in your `ApplicationJob` base
 class.
 
-``` ruby
-class ApplicationJob < ActiveJob::Base
-  extend Zizq::ActiveJobConfig
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class ApplicationJob < ActiveJob::Base
+>   extend Zizq::ActiveJobConfig
+> end
+> ```
 
-``` ruby
-class SendEmailJob < ApplicationJob
-  zizq_unique true, scope: :active
-
-  def perform(user_id, template:)
-    # ...
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class SendEmailJob < ApplicationJob
+>   zizq_unique true, scope: :active
+> 
+>   def perform(user_id, template:)
+>     # ...
+>   end
+> end
+> ```
 
 Active Job classes that extend `Zizq::ActiveJobConfig` can also be enqueued
 like regular `Zizq::Job` based classes:
 
-``` ruby
-Zizq.enqueue(SendEmailJob, 42, template: "welcome")
-```
+> Ruby:
+>
+> ``` ruby
+> Zizq.enqueue(SendEmailJob, 42, template: "welcome")
+> ```
 
 You will still need to configure the dispatcher to use
 `ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher` because Active Job

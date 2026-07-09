@@ -21,68 +21,74 @@ automatically de-duplicated by the server.
 Uniqueness for a job is enabled or disabled by calling `zizq_unique` within the
 class.
 
-``` ruby
-class SendEmailJob
-  include Zizq::Job
-
-  zizq_unique true
-
-  def perform(user_id, template:)
-    # ...
-  end
-end
-```
+> Ruby:
+>
+> ``` ruby
+> class SendEmailJob
+>   include Zizq::Job
+> 
+>   zizq_unique true
+> 
+>   def perform(user_id, template:)
+>     # ...
+>   end
+> end
+> ```
 
 Calling `zizq_unique false` explicitly disables uniqueness for that job.
 
 If we take a look at what `zizq_enqueue_request` generates for this job, we'll
 see there is a `unique_key` present.
 
-``` ruby
-SendEmailJob.zizq_enqueue_request(42, template: 'welcome')
-# #<Zizq::EnqueueRequest:0x00007fff3567bce0
-#  @backoff=nil,
-#  @delay=nil,
-#  @payload={"args"=>[42], "kwargs"=>{"template"=>"welcome"}},
-#  @priority=nil,
-#  @queue="default",
-#  @ready_at=nil,
-#  @retention=nil,
-#  @retry_limit=nil,
-#  @type="SendEmailJob",
-#  @unique_key="SendEmailJob:eb28cc4280934762bacd3f603600949c984ff96efe48831313e2e94f7f64ada1",
-#  @unique_while=nil>
-```
+> Ruby:
+>
+> ``` ruby
+> SendEmailJob.zizq_enqueue_request(42, template: 'welcome')
+> # #<Zizq::EnqueueRequest:0x00007fff3567bce0
+> #  @backoff=nil,
+> #  @delay=nil,
+> #  @payload={"args"=>[42], "kwargs"=>{"template"=>"welcome"}},
+> #  @priority=nil,
+> #  @queue="default",
+> #  @ready_at=nil,
+> #  @retention=nil,
+> #  @retry_limit=nil,
+> #  @type="SendEmailJob",
+> #  @unique_key="SendEmailJob:eb28cc4280934762bacd3f603600949c984ff96efe48831313e2e94f7f64ada1",
+> #  @unique_while=nil>
+> ```
 
 Because we didn't specify a scope for the uniqueness of this job, it will be
 unique for the server's default scope, which is while `:queued`. We can specify
 a different scope within the job.
 
-``` ruby
-class SendEmailJob
-  include Zizq::Job
-
-  zizq_unique true, scope: :exists
-
-  def perform(user_id, template:)
-    # ...
-  end
-end
-
-SendEmailJob.zizq_enqueue_request(42, template: 'welcome')
-# #<Zizq::EnqueueRequest:0x00007fff3e118fd8
-#  @backoff=nil,
-#  @delay=nil,
-#  @payload={"args"=>[42], "kwargs"=>{"template"=>"welcome"}},
-#  @priority=nil,
-#  @queue="default",
-#  @ready_at=nil,
-#  @retention=nil,
-#  @retry_limit=nil,
-#  @type="SendEmailJob",
-#  @unique_key="SendEmailJob:eb28cc4280934762bacd3f603600949c984ff96efe48831313e2e94f7f64ada1",
-#  @unique_while=:exists>
-```
+> Ruby:
+>
+> ``` ruby
+> class SendEmailJob
+>   include Zizq::Job
+> 
+>   zizq_unique true, scope: :exists
+> 
+>   def perform(user_id, template:)
+>     # ...
+>   end
+> end
+> 
+> SendEmailJob.zizq_enqueue_request(42, template: 'welcome')
+> # #<Zizq::EnqueueRequest:0x00007fff3e118fd8
+> #  @backoff=nil,
+> #  @delay=nil,
+> #  @payload={"args"=>[42], "kwargs"=>{"template"=>"welcome"}},
+> #  @priority=nil,
+> #  @queue="default",
+> #  @ready_at=nil,
+> #  @retention=nil,
+> #  @retry_limit=nil,
+> #  @type="SendEmailJob",
+> #  @unique_key="SendEmailJob:eb28cc4280934762bacd3f603600949c984ff96efe48831313e2e94f7f64ada1",
+> #  @unique_while=:exists>
+> ```
 
 The scope defines which statuses the job can be in while Zizq validates
 uniqueness of that job on the server. If any attempt is made to enqueue a job
@@ -175,16 +181,18 @@ with a SHA256 hash.
 
 You can easily see how this works and can easily write unit tests.
 
-``` ruby
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "ExampleJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
-
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "ExampleJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
-
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 99)
-# "ExampleJob:3be19cc482f366dcd538c22b8536d7947672071b8c8fb3a2486ebfd04b2216b6"
-```
+> Ruby:
+>
+> ``` ruby
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "ExampleJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
+> 
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "ExampleJob:0b9ca7f07581994caa848878576fed30e09e7177611c01aeafe7113921090c29"
+> 
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 99)
+> # "ExampleJob:3be19cc482f366dcd538c22b8536d7947672071b8c8fb3a2486ebfd04b2216b6"
+> ```
 
 You can override this method in your job classes to either fully implement your
 own unique key generation, or to _tweak_ the default implementation, for
@@ -196,50 +204,54 @@ bucketed time window.
 This example uses the default implementation, but applied only to a subset of
 the job arguments:
 
-``` ruby
-class ExampleJob
-  include Zizq::Job
-  zizq_unique true
-
-  def self.zizq_unique_key(arg1, arg2, example:)
-    super(arg1, arg2)
-  end
-end
-
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "ExampleJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 99)
-# "ExampleJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
-```
+> Ruby:
+>
+> ``` ruby
+> class ExampleJob
+>   include Zizq::Job
+>   zizq_unique true
+> 
+>   def self.zizq_unique_key(arg1, arg2, example:)
+>     super(arg1, arg2)
+>   end
+> end
+> 
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "ExampleJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 99)
+> # "ExampleJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
+> ```
 
 This example generates unique keys that fall into hourly time slots:
 
-``` ruby
-class ExampleJob
-  include Zizq::Job
-  zizq_unique true
-
-  def self.zizq_unique_key(*args, **kwargs)
-    super(*args, **kwargs, bucket: Time.now.to_i / 3600 * 3600)
-  end
-end
-
-# At 1:30pm
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "ExampleJob:8176971c4bde8df43f3ffd9c61e3fd73b162d0595b2ae0fe62d36bc583a398b"
-
-# At 1:59pm
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-# "ExampleJob:8176971c4bde8df43f3ffd9c61e3fd73b162d0595b2ae0fe62d36bc583a398b"
-
-# At 2:00pm
-# "ExampleJob:89d8cf87a568c0dd8706c6642e85d1cbc0e0c99b3e784499edb42c75a177799f"
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-
-# At 2:05pm
-# "ExampleJob:89d8cf87a568c0dd8706c6642e85d1cbc0e0c99b3e784499edb42c75a177799f"
-ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
-```
+> Ruby:
+>
+> ``` ruby
+> class ExampleJob
+>   include Zizq::Job
+>   zizq_unique true
+> 
+>   def self.zizq_unique_key(*args, **kwargs)
+>     super(*args, **kwargs, bucket: Time.now.to_i / 3600 * 3600)
+>   end
+> end
+> 
+> # At 1:30pm
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "ExampleJob:8176971c4bde8df43f3ffd9c61e3fd73b162d0595b2ae0fe62d36bc583a398b"
+> 
+> # At 1:59pm
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> # "ExampleJob:8176971c4bde8df43f3ffd9c61e3fd73b162d0595b2ae0fe62d36bc583a398b"
+> 
+> # At 2:00pm
+> # "ExampleJob:89d8cf87a568c0dd8706c6642e85d1cbc0e0c99b3e784499edb42c75a177799f"
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> 
+> # At 2:05pm
+> # "ExampleJob:89d8cf87a568c0dd8706c6642e85d1cbc0e0c99b3e784499edb42c75a177799f"
+> ExampleJob.zizq_unique_key("Bill", "Ben", example: 42)
+> ```
 
 ## Enqueueing Unique Jobs
 
@@ -248,15 +260,17 @@ Where a unique scope violation was encountered a `Zizq::Resources::Job` is
 returned as normal, but it will have the same `id` as the existing job and the
 `duplicate?` predicate will be set to `true`.
 
-``` ruby
-result = Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
-result.id # "03fu0wm75gxgmfyfplwvazhex"
-result.duplicate? # false
-
-result = Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
-result.id # "03fu0wm75gxgmfyfplwvazhex"
-result.duplicate? # true
-```
+> Ruby:
+>
+> ``` ruby
+> result = Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
+> result.id # "03fu0wm75gxgmfyfplwvazhex"
+> result.duplicate? # false
+> 
+> result = Zizq.enqueue(SendEmailJob, 42, template: 'welcome')
+> result.id # "03fu0wm75gxgmfyfplwvazhex"
+> result.duplicate? # true
+> ```
 
 The same is true for [bulk enqueue](./enqueueing-jobs.md#bulk-job-enqueueing)
 requests too.
