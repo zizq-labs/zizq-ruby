@@ -20,6 +20,7 @@ module Zizq
       def failed_at     = ms_to_seconds(@data["failed_at"])     #: () -> Float?
       def completed_at  = ms_to_seconds(@data["completed_at"])  #: () -> Float?
       def duplicate?    = @data["duplicate"] == true #: () -> bool
+      def folded?       = @data["folded"] == true    #: () -> bool
 
       # Fetch the error history for this job.
       #

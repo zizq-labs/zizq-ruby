@@ -181,6 +181,71 @@ class TestClient < ZizqTestCase
     ])
   end
 
+  # --- batch (folded jobs) ---
+
+  def test_enqueue_with_batch_sends_batch_field
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["batch"] == {
+          "key" => "audit",
+          "when" => "true",
+          "fold" => "$existing + $new"
+        }
+      }
+      .to_return(status: 201, body: JSON.generate({ "id" => "x", "folded" => false }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.enqueue(
+      type: "Audit", queue: "q", payload: [1],
+      batch: { key: "audit", when: "true", fold: "$existing + $new" }
+    )
+    refute result.folded?
+  end
+
+  def test_enqueue_folded_response_sets_folded_flag
+    stub_request(:post, "#{URL}/jobs")
+      .to_return(status: 200, body: JSON.generate({ "id" => "x", "folded" => true }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.enqueue(type: "Audit", queue: "q", payload: [1])
+    assert result.folded?
+  end
+
+  def test_enqueue_response_batch_config_exposed_via_resource
+    stub_request(:post, "#{URL}/jobs")
+      .to_return(status: 200, body: JSON.generate({
+        "id" => "x",
+        "batch" => { "key" => "audit", "when" => "true", "fold" => "$existing + $new" }
+      }),
+                 headers: { "Content-Type" => "application/json" })
+
+    result = @json_client.enqueue(type: "Audit", queue: "q", payload: [1])
+    assert_equal(
+      { key: "audit", when: "true", fold: "$existing + $new" },
+      result.batch
+    )
+  end
+
+  def test_enqueue_bulk_with_batch_sends_batch_per_job
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with { |req|
+        body = JSON.parse(req.body)
+        body["jobs"][0]["batch"] == {
+          "key" => "audit",
+          "when" => "true",
+          "fold" => "$existing + $new"
+        }
+      }
+      .to_return(status: 201, body: JSON.generate({ "jobs" => [{ "id" => "x" }] }),
+                 headers: { "Content-Type" => "application/json" })
+
+    @json_client.enqueue_bulk(jobs: [
+      { type: "Audit", queue: "q", payload: [1],
+        batch: { key: "audit", when: "true", fold: "$existing + $new" } }
+    ])
+  end
+
   # --- get_job ---
 
   def test_get_job

@@ -166,6 +166,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: Resources::Job
     def enqueue(queue:,
                 type:,
@@ -176,7 +177,8 @@ module Zizq
                 backoff: nil,
                 retention: nil,
                 unique_key: nil,
-                unique_while: nil)
+                unique_while: nil,
+                batch: nil)
       body = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       body[:priority] = priority if priority
       # ready_at is fractional seconds in Ruby; the server expects ms.
@@ -186,6 +188,7 @@ module Zizq
       body[:retention] = retention if retention
       body[:unique_key] = unique_key if unique_key
       body[:unique_while] = unique_while.to_s if unique_while
+      body[:batch] = batch if batch
 
       response = post("/jobs", body)
       data = handle_response!(response, expected: [200, 201])
@@ -214,6 +217,7 @@ module Zizq
           wire[:retention] = job[:retention] if job[:retention]
           wire[:unique_key] = job[:unique_key] if job[:unique_key]
           wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
+          wire[:batch] = job[:batch] if job[:batch]
           wire
         end
       }

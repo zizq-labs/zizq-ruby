@@ -26,6 +26,11 @@ module Zizq
   # Uniqueness scope for deduplication at enqueue time.
   type unique_scope = :queued | :active | :exists
 
+  # Batching configuration for folded jobs — a batch key plus the jq
+  # `when` predicate and `fold` reducer that run against `$existing`
+  # and `$new` payloads on each subsequent enqueue.
+  type batch = { key: String, when: String, fold: String }
+
   # Filter parameters for bulk operations (delete, update) and list queries.
   type where_params = {
     ?id: (String | Array[String])?,
@@ -58,7 +63,8 @@ module Zizq
     ?backoff: backoff?,
     ?retention: retention?,
     ?unique_key: String?,
-    ?unique_while: unique_scope?
+    ?unique_while: unique_scope?,
+    ?batch: batch?
   }
 
   # Parameters for a single cron entry.

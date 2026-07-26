@@ -141,7 +141,8 @@ module Zizq
                   backoff: nil,
                   retention: nil,
                   unique_key: nil,
-                  unique_while: nil)
+                  unique_while: nil,
+                  batch: nil)
         req = EnqueueRequest.new(
           queue:,
           type:,
@@ -153,6 +154,7 @@ module Zizq
           retention:,
           unique_key:,
           unique_while:,
+          batch:,
         )
         @mutex.synchronize { record_unsynchronized(req) }.job
       end
@@ -172,6 +174,7 @@ module Zizq
               retention:    params[:retention],
               unique_key:   params[:unique_key],
               unique_while: params[:unique_while],
+              batch:        params[:batch],
             )
             record_unsynchronized(req).job
           end

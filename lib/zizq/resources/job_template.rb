@@ -17,7 +17,19 @@ module Zizq
       def unique_key   = @data["unique_key"]   #: () -> String?
       def unique_while = @data["unique_while"]&.to_sym #: () -> Zizq::unique_scope?
 
-      # Backoff configuration converted from the wire format (ms) to the
+      # Batching configuration for this job. Retutns `nil` for non-batched jobs.
+      def batch #: () -> Zizq::batch?
+        raw = @data["batch"]
+        return nil unless raw
+
+        {
+          key:  raw["key"],
+          when: raw["when"],
+          fold: raw["fold"]
+        }
+      end
+
+      # Backoff configuration converted from the API format (ms) to the
       # Ruby-idiomatic format (seconds), matching the Zizq::backoff type.
       def backoff #: () -> Zizq::backoff?
         raw = @data["backoff"]
@@ -30,7 +42,7 @@ module Zizq
         }
       end
 
-      # Retention configuration converted from the wire format (ms) to the
+      # Retention configuration converted from the API format (ms) to the
       # Ruby-idiomatic format (seconds), matching the Zizq::retention type.
       def retention #: () -> Zizq::retention?
         raw = @data["retention"]

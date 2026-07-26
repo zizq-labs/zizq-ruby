@@ -48,6 +48,9 @@ module Zizq
     # Uniqueness scope.
     attr_accessor :unique_while #: Zizq::unique_scope?
 
+    # Batch configuration for folded jobs.
+    attr_accessor :batch #: Zizq::batch?
+
     # @rbs type: String
     # @rbs queue: String
     # @rbs payload: untyped
@@ -59,6 +62,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: void
     def initialize(type:,
                    queue:,
@@ -70,7 +74,8 @@ module Zizq
                    backoff: nil,
                    retention: nil,
                    unique_key: nil,
-                   unique_while: nil)
+                   unique_while: nil,
+                   batch: nil)
       update(
         type:,
         queue:,
@@ -83,6 +88,7 @@ module Zizq
         retention:,
         unique_key:,
         unique_while:,
+        batch:,
       )
     end
 
@@ -111,6 +117,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: self
     def update(type: @type,
                queue: @queue,
@@ -122,7 +129,8 @@ module Zizq
                backoff: @backoff,
                retention: @retention,
                unique_key: @unique_key,
-               unique_while: @unique_while)
+               unique_while: @unique_while,
+               batch: @batch)
       @type         = type
       @queue        = queue
       @payload      = payload
@@ -134,6 +142,7 @@ module Zizq
       @retention    = retention
       @unique_key   = unique_key
       @unique_while = unique_while
+      @batch        = batch
       self
     end
 
@@ -171,6 +180,8 @@ module Zizq
 
       params[:unique_key] = unique_key if unique_key
       params[:unique_while] = unique_while.to_s if unique_while
+
+      params[:batch] = batch if batch
 
       params
     end
