@@ -60,7 +60,7 @@ module Zizq
     def self.client #: () -> Client
       unless Zizq.configuration.test_mode
         raise Client::NotSupported,
-          "Zizq.configuration.test_mode is not enabled; Zizq::Test.client has nothing to manage."
+              "Zizq.configuration.test_mode is not enabled; Zizq::Test.client has nothing to manage."
       end
       Zizq.client #: Client
     end
@@ -141,15 +141,15 @@ module Zizq
 
       unless job_class.respond_to?(:zizq_serialize)
         raise ArgumentError,
-          "#{job_class} doesn't implement zizq_serialize — " \
-          "include Zizq::Job or extend Zizq::ActiveJobConfig, " \
-          "or use Zizq::Test.enqueued_raw? for raw enqueues."
+              "#{job_class} doesn't implement zizq_serialize — " \
+                "include Zizq::Job or extend Zizq::ActiveJobConfig, " \
+                "or use Zizq::Test.enqueued_raw? for raw enqueues."
       end
 
       expected = job_class.zizq_serialize(*args, **kwargs)
-      client.enqueued_jobs(only_types: type).count do |job|
-        payloads_equivalent?(expected, job.payload)
-      end
+      client
+        .enqueued_jobs(only_types: type)
+        .count { |job| payloads_equivalent?(expected, job.payload) }
     end
 
     # Was a raw job (queue + type + payload) enqueued? Each kwarg is
@@ -167,7 +167,7 @@ module Zizq
     def self.enqueued_raw_count(queue: nil, type: nil, payload: nil) #: (?queue: String?, ?type: String?, ?payload: untyped) -> Integer
       filters = {}
       filters[:only_queues] = queue if queue
-      filters[:only_types]  = type  if type
+      filters[:only_types] = type if type
       unless payload.nil?
         # Normalize the assertion-side payload the same way enqueue
         # normalizes the buffered one, so symbol-keyed test payloads

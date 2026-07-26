@@ -14,7 +14,9 @@ class PlainActiveJob < ActiveJob::Base
   self.queue_name = "default"
 
   @executions = []
-  class << self; attr_accessor :executions; end
+  class << self
+    attr_accessor :executions
+  end
 
   def perform(user_id, template:)
     self.class.executions << { user_id: user_id, template: template }
@@ -32,7 +34,9 @@ class ExtendedActiveJob < ActiveJob::Base
   zizq_retention completed: 0, dead: 86_400
 
   @executions = []
-  class << self; attr_accessor :executions; end
+  class << self
+    attr_accessor :executions
+  end
 
   def perform(user_id, template:)
     self.class.executions << { user_id: user_id, template: template }
@@ -47,7 +51,9 @@ class UniqueNoScopeActiveJob < ActiveJob::Base
   zizq_unique true
 
   @executions = []
-  class << self; attr_accessor :executions; end
+  class << self
+    attr_accessor :executions
+  end
 
   def perform(value)
     self.class.executions << { value: value }
@@ -71,13 +77,17 @@ class TestActiveJob < ZizqTestCase
   # and run it through the Dispatcher.
   def dispatch(req)
     client = Zizq::Client.new(url: URL, format: :json)
-    resource_job = Zizq::Resources::Job.new(client, {
-      "id" => "j1",
-      "type" => req.type,
-      "queue" => req.queue,
-      "payload" => req.payload,
-      "attempts" => 0
-    })
+    resource_job =
+      Zizq::Resources::Job.new(
+        client,
+        {
+          "id" => "j1",
+          "type" => req.type,
+          "queue" => req.queue,
+          "payload" => req.payload,
+          "attempts" => 0
+        }
+      )
     ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher.call(resource_job)
     client.close
   end
@@ -90,7 +100,10 @@ class TestActiveJob < ZizqTestCase
     dispatch(params)
 
     assert_equal 1, PlainActiveJob.executions.size
-    assert_equal({ user_id: 42, template: "welcome" }, PlainActiveJob.executions.first)
+    assert_equal(
+      { user_id: 42, template: "welcome" },
+      PlainActiveJob.executions.first
+    )
   end
 
   def test_extended_job_round_trips
@@ -99,7 +112,10 @@ class TestActiveJob < ZizqTestCase
     dispatch(params)
 
     assert_equal 1, ExtendedActiveJob.executions.size
-    assert_equal({ user_id: 42, template: "welcome" }, ExtendedActiveJob.executions.first)
+    assert_equal(
+      { user_id: 42, template: "welcome" },
+      ExtendedActiveJob.executions.first
+    )
   end
 
   # --- Plain adapter params (no Zizq extensions) ---
@@ -191,7 +207,8 @@ class TestActiveJob < ZizqTestCase
 
   def test_unique_key_includes_class_name
     key = ExtendedActiveJob.zizq_unique_key(42, template: "welcome")
-    assert key.start_with?("ExtendedActiveJob:"), "expected class name prefix, got: #{key}"
+    assert key.start_with?("ExtendedActiveJob:"),
+           "expected class name prefix, got: #{key}"
   end
 
   # --- Unique key matches between adapter and class method ---
@@ -210,7 +227,8 @@ class TestActiveJob < ZizqTestCase
     filter = ExtendedActiveJob.zizq_payload_filter(42, template: "welcome")
     # ActiveJob serializes kwargs with _aj_ruby2_keywords marker.
     # The filter targets .arguments, not the full serialized payload.
-    expected_args = ExtendedActiveJob.zizq_serialize(42, template: "welcome")["arguments"]
+    expected_args =
+      ExtendedActiveJob.zizq_serialize(42, template: "welcome")["arguments"]
     assert_equal ".arguments == #{JSON.generate(expected_args)}", filter
   end
 
@@ -218,32 +236,33 @@ class TestActiveJob < ZizqTestCase
 
   def test_payload_subset_filter_args_only
     filter = ExtendedActiveJob.zizq_payload_subset_filter(42)
-    assert_equal '(.arguments[0:1] == [42])', filter
+    assert_equal "(.arguments[0:1] == [42])", filter
   end
 
   def test_payload_subset_filter_kwargs_only
     filter = ExtendedActiveJob.zizq_payload_subset_filter(template: "welcome")
     assert_equal(
-      '(.arguments[0:0] == []) and ' \
-      '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
-      '(.arguments[-1] | contains({"template":"welcome"}))',
+      "(.arguments[0:0] == []) and " \
+        '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
+        '(.arguments[-1] | contains({"template":"welcome"}))',
       filter
     )
   end
 
   def test_payload_subset_filter_args_and_kwargs
-    filter = ExtendedActiveJob.zizq_payload_subset_filter(42, template: "welcome")
+    filter =
+      ExtendedActiveJob.zizq_payload_subset_filter(42, template: "welcome")
     assert_equal(
-      '(.arguments[0:1] == [42]) and ' \
-      '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
-      '(.arguments[-1] | contains({"template":"welcome"}))',
+      "(.arguments[0:1] == [42]) and " \
+        '(.arguments[-1] | has("_aj_ruby2_keywords")) and ' \
+        '(.arguments[-1] | contains({"template":"welcome"}))',
       filter
     )
   end
 
   def test_payload_subset_filter_no_args
     filter = ExtendedActiveJob.zizq_payload_subset_filter
-    assert_equal '(.arguments[0:0] == [])', filter
+    assert_equal "(.arguments[0:0] == [])", filter
   end
 
   # --- enqueue_all (perform_all_later) ---
@@ -252,7 +271,7 @@ class TestActiveJob < ZizqTestCase
     adapter = ActiveJob::QueueAdapters::ZizqAdapter.new
     jobs = [
       PlainActiveJob.new(1, template: "a"),
-      ExtendedActiveJob.new(2, template: "b"),
+      ExtendedActiveJob.new(2, template: "b")
     ]
 
     requests = jobs.map { |j| adapter.send(:build_enqueue_request, j) }
@@ -269,7 +288,7 @@ class TestActiveJob < ZizqTestCase
     adapter = ActiveJob::QueueAdapters::ZizqAdapter.new
     jobs = [
       PlainActiveJob.new(1, template: "a"),
-      PlainActiveJob.new(2, template: "b"),
+      PlainActiveJob.new(2, template: "b")
     ]
 
     requests = jobs.map { |j| adapter.send(:build_enqueue_request, j) }
@@ -284,16 +303,24 @@ class TestActiveJob < ZizqTestCase
 
   def test_enqueue_active_job_class
     stub_request(:post, "#{URL}/jobs")
-      .with { |req|
+      .with do |req|
         body = JSON.parse(req.body)
-        body["type"] == "ExtendedActiveJob" &&
-          body["queue"] == "emails" &&
+        body["type"] == "ExtendedActiveJob" && body["queue"] == "emails" &&
           body["payload"].is_a?(Hash) &&
           body["payload"]["job_class"] == "ExtendedActiveJob" &&
-          body["payload"]["arguments"] == [42, { "template" => "welcome", "_aj_ruby2_keywords" => ["template"] }]
-      }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+          body["payload"]["arguments"] ==
+            [
+              42,
+              { "template" => "welcome", "_aj_ruby2_keywords" => ["template"] }
+            ]
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     result = Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
     assert_equal "x", result.id
@@ -302,21 +329,30 @@ class TestActiveJob < ZizqTestCase
   def test_enqueue_active_job_uses_class_queue
     stub_request(:post, "#{URL}/jobs")
       .with { |req| JSON.parse(req.body)["queue"] == "emails" }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
   end
 
   def test_enqueue_active_job_includes_unique_key
     stub_request(:post, "#{URL}/jobs")
-      .with { |req|
+      .with do |req|
         body = JSON.parse(req.body)
-        body["unique_key"].is_a?(String) &&
-          body["unique_while"] == "active"
-      }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+        body["unique_key"].is_a?(String) && body["unique_while"] == "active"
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome")
   end
@@ -324,15 +360,20 @@ class TestActiveJob < ZizqTestCase
   def test_enqueue_active_job_with_block_override
     stub_request(:post, "#{URL}/jobs")
       .with { |req| JSON.parse(req.body)["priority"] == 0 }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
-    Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome") { |o| o.priority = 0 }
+    Zizq.enqueue(ExtendedActiveJob, 42, template: "welcome") do |o|
+      o.priority = 0
+    end
   end
 
   def test_enqueue_rejects_non_job_config_class
-    assert_raises(ArgumentError) do
-      Zizq.enqueue(String)
-    end
+    assert_raises(ArgumentError) { Zizq.enqueue(String) }
   end
 end

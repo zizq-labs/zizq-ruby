@@ -7,13 +7,14 @@
 # stale URLs are re-checked, so URLs aren't all probed simultaneously.
 class ScheduleChecksJob < ApplicationJob
   STALE_AFTER = 60.seconds
-  BATCH_SIZE  = 500
+  BATCH_SIZE = 500
 
   def perform
-    stale = MonitoredUrl.enabled.where(
-      "last_checked_at IS NULL OR last_checked_at < ?",
-      STALE_AFTER.ago,
-    )
+    stale =
+      MonitoredUrl.enabled.where(
+        "last_checked_at IS NULL OR last_checked_at < ?",
+        STALE_AFTER.ago
+      )
 
     # `in_batches` paginates the DB read; `perform_all_later` collapses
     # each batch into a single Zizq bulk enqueue, so even a backlog of

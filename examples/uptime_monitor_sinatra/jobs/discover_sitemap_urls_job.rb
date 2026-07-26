@@ -29,7 +29,7 @@ class DiscoverSitemapUrlsJob
   zizq_retry_limit 3
 
   TIMEOUT_SECONDS = 30 # sitemaps can be larger than a regular probe
-  BATCH_SIZE      = 500
+  BATCH_SIZE = 500
 
   def perform(monitored_url_id)
     sitemap = MonitoredUrl[monitored_url_id]
@@ -60,14 +60,17 @@ class DiscoverSitemapUrlsJob
     Faraday.new do |f|
       f.response :follow_redirects, limit: 5
       f.options.open_timeout = 5
-      f.options.timeout      = TIMEOUT_SECONDS
+      f.options.timeout = TIMEOUT_SECONDS
     end
   end
 
   def extract_urls(body)
-    doc = Nokogiri::XML(body) { |c| c.strict.nonet }
+    doc = Nokogiri.XML(body) { |c| c.strict.nonet }
     doc.remove_namespaces! # default sitemap xmlns would otherwise block plain CSS
-    doc.css("urlset > url > loc").map { |node| node.text.strip }.reject(&:empty?)
+    doc
+      .css("urlset > url > loc")
+      .map { |node| node.text.strip }
+      .reject(&:empty?)
   rescue Nokogiri::XML::SyntaxError => e
     warn "[DiscoverSitemapUrlsJob] malformed sitemap body: #{e.message}"
     nil
@@ -80,9 +83,9 @@ class DiscoverSitemapUrlsJob
 
       begin
         MonitoredUrl.create(
-          url:                url,
-          source:             "sitemap",
-          source_sitemap_url: sitemap.url,
+          url: url,
+          source: "sitemap",
+          source_sitemap_url: sitemap.url
         )
       rescue Sequel::UniqueConstraintViolation
         # Race window with another worker; the row exists now, fine.
@@ -93,19 +96,25 @@ class DiscoverSitemapUrlsJob
     # Re-enable returning children, disable departed ones. Bulk
     # UPDATEs; `updated_at` bumped manually since dataset.update
     # bypasses the timestamps plugin.
-    children.where(url: discovered_urls).update(enabled: true,  updated_at: Time.now)
-    children.exclude(url: discovered_urls).update(enabled: false, updated_at: Time.now)
+    children.where(url: discovered_urls).update(
+      enabled: true,
+      updated_at: Time.now
+    )
+    children.exclude(url: discovered_urls).update(
+      enabled: false,
+      updated_at: Time.now
+    )
   end
 
   def enqueue_immediate_checks(sitemap)
-    enabled_ids = MonitoredUrl
-      .where(source_sitemap_url: sitemap.url, enabled: true)
-      .select_map(:id)
+    enabled_ids =
+      MonitoredUrl.where(
+        source_sitemap_url: sitemap.url,
+        enabled: true
+      ).select_map(:id)
 
     enabled_ids.each_slice(BATCH_SIZE) do |batch|
-      Zizq.enqueue_bulk do |b|
-        batch.each { |id| b.enqueue(CheckUrlJob, id) }
-      end
+      Zizq.enqueue_bulk { |b| batch.each { |id| b.enqueue(CheckUrlJob, id) } }
     end
   end
 end

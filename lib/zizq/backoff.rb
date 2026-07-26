@@ -44,7 +44,11 @@ module Zizq
 
     # Returns a new Backoff with the same configuration but reset state.
     def fresh #: () -> Backoff
-      self.class.new(min_wait: @min_wait, max_wait: @max_wait, multiplier: @multiplier)
+      self.class.new(
+        min_wait: @min_wait,
+        max_wait: @max_wait,
+        multiplier: @multiplier
+      )
     end
   end
 end

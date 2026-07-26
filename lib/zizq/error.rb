@@ -6,10 +6,12 @@
 
 module Zizq
   # Base error class for all Zizq errors.
-  class Error < StandardError; end
+  class Error < StandardError
+  end
 
   # Network-level failure (connection refused, DNS, timeout etc).
-  class ConnectionError < Error; end
+  class ConnectionError < Error
+  end
 
   # HTTP error — the server returned a non-success status code.
   # Carries the status code and parsed body.
@@ -30,14 +32,18 @@ module Zizq
   end
 
   # 4xx client error.
-  class ClientError < ResponseError; end
+  class ClientError < ResponseError
+  end
 
   # 404 specifically — job not found, etc.
-  class NotFoundError < ClientError; end
+  class NotFoundError < ClientError
+  end
 
   # 5xx server error.
-  class ServerError < ResponseError; end
+  class ServerError < ResponseError
+  end
 
   # Streaming take-jobs connection interrupted.
-  class StreamError < Error; end
+  class StreamError < Error
+  end
 end

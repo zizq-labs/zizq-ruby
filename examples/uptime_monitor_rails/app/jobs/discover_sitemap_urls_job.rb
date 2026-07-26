@@ -18,7 +18,7 @@ require "nokogiri"
 # example app.
 class DiscoverSitemapUrlsJob < ApplicationJob
   TIMEOUT_SECONDS = 15
-  BATCH_SIZE  = 500
+  BATCH_SIZE = 500
 
   def perform(sitemap)
     discovered = fetch_and_parse(sitemap.url)
@@ -30,17 +30,20 @@ class DiscoverSitemapUrlsJob < ApplicationJob
   private
 
   def fetch_and_parse(url)
-    body = Sync do
-      Async::Task.current.with_timeout(TIMEOUT_SECONDS) do
-        response = Async::HTTP::Internet.get(url)
-        begin
-          response.read.to_s
-        ensure
-          response&.finish
-          response&.close
-        end
+    body =
+      Sync do
+        Async::Task
+          .current
+          .with_timeout(TIMEOUT_SECONDS) do
+            response = Async::HTTP::Internet.get(url)
+            begin
+              response.read.to_s
+            ensure
+              response&.finish
+              response&.close
+            end
+          end
       end
-    end
 
     extract_urls(body)
   rescue => e
@@ -49,7 +52,7 @@ class DiscoverSitemapUrlsJob < ApplicationJob
   end
 
   def extract_urls(body)
-    doc = Nokogiri::XML(body) { |c| c.strict.nonet }
+    doc = Nokogiri.XML(body) { |c| c.strict.nonet }
     doc.remove_namespaces! # default sitemap xmlns would otherwise block plain CSS
     doc.css("urlset > url > loc").filter_map { |node| node.text.strip.presence }
   rescue Nokogiri::XML::SyntaxError => e
@@ -59,29 +62,37 @@ class DiscoverSitemapUrlsJob < ApplicationJob
 
   def reconcile(sitemap, discovered_urls)
     discovered_urls.each do |url|
-      MonitoredUrl.create_or_find_by!(url: url, source_sitemap_url: sitemap.url) do |m|
-        m.source = "sitemap"
-      end
+      MonitoredUrl.create_or_find_by!(
+        url: url,
+        source_sitemap_url: sitemap.url
+      ) { |m| m.source = "sitemap" }
     end
 
     children = MonitoredUrl.where(source_sitemap_url: sitemap.url)
-    children.where(url: discovered_urls).update_all(enabled: true, updated_at: Time.current)
-    children.where.not(url: discovered_urls).update_all(enabled: false, updated_at: Time.current)
+    children.where(url: discovered_urls).update_all(
+      enabled: true,
+      updated_at: Time.current
+    )
+    children
+      .where.not(url: discovered_urls)
+      .update_all(enabled: false, updated_at: Time.current)
 
     Audit.emit(
       event_type: "sitemap.scanned",
-      actor:      "system",
-      resource:   "monitored_url:#{sitemap.id}",
-      text:       "Found #{discovered_urls.size} URL(s) in #{sitemap.url}",
-      data:       {
-        "sitemap_url"      => sitemap.url,
-        "discovered_count" => discovered_urls.size,
-      },
+      actor: "system",
+      resource: "monitored_url:#{sitemap.id}",
+      text: "Found #{discovered_urls.size} URL(s) in #{sitemap.url}",
+      data: {
+        "sitemap_url" => sitemap.url,
+        "discovered_count" => discovered_urls.size
+      }
     )
 
-    children.enabled.in_batches(of: BATCH_SIZE) do |batch|
-      jobs = batch.map { |child| CheckUrlJob.new(child) }
-      ActiveJob.perform_all_later(jobs)
-    end
+    children
+      .enabled
+      .in_batches(of: BATCH_SIZE) do |batch|
+        jobs = batch.map { |child| CheckUrlJob.new(child) }
+        ActiveJob.perform_all_later(jobs)
+      end
   end
 end

@@ -26,24 +26,30 @@ class AuditEvent < Sequel::Model
   def self.from_payload(payload)
     new(
       occurred_at: parse_time(payload["occurred_at"]),
-      source:      payload["source"],
-      event_type:  payload["event_type"],
-      actor:       payload["actor"],
-      ip:          payload["ip"],
-      resource:    payload["resource"],
-      text:        payload["text"],
-      data:        payload["data"],
+      source: payload["source"],
+      event_type: payload["event_type"],
+      actor: payload["actor"],
+      ip: payload["ip"],
+      resource: payload["resource"],
+      text: payload["text"],
+      data: payload["data"]
     )
   end
 
   def self.parse_time(value)
     case value
-    when nil      then nil
-    when Integer  then Time.at(value)
-    when Float    then Time.at(value)
-    when String   then Time.parse(value)
-    when Time     then value
-    else raise ArgumentError, "unsupported occurred_at: #{value.inspect}"
+    when nil
+      nil
+    when Integer
+      Time.at(value)
+    when Float
+      Time.at(value)
+    when String
+      Time.parse(value)
+    when Time
+      value
+    else
+      raise ArgumentError, "unsupported occurred_at: #{value.inspect}"
     end
   end
 end

@@ -15,9 +15,7 @@ class CheckUrlJobTest < ActiveJob::TestCase
     m = MonitoredUrl.create!(url: "https://example.com")
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    perform_enqueued_jobs do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs { CheckUrlJob.perform_later(m) }
 
     m.reload
     assert_equal "up", m.last_status
@@ -29,9 +27,7 @@ class CheckUrlJobTest < ActiveJob::TestCase
     m = MonitoredUrl.create!(url: "https://example.com", enabled: false)
 
     # No stub_request — if the job tried to probe, WebMock would raise.
-    perform_enqueued_jobs do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs { CheckUrlJob.perform_later(m) }
 
     assert_not_requested :any, /.*/
     m.reload
@@ -43,14 +39,15 @@ class CheckUrlJobTest < ActiveJob::TestCase
     m = MonitoredUrl.create!(url: "https://example.com/sitemap.xml")
     stub_request(:get, "https://example.com/sitemap.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/xml" },
-      body: %(<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>),
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body:
+        %(<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>)
     )
 
     assert_enqueued_with(job: DiscoverSitemapUrlsJob, args: [m]) do
-      perform_enqueued_jobs(only: CheckUrlJob) do
-        CheckUrlJob.perform_later(m)
-      end
+      perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
     end
   end
 
@@ -58,60 +55,71 @@ class CheckUrlJobTest < ActiveJob::TestCase
     m = MonitoredUrl.create!(url: "https://example.com")
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    perform_enqueued_jobs(only: CheckUrlJob) do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
 
     assert_no_enqueued_jobs(only: DiscoverSitemapUrlsJob)
   end
 
   test "enqueues NotifyWebhookJob on an up -> down transition" do
-    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    m =
+      MonitoredUrl.create!(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: 1.minute.ago
+      )
     stub_request(:get, "https://example.com").to_return(status: 500)
 
     assert_enqueued_jobs(1, only: NotifyWebhookJob) do
-      perform_enqueued_jobs(only: CheckUrlJob) do
-        CheckUrlJob.perform_later(m)
-      end
+      perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
     end
   end
 
   test "emits a url.status.changed audit event on a status transition" do
-    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    m =
+      MonitoredUrl.create!(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: 1.minute.ago
+      )
     stub_request(:get, "https://example.com").to_return(status: 500)
 
-    perform_enqueued_jobs(only: CheckUrlJob) do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
 
     event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
     refute_nil event
     assert_equal "url.status.changed", event.payload["event_type"]
-    assert_equal "system",             event.payload["actor"]
+    assert_equal "system", event.payload["actor"]
     assert_equal "monitored_url:#{m.id}", event.payload["resource"]
-    assert_equal "up",   event.payload["data"]["from"]
+    assert_equal "up", event.payload["data"]["from"]
     assert_equal "down", event.payload["data"]["to"]
   end
 
   test "does not emit a url.status.changed audit event when status is unchanged" do
-    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    m =
+      MonitoredUrl.create!(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: 1.minute.ago
+      )
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    perform_enqueued_jobs(only: CheckUrlJob) do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
 
     assert_empty Zizq::Test.enqueued_jobs(only_types: "audit.create")
   end
 
   test "enqueues NotifyWebhookJob on a down -> up transition" do
-    m = MonitoredUrl.create!(url: "https://example.com", last_status: "down", last_checked_at: 1.minute.ago, consecutive_failures: 3)
+    m =
+      MonitoredUrl.create!(
+        url: "https://example.com",
+        last_status: "down",
+        last_checked_at: 1.minute.ago,
+        consecutive_failures: 3
+      )
     stub_request(:get, "https://example.com").to_return(status: 200)
 
     assert_enqueued_jobs(1, only: NotifyWebhookJob) do
-      perform_enqueued_jobs(only: CheckUrlJob) do
-        CheckUrlJob.perform_later(m)
-      end
+      perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
     end
   end
 
@@ -120,9 +128,7 @@ class CheckUrlJobTest < ActiveJob::TestCase
     stub_request(:get, "https://example.com").to_return(status: 500)
 
     assert_enqueued_jobs(1, only: NotifyWebhookJob) do
-      perform_enqueued_jobs(only: CheckUrlJob) do
-        CheckUrlJob.perform_later(m)
-      end
+      perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
     end
   end
 
@@ -130,20 +136,21 @@ class CheckUrlJobTest < ActiveJob::TestCase
     m = MonitoredUrl.create!(url: "https://example.com") # last_status nil
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    perform_enqueued_jobs(only: CheckUrlJob) do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
 
     assert_no_enqueued_jobs(only: NotifyWebhookJob)
   end
 
   test "does not enqueue NotifyWebhookJob when status is unchanged" do
-    m = MonitoredUrl.create!(url: "https://example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    m =
+      MonitoredUrl.create!(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: 1.minute.ago
+      )
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    perform_enqueued_jobs(only: CheckUrlJob) do
-      CheckUrlJob.perform_later(m)
-    end
+    perform_enqueued_jobs(only: CheckUrlJob) { CheckUrlJob.perform_later(m) }
 
     assert_no_enqueued_jobs(only: NotifyWebhookJob)
   end

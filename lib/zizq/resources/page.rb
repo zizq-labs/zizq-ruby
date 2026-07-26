@@ -21,7 +21,8 @@ module Zizq
 
       # Wrapped resource objects for this page.
       def items #: () -> Array[T]
-        raise NotImplementedError, "#{self.class.name}#items must be implemented"
+        raise NotImplementedError,
+              "#{self.class.name}#items must be implemented"
       end
 
       # Returns the underlying raw response hash.

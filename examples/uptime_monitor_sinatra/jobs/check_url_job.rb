@@ -17,9 +17,11 @@ class CheckUrlJob
 
     previous_status = monitored.last_status
     result = UrlProber.call(monitored.url)
-    check  = monitored.record_check!(result)
+    check = monitored.record_check!(result)
 
-    Zizq.enqueue(NotifyWebhookJob, check.id) if status_transitioned?(previous_status, result.status)
+    if status_transitioned?(previous_status, result.status)
+      Zizq.enqueue(NotifyWebhookJob, check.id)
+    end
     Zizq.enqueue(DiscoverSitemapUrlsJob, monitored.id) if result.is_sitemap
   end
 

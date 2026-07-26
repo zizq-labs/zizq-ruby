@@ -18,6 +18,8 @@ group :development, :test do
   # RBS types
   gem "rbs-inline", "~> 0.14"
   gem "steep", "~> 2.0"
+  # Code formatter
+  gem 'syntax_tree', '~> 6.3.0'
   # Code profiler
   gem "vernier", "~> 1.10"
   # YARD dependencies (for docs)

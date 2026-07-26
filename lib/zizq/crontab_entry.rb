@@ -62,16 +62,18 @@ module Zizq
     # @rbs resumed_at: Float?
     # @rbs last_enqueue_at: Float?
     # @rbs next_enqueue_at: Float?
-    def initialize(crontab,
-                   name,
-                   expression,
-                   job:,
-                   timezone: nil,
-                   paused: nil,
-                   paused_at: nil,
-                   resumed_at: nil,
-                   last_enqueue_at: nil,
-                   next_enqueue_at: nil)
+    def initialize(
+      crontab,
+      name,
+      expression,
+      job:,
+      timezone: nil,
+      paused: nil,
+      paused_at: nil,
+      resumed_at: nil,
+      last_enqueue_at: nil,
+      next_enqueue_at: nil
+    )
       @crontab = crontab
       @name = name
       @expression = expression
@@ -93,7 +95,13 @@ module Zizq
     # @rbs paused: bool?
     # @rbs return: Zizq::CrontabEntryBuilder
     def redefine(expression, timezone: nil, paused: nil)
-      CrontabEntryBuilder.new(crontab, name, expression, timezone:, paused:) do |e|
+      CrontabEntryBuilder.new(
+        crontab,
+        name,
+        expression,
+        timezone:,
+        paused:
+      ) do |e|
         materialize_with(
           Zizq.client.replace_cron_group_entry(
             crontab.name,
@@ -101,8 +109,8 @@ module Zizq
             expression: e.expression,
             job: e.job.to_enqueue_params,
             timezone: e.timezone,
-            paused: e.paused,
-          ),
+            paused: e.paused
+          )
         )
       end
     end
@@ -118,11 +126,7 @@ module Zizq
     # This is independent of the paused state of the Crontab itself.
     def pause! #: () -> void
       materialize_with(
-        Zizq.client.update_cron_group_entry(
-          crontab.name,
-          name,
-          paused: true,
-        ),
+        Zizq.client.update_cron_group_entry(crontab.name, name, paused: true)
       )
     end
 
@@ -132,11 +136,7 @@ module Zizq
     # jobs until the Crontab is resumed.
     def resume! #: () -> void
       materialize_with(
-        Zizq.client.update_cron_group_entry(
-          crontab.name,
-          name,
-          paused: false,
-        ),
+        Zizq.client.update_cron_group_entry(crontab.name, name, paused: false)
       )
     end
 
@@ -148,7 +148,7 @@ module Zizq
         expression:,
         timezone:,
         job: job.to_enqueue_params,
-        paused:,
+        paused:
       }.compact #: Zizq::cron_entry_params
     end
 
@@ -164,17 +164,18 @@ module Zizq
       @resumed_at = result.resumed_at
       @last_enqueue_at = result.last_enqueue_at
       @next_enqueue_at = result.next_enqueue_at
-      @job = EnqueueRequest.new(
-        type: result.job.type,
-        queue: result.job.queue,
-        priority: result.job.priority,
-        payload: result.job.payload,
-        retry_limit: result.job.retry_limit,
-        backoff: result.job.backoff,
-        retention: result.job.retention,
-        unique_key: result.job.unique_key,
-        unique_while: result.job.unique_while,
-      )
+      @job =
+        EnqueueRequest.new(
+          type: result.job.type,
+          queue: result.job.queue,
+          priority: result.job.priority,
+          payload: result.job.payload,
+          retry_limit: result.job.retry_limit,
+          backoff: result.job.backoff,
+          retention: result.job.retention,
+          unique_key: result.job.unique_key,
+          unique_while: result.job.unique_while
+        )
 
       self
     end

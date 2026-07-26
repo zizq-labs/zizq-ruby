@@ -33,7 +33,7 @@ class TestMiddleware < Minitest::Test
     chain.use(mw)
     chain.call("x")
 
-    assert_equal ["before:x", "terminal:x", "after:x"], log
+    assert_equal %w[before:x terminal:x after:x], log
   end
 
   def test_chain_with_multiple_middleware_runs_in_order
@@ -59,13 +59,14 @@ class TestMiddleware < Minitest::Test
     chain.use(second)
     chain.call("x")
 
-    assert_equal [
-      "first:before",
-      "second:before",
-      "terminal",
-      "second:after",
-      "first:after"
-    ], log
+    assert_equal %w[
+                   first:before
+                   second:before
+                   terminal
+                   second:after
+                   first:after
+                 ],
+                 log
   end
 
   def test_middleware_can_modify_the_argument

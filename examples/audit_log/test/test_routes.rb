@@ -12,8 +12,16 @@ class TestRoutes < Minitest::Test
   end
 
   def test_get_index_lists_events_most_recent_first
-    older = create_event(occurred_at: Time.utc(2026, 5, 27, 10, 0, 0), source: "older_system")
-    newer = create_event(occurred_at: Time.utc(2026, 5, 27, 11, 0, 0), source: "newer_system")
+    older =
+      create_event(
+        occurred_at: Time.utc(2026, 5, 27, 10, 0, 0),
+        source: "older_system"
+      )
+    newer =
+      create_event(
+        occurred_at: Time.utc(2026, 5, 27, 11, 0, 0),
+        source: "newer_system"
+      )
     refute_nil older
     refute_nil newer
 
@@ -30,7 +38,7 @@ class TestRoutes < Minitest::Test
     (AuditLogApp::PAGE_SIZE + 5).times do |i|
       create_event(
         occurred_at: Time.utc(2026, 5, 27, 0, 0, 0) + i,
-        source:      "src_#{i}",
+        source: "src_#{i}"
       )
     end
 
@@ -38,20 +46,21 @@ class TestRoutes < Minitest::Test
 
     assert last_response.ok?
     assert_match(/\?cursor=/, last_response.body)
-    assert_match(/Older/,     last_response.body)
+    assert_match(/Older/, last_response.body)
 
     # First page should hold exactly PAGE_SIZE rows.
     assert_equal AuditLogApp::PAGE_SIZE,
-      last_response.body.scan(/<tr>/).size - 1  # minus the thead row
+                 last_response.body.scan(/<tr>/).size - 1 # minus the thead row
   end
 
   def test_pagination_following_cursor_returns_next_page
-    rows = (AuditLogApp::PAGE_SIZE + 3).times.map do |i|
-      create_event(
-        occurred_at: Time.utc(2026, 5, 27, 0, 0, 0) + i,
-        source:      "src_#{i}",
-      )
-    end
+    rows =
+      (AuditLogApp::PAGE_SIZE + 3).times.map do |i|
+        create_event(
+          occurred_at: Time.utc(2026, 5, 27, 0, 0, 0) + i,
+          source: "src_#{i}"
+        )
+      end
 
     get "/"
     refute_match(/Newest/, last_response.body) # not on page 1
@@ -62,9 +71,9 @@ class TestRoutes < Minitest::Test
 
     assert last_response.ok?
     # Newest 50 are on page 1; oldest 3 are on page 2.
-    rows.first(3).each do |row|
-      assert_match(/#{row.source}/, last_response.body)
-    end
+    rows
+      .first(3)
+      .each { |row| assert_match(/#{row.source}/, last_response.body) }
     refute_match(/src_#{AuditLogApp::PAGE_SIZE}/, last_response.body)
     # End of feed — no "Older" link.
     refute_match(/Older/, last_response.body)
@@ -85,11 +94,13 @@ class TestRoutes < Minitest::Test
   private
 
   def create_event(**overrides)
-    AuditEvent.create({
-      occurred_at: Time.now,
-      source:      "test_system",
-      event_type:  "test.event",
-      text:        "demo",
-    }.merge(overrides))
+    AuditEvent.create(
+      {
+        occurred_at: Time.now,
+        source: "test_system",
+        event_type: "test.event",
+        text: "demo"
+      }.merge(overrides)
+    )
   end
 end

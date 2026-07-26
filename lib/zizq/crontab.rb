@@ -142,8 +142,8 @@ module Zizq
         Zizq.client.replace_cron_group(
           name,
           paused:,
-          entries: entries.values.map(&:to_params),
-        ),
+          entries: entries.values.map(&:to_params)
+        )
       )
 
       @building = false
@@ -161,9 +161,10 @@ module Zizq
     def entry(name)
       materialize
       entries.fetch(name) do
-        entry = materialize_entry_with(
-          Zizq.client.get_cron_group_entry(self.name, name),
-        )
+        entry =
+          materialize_entry_with(
+            Zizq.client.get_cron_group_entry(self.name, name)
+          )
         entries[name] = entry
       end
     end
@@ -196,16 +197,17 @@ module Zizq
     # @rbs return: Zizq::CrontabEntryBuilder
     def define_entry(name, expression, timezone: nil, paused: nil)
       CrontabEntryBuilder.new(self, name, expression, timezone:, paused:) do |e|
-        entry = materialize_entry_with(
-          Zizq.client.replace_cron_group_entry(
-            self.name,
-            name,
-            expression: e.expression,
-            job: e.job.to_enqueue_params,
-            timezone: e.timezone,
-            paused: e.paused,
-          ),
-        )
+        entry =
+          materialize_entry_with(
+            Zizq.client.replace_cron_group_entry(
+              self.name,
+              name,
+              expression: e.expression,
+              job: e.job.to_enqueue_params,
+              timezone: e.timezone,
+              paused: e.paused
+            )
+          )
 
         materialize # in case this was the first entry operation
 
@@ -222,12 +224,11 @@ module Zizq
       @paused_at = result.paused_at
       @resumed_at = result.resumed_at
 
-      @entries = result.entries.map do |entry|
-        [
-          entry.name,
-          materialize_entry_with(entry),
-        ]
-      end.to_h
+      @entries =
+        result
+          .entries
+          .map { |entry| [entry.name, materialize_entry_with(entry)] }
+          .to_h
 
       @materialized = true
 
@@ -241,22 +242,23 @@ module Zizq
         self,
         result.name,
         result.expression,
-        job: EnqueueRequest.new(
-          type: result.job.type,
-          queue: result.job.queue,
-          priority: result.job.priority,
-          payload: result.job.payload,
-          retry_limit: result.job.retry_limit,
-          backoff: result.job.backoff,
-          retention: result.job.retention,
-          unique_key: result.job.unique_key,
-          unique_while: result.job.unique_while,
-        ),
+        job:
+          EnqueueRequest.new(
+            type: result.job.type,
+            queue: result.job.queue,
+            priority: result.job.priority,
+            payload: result.job.payload,
+            retry_limit: result.job.retry_limit,
+            backoff: result.job.backoff,
+            retention: result.job.retention,
+            unique_key: result.job.unique_key,
+            unique_while: result.job.unique_while
+          ),
         paused: result.paused?,
         paused_at: result.paused_at,
         resumed_at: result.resumed_at,
         last_enqueue_at: result.last_enqueue_at,
-        next_enqueue_at: result.next_enqueue_at,
+        next_enqueue_at: result.next_enqueue_at
       )
     end
   end

@@ -35,10 +35,11 @@ class NotifyWebhookJob
     url = ENV["WEBHOOK_URL"].to_s.strip
     return if url.empty?
 
-    response = connection.post(url) do |req|
-      req.headers["Content-Type"] = "application/json"
-      req.body = JSON.generate(build_payload(check))
-    end
+    response =
+      connection.post(url) do |req|
+        req.headers["Content-Type"] = "application/json"
+        req.body = JSON.generate(build_payload(check))
+      end
 
     case response.status
     when 200..299
@@ -56,23 +57,23 @@ class NotifyWebhookJob
   def connection
     Faraday.new do |f|
       f.options.open_timeout = OPEN_TIMEOUT_SECONDS
-      f.options.timeout      = READ_TIMEOUT_SECONDS
+      f.options.timeout = READ_TIMEOUT_SECONDS
     end
   end
 
   def build_payload(check)
     monitored = check.monitored_url
     {
-      check_id:             check.id,
-      monitored_url_id:     monitored.id,
-      url:                  monitored.url,
-      status:               check.status,
-      http_status:          check.http_status,
-      response_time_ms:     check.response_time_ms,
-      final_url:            check.final_url,
-      error_message:        check.error_message,
+      check_id: check.id,
+      monitored_url_id: monitored.id,
+      url: monitored.url,
+      status: check.status,
+      http_status: check.http_status,
+      response_time_ms: check.response_time_ms,
+      final_url: check.final_url,
+      error_message: check.error_message,
       consecutive_failures: monitored.consecutive_failures,
-      checked_at:           check.checked_at.iso8601,
+      checked_at: check.checked_at.iso8601
     }
   end
 end

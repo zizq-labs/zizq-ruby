@@ -49,7 +49,8 @@ module Zizq
     #
     # Implemented by the including module.
     def zizq_payload_subset_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
-      raise NotImplementedError, "#{self} must implement zizq_payload_subset_filter"
+      raise NotImplementedError,
+            "#{self} must implement zizq_payload_subset_filter"
     end
 
     # Declare the default queue for this job class.
@@ -116,7 +117,11 @@ module Zizq
           raise ArgumentError, "all of exponent:, base:, jitter: are required"
         end
 
-        @zizq_backoff = { exponent: exponent.to_f, base: base.to_f, jitter: jitter.to_f }
+        @zizq_backoff = {
+          exponent: exponent.to_f,
+          base: base.to_f,
+          jitter: jitter.to_f
+        }
       else
         @zizq_backoff
       end
@@ -214,15 +219,15 @@ module Zizq
     #   end
     def zizq_enqueue_request(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueRequest
       EnqueueRequest.new(
-        type:         name || raise(ArgumentError, "Cannot enqueue anonymous class"),
-        queue:        zizq_queue,
-        payload:      zizq_serialize(*args, **kwargs),
-        priority:     zizq_priority,
-        retry_limit:  zizq_retry_limit,
-        backoff:      zizq_backoff,
-        retention:    zizq_retention,
+        type: name || raise(ArgumentError, "Cannot enqueue anonymous class"),
+        queue: zizq_queue,
+        payload: zizq_serialize(*args, **kwargs),
+        priority: zizq_priority,
+        retry_limit: zizq_retry_limit,
+        backoff: zizq_backoff,
+        retention: zizq_retention,
         unique_while: zizq_unique ? zizq_unique_scope : nil,
-        unique_key:   zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
+        unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
       )
     end
 
@@ -233,7 +238,10 @@ module Zizq
     def normalize_payload(obj) #: (untyped) -> untyped
       case obj
       when Hash
-        obj.sort_by { |k, _| k.to_s }.map { |k, v| [k, normalize_payload(v)] }.to_h
+        obj
+          .sort_by { |k, _| k.to_s }
+          .map { |k, v| [k, normalize_payload(v)] }
+          .to_h
       when Array
         obj.map { |v| normalize_payload(v) }
       else

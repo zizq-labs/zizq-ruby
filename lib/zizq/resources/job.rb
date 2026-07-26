@@ -12,15 +12,15 @@ module Zizq
     # retention, unique_key, unique_while) from JobTemplate and adds
     # lifecycle fields and action methods.
     class Job < JobTemplate
-      def id          = @data["id"]          #: () -> String
-      def status      = @data["status"]      #: () -> String
-      def ready_at    = ms_to_seconds(@data["ready_at"])    #: () -> Float?
-      def attempts    = @data["attempts"]    #: () -> Integer
+      def id = @data["id"] #: () -> String
+      def status = @data["status"] #: () -> String
+      def ready_at = ms_to_seconds(@data["ready_at"]) #: () -> Float?
+      def attempts = @data["attempts"] #: () -> Integer
       def dequeued_at = ms_to_seconds(@data["dequeued_at"]) #: () -> Float?
-      def failed_at     = ms_to_seconds(@data["failed_at"])     #: () -> Float?
-      def completed_at  = ms_to_seconds(@data["completed_at"])  #: () -> Float?
-      def duplicate?    = @data["duplicate"] == true #: () -> bool
-      def folded?       = @data["folded"] == true    #: () -> bool
+      def failed_at = ms_to_seconds(@data["failed_at"]) #: () -> Float?
+      def completed_at = ms_to_seconds(@data["completed_at"]) #: () -> Float?
+      def duplicate? = @data["duplicate"] == true #: () -> bool
+      def folded? = @data["folded"] == true #: () -> bool
 
       # Fetch the error history for this job.
       #
@@ -45,8 +45,21 @@ module Zizq
       # @rbs retry_at: Float?
       # @rbs kill: bool
       # @rbs return: Job
-      def fail!(message:, error_type: nil, backtrace: nil, retry_at: nil, kill: false)
-        @client.report_failure(id, message:, error_type:, backtrace:, retry_at:, kill:)
+      def fail!(
+        message:,
+        error_type: nil,
+        backtrace: nil,
+        retry_at: nil,
+        kill: false
+      )
+        @client.report_failure(
+          id,
+          message:,
+          error_type:,
+          backtrace:,
+          retry_at:,
+          kill:
+        )
       end
 
       # Delete this job.
@@ -67,21 +80,24 @@ module Zizq
       # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
       # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
       # @rbs return: Job
-      def update(queue: Zizq::UNCHANGED,
-                 priority: Zizq::UNCHANGED,
-                 ready_at: Zizq::UNCHANGED,
-                 retry_limit: Zizq::UNCHANGED,
-                 backoff: Zizq::UNCHANGED,
-                 retention: Zizq::UNCHANGED)
-        job = @client.update_job(
-          id,
-          queue:,
-          priority:,
-          ready_at:,
-          retry_limit:,
-          backoff:,
-          retention:
-        )
+      def update(
+        queue: Zizq::UNCHANGED,
+        priority: Zizq::UNCHANGED,
+        ready_at: Zizq::UNCHANGED,
+        retry_limit: Zizq::UNCHANGED,
+        backoff: Zizq::UNCHANGED,
+        retention: Zizq::UNCHANGED
+      )
+        job =
+          @client.update_job(
+            id,
+            queue:,
+            priority:,
+            ready_at:,
+            retry_limit:,
+            backoff:,
+            retention:
+          )
 
         # Make sure this job's fields are updated.
         @data.merge!(job.to_h)

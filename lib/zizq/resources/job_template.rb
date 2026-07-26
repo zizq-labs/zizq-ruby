@@ -9,12 +9,12 @@ module Zizq
     # Typed wrapper around a job template — the fields shared between
     # live jobs and cron entry job definitions.
     class JobTemplate < Resource
-      def type         = @data["type"]         #: () -> String
-      def queue        = @data["queue"]        #: () -> String
-      def priority     = @data["priority"]     #: () -> Integer?
-      def payload      = @data["payload"]      #: () -> Hash[String, untyped]?
-      def retry_limit  = @data["retry_limit"]  #: () -> Integer?
-      def unique_key   = @data["unique_key"]   #: () -> String?
+      def type = @data["type"] #: () -> String
+      def queue = @data["queue"] #: () -> String
+      def priority = @data["priority"] #: () -> Integer?
+      def payload = @data["payload"] #: () -> Hash[String, untyped]?
+      def retry_limit = @data["retry_limit"] #: () -> Integer?
+      def unique_key = @data["unique_key"] #: () -> String?
       def unique_while = @data["unique_while"]&.to_sym #: () -> Zizq::unique_scope?
 
       # Batching configuration for this job. Retutns `nil` for non-batched jobs.
@@ -22,11 +22,7 @@ module Zizq
         raw = @data["batch"]
         return nil unless raw
 
-        {
-          key:  raw["key"],
-          when: raw["when"],
-          fold: raw["fold"]
-        }
+        { key: raw["key"], when: raw["when"], fold: raw["fold"] }
       end
 
       # Backoff configuration converted from the API format (ms) to the

@@ -14,7 +14,11 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "index returns just the urls partial on XHR for AJAX polling" do
-    MonitoredUrl.create!(url: "https://up.example.com", last_status: "up", last_checked_at: 1.minute.ago)
+    MonitoredUrl.create!(
+      url: "https://up.example.com",
+      last_status: "up",
+      last_checked_at: 1.minute.ago
+    )
 
     get root_path, headers: { "X-Requested-With" => "XMLHttpRequest" }
 
@@ -25,23 +29,36 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "index lists existing monitored URLs with their status" do
-    MonitoredUrl.create!(url: "https://up.example.com",   last_status: "up",   last_checked_at: 1.minute.ago)
-    MonitoredUrl.create!(url: "https://down.example.com", last_status: "down", last_checked_at: 2.minutes.ago)
+    MonitoredUrl.create!(
+      url: "https://up.example.com",
+      last_status: "up",
+      last_checked_at: 1.minute.ago
+    )
+    MonitoredUrl.create!(
+      url: "https://down.example.com",
+      last_status: "down",
+      last_checked_at: 2.minutes.ago
+    )
     MonitoredUrl.create!(url: "https://pending.example.com")
 
     get root_path
 
     assert_response :success
     assert_select "table.urls tbody tr", 3
-    assert_select "span.status-up",      text: "UP"
-    assert_select "span.status-down",    text: "DOWN"
+    assert_select "span.status-up", text: "UP"
+    assert_select "span.status-down", text: "DOWN"
     assert_select "span.status-pending", text: "PENDING"
   end
 
   test "create persists the URL and enqueues a check job" do
     assert_difference -> { MonitoredUrl.count }, 1 do
       assert_enqueued_with(job: CheckUrlJob) do
-        post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+        post monitored_urls_path,
+             params: {
+               monitored_url: {
+                 url: "https://example.com"
+               }
+             }
       end
     end
 
@@ -55,13 +72,18 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
   end
 
   test "create emits a url.added audit event with actor=user" do
-    post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+    post monitored_urls_path,
+         params: {
+           monitored_url: {
+             url: "https://example.com"
+           }
+         }
 
     event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
     refute_nil event, "expected an audit.create job"
-    assert_equal "audit",         event.queue
-    assert_equal "url.added",     event.payload["event_type"]
-    assert_equal "user",          event.payload["actor"]
+    assert_equal "audit", event.queue
+    assert_equal "url.added", event.payload["event_type"]
+    assert_equal "user", event.payload["actor"]
     assert_equal "uptime-monitor", event.payload["source"]
     assert_match(/monitored_url:\d+/, event.payload["resource"])
     assert_match(/Started monitoring/, event.payload["text"])
@@ -71,14 +93,24 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
   test "create does not emit an audit event when re-checking an existing URL" do
     MonitoredUrl.create!(url: "https://example.com")
 
-    post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+    post monitored_urls_path,
+         params: {
+           monitored_url: {
+             url: "https://example.com"
+           }
+         }
 
     assert_empty Zizq::Test.enqueued_jobs(only_types: "audit.create"),
-      "re-checking shouldn't audit-log a new URL addition"
+                 "re-checking shouldn't audit-log a new URL addition"
   end
 
   test "create strips surrounding whitespace from the URL" do
-    post monitored_urls_path, params: { monitored_url: { url: "  https://example.com  " } }
+    post monitored_urls_path,
+         params: {
+           monitored_url: {
+             url: "  https://example.com  "
+           }
+         }
 
     assert_equal "https://example.com", MonitoredUrl.last.url
   end
@@ -91,12 +123,17 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
 
   test "create rejects URLs with unsupported schemes" do
     assert_no_difference -> { MonitoredUrl.count } do
-      post monitored_urls_path, params: { monitored_url: { url: "ftp://example.com" } }
+      post monitored_urls_path,
+           params: {
+             monitored_url: {
+               url: "ftp://example.com"
+             }
+           }
     end
 
     assert_redirected_to root_path
     follow_redirect!
-    assert_match(/http:\/\/ or https:\/\//, flash[:alert] || @response.body)
+    assert_match(%r{http:// or https://}, flash[:alert] || @response.body)
   end
 
   test "submitting an existing URL re-checks it without duplicating the row" do
@@ -104,7 +141,12 @@ class MonitoredUrlsControllerTest < ActionDispatch::IntegrationTest
 
     assert_no_difference -> { MonitoredUrl.count } do
       assert_enqueued_with(job: CheckUrlJob, args: [existing]) do
-        post monitored_urls_path, params: { monitored_url: { url: "https://example.com" } }
+        post monitored_urls_path,
+             params: {
+               monitored_url: {
+                 url: "https://example.com"
+               }
+             }
       end
     end
 

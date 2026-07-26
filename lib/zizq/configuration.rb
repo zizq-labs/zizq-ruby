@@ -112,8 +112,8 @@ module Zizq
         @tls = TlsConfiguration.new(**value)
       else
         raise ArgumentError,
-          "Zizq.configure: tls= expects a Hash, Zizq::TlsConfiguration, or nil " \
-          "(got #{value.class})"
+              "Zizq.configure: tls= expects a Hash, Zizq::TlsConfiguration, or nil " \
+                "(got #{value.class})"
       end
     end
 
@@ -143,8 +143,8 @@ module Zizq
         @worker = WorkerConfiguration.new(**value)
       else
         raise ArgumentError,
-          "Zizq.configure: worker= expects a Hash, Zizq::WorkerConfiguration, or nil " \
-          "(got #{value.class})"
+              "Zizq.configure: worker= expects a Hash, Zizq::WorkerConfiguration, or nil " \
+                "(got #{value.class})"
       end
     end
 
@@ -175,15 +175,18 @@ module Zizq
       raise ArgumentError, "Zizq.configure: url is required" if url.empty?
 
       unless %i[msgpack json].include?(format)
-        raise ArgumentError, "Zizq.configure: format must be :msgpack or :json, got #{format.inspect}"
+        raise ArgumentError,
+              "Zizq.configure: format must be :msgpack or :json, got #{format.inspect}"
       end
 
       unless read_timeout.is_a?(Numeric) && read_timeout > 0
-        raise ArgumentError, "Zizq.configure: read_timeout must be a positive number, got #{read_timeout.inspect}"
+        raise ArgumentError,
+              "Zizq.configure: read_timeout must be a positive number, got #{read_timeout.inspect}"
       end
 
       unless stream_idle_timeout.is_a?(Numeric) && stream_idle_timeout > 0
-        raise ArgumentError, "Zizq.configure: stream_idle_timeout must be a positive number, got #{stream_idle_timeout.inspect}"
+        raise ArgumentError,
+              "Zizq.configure: stream_idle_timeout must be a positive number, got #{stream_idle_timeout.inspect}"
       end
 
       tls = @tls
@@ -255,11 +258,13 @@ module Zizq
 
     def validate_tls!(tls) #: (TlsConfiguration) -> void
       if tls.client_cert && !tls.client_key
-        raise ArgumentError, "Zizq.configure: tls.client_key is required when tls.client_cert is set"
+        raise ArgumentError,
+              "Zizq.configure: tls.client_key is required when tls.client_cert is set"
       end
 
       if tls.client_key && !tls.client_cert
-        raise ArgumentError, "Zizq.configure: tls.client_cert is required when tls.client_key is set"
+        raise ArgumentError,
+              "Zizq.configure: tls.client_cert is required when tls.client_key is set"
       end
     end
 
@@ -276,11 +281,7 @@ module Zizq
     # If the value looks like PEM data, return it as-is; otherwise treat
     # it as a file path and read the contents.
     def resolve_pem(value) #: (String) -> String
-      if value.include?("-----BEGIN ")
-        value
-      else
-        File.read(value)
-      end
+      value.include?("-----BEGIN ") ? value : File.read(value)
     end
   end
 end

@@ -35,14 +35,15 @@ module Zizq
   # * `retry_max_wait` — Maximum reconnect backoff in seconds.
   # * `retry_multiplier` — Multiplicative backoff factor between
   #   reconnect attempts.
-  WorkerConfiguration = Struct.new(
-    :queues,           #: Array[String]?
-    :thread_count,     #: Integer?
-    :fiber_count,      #: Integer?
-    :prefetch,         #: Integer?
-    :retry_min_wait,   #: (Float | Integer)?
-    :retry_max_wait,   #: (Float | Integer)?
-    :retry_multiplier, #: (Float | Integer)?
-    keyword_init: true
-  )
+  WorkerConfiguration =
+    Struct.new(
+      :queues, #: Array[String]?
+      :thread_count, #: Integer?
+      :fiber_count, #: Integer?
+      :prefetch, #: Integer?
+      :retry_min_wait, #: (Float | Integer)?
+      :retry_max_wait, #: (Float | Integer)?
+      :retry_multiplier, #: (Float | Integer)?
+      keyword_init: true
+    )
 end

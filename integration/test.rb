@@ -15,9 +15,10 @@ require "zizq"
 require "active_job"
 require "active_job/queue_adapters/zizq_adapter"
 
-ZIZQ_URL = ENV.fetch("ZIZQ_URL") do
-  abort "Error: ZIZQ_URL environment variable must be set."
-end
+ZIZQ_URL =
+  ENV.fetch("ZIZQ_URL") do
+    abort "Error: ZIZQ_URL environment variable must be set."
+  end
 
 # A minimal job class for the worker round-trip test.
 class IntegrationTestJob
@@ -44,7 +45,8 @@ class BackoffConfiguredJob
   zizq_retry_limit 3
   zizq_backoff exponent: 2.0, base: 1.5, jitter: 0.5
 
-  def perform; end
+  def perform
+  end
 end
 
 class RetentionConfiguredJob
@@ -53,7 +55,8 @@ class RetentionConfiguredJob
   zizq_queue "integration"
   zizq_retention completed: 3600, dead: 86_400
 
-  def perform; end
+  def perform
+  end
 end
 
 # An ActiveJob class for testing ActiveJob-specific query methods.
@@ -131,11 +134,14 @@ class IntegrationTest < Minitest::Test
   end
 
   def test_enqueue_raw
-    job = Zizq.enqueue_raw(
-      queue: "integration",
-      type: "raw_test",
-      payload: { hello: "world" },
-    )
+    job =
+      Zizq.enqueue_raw(
+        queue: "integration",
+        type: "raw_test",
+        payload: {
+          hello: "world"
+        }
+      )
 
     assert job.id
     assert_equal "raw_test", job.type
@@ -145,21 +151,35 @@ class IntegrationTest < Minitest::Test
   end
 
   def test_enqueue_bulk
-    jobs = Zizq.enqueue_bulk do |b|
-      b.enqueue(IntegrationTestJob, 1)
-      b.enqueue(IntegrationTestJob, 2)
-      b.enqueue(IntegrationTestJob, 3)
-    end
+    jobs =
+      Zizq.enqueue_bulk do |b|
+        b.enqueue(IntegrationTestJob, 1)
+        b.enqueue(IntegrationTestJob, 2)
+        b.enqueue(IntegrationTestJob, 3)
+      end
 
     assert_equal 3, jobs.length
     assert_equal IntegrationTestJob.name, jobs[0].type
   end
 
   def test_enqueue_bulk_raw
-    jobs = Zizq.enqueue_bulk do |b|
-      b.enqueue_raw(queue: "integration", type: "bulk_raw_a", payload: { n: 1 })
-      b.enqueue_raw(queue: "integration", type: "bulk_raw_b", payload: { n: 2 })
-    end
+    jobs =
+      Zizq.enqueue_bulk do |b|
+        b.enqueue_raw(
+          queue: "integration",
+          type: "bulk_raw_a",
+          payload: {
+            n: 1
+          }
+        )
+        b.enqueue_raw(
+          queue: "integration",
+          type: "bulk_raw_b",
+          payload: {
+            n: 2
+          }
+        )
+      end
 
     assert_equal 2, jobs.length
     assert_equal "bulk_raw_a", jobs[0].type
@@ -170,14 +190,15 @@ class IntegrationTest < Minitest::Test
     count = 10
 
     Zizq.enqueue_bulk do |b|
-      count.times { |i| b.enqueue(IntegrationTestJob, i+1, label: "test") }
+      count.times { |i| b.enqueue(IntegrationTestJob, i + 1, label: "test") }
     end
 
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      fiber_count: 1,
-      queues: ["worker-integration"],
-    )
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 1,
+        queues: ["worker-integration"]
+      )
 
     received = []
 
@@ -200,14 +221,15 @@ class IntegrationTest < Minitest::Test
     count = 10
 
     ActiveJob.perform_all_later(
-      count.times.map { |i| ActiveJobTestJob.new(i+1, label: 'test') }
+      count.times.map { |i| ActiveJobTestJob.new(i + 1, label: "test") }
     )
 
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      fiber_count: 1,
-      queues: ["activejob-integration"],
-    )
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 1,
+        queues: ["activejob-integration"]
+      )
 
     received = []
 
@@ -230,14 +252,15 @@ class IntegrationTest < Minitest::Test
     count = 10
 
     Zizq.enqueue_bulk do |b|
-      count.times { |i| b.enqueue(ActiveJobTestJob, i+1, label: "test") }
+      count.times { |i| b.enqueue(ActiveJobTestJob, i + 1, label: "test") }
     end
 
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      fiber_count: 1,
-      queues: ["activejob-integration"],
-    )
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 1,
+        queues: ["activejob-integration"]
+      )
 
     received = []
 
@@ -253,33 +276,33 @@ class IntegrationTest < Minitest::Test
   end
 
   def test_query_jobs
-    job = Zizq.enqueue_raw(
-      queue: "query-integration",
-      type: "query_test",
-      payload: { marker: "findme" },
-    )
+    job =
+      Zizq.enqueue_raw(
+        queue: "query-integration",
+        type: "query_test",
+        payload: {
+          marker: "findme"
+        }
+      )
 
-    found = Zizq.query
-      .by_queue("query-integration")
-      .by_type("query_test")
-      .first
+    found = Zizq.query.by_queue("query-integration").by_type("query_test").first
 
     assert found
     assert_equal job.id, found.id
   end
 
   def test_delete_job
-    job = Zizq.enqueue_raw(
-      queue: "delete-integration",
-      type: "delete_test",
-      payload: {},
-    )
+    job =
+      Zizq.enqueue_raw(
+        queue: "delete-integration",
+        type: "delete_test",
+        payload: {
+        }
+      )
 
     Zizq.client.delete_job(job.id)
 
-    assert_raises(Zizq::NotFoundError) do
-      Zizq.client.get_job(job.id)
-    end
+    assert_raises(Zizq::NotFoundError) { Zizq.client.get_job(job.id) }
   end
 
   def test_count_and_empty
@@ -315,12 +338,14 @@ class IntegrationTest < Minitest::Test
   end
 
   def test_update_job
-    job = Zizq.enqueue_raw(
-      queue: "integration",
-      type: "update_test",
-      payload: {},
-      priority: 100,
-    )
+    job =
+      Zizq.enqueue_raw(
+        queue: "integration",
+        type: "update_test",
+        payload: {
+        },
+        priority: 100
+      )
 
     updated = Zizq.client.update_job(job.id, priority: 50)
     assert_equal job.id, updated.id
@@ -337,10 +362,15 @@ class IntegrationTest < Minitest::Test
       b.enqueue_raw(queue: "q2", type: "upd_c", payload: {}, priority: 100)
     end
 
-    patched = Zizq.client.update_all_jobs(
-      where: { queue: "q1" },
-      apply: { priority: 1 },
-    )
+    patched =
+      Zizq.client.update_all_jobs(
+        where: {
+          queue: "q1"
+        },
+        apply: {
+          priority: 1
+        }
+      )
     assert_equal 2, patched
 
     q1_job = Zizq.query.by_queue("q1").first
@@ -352,20 +382,41 @@ class IntegrationTest < Minitest::Test
 
   def test_query_by_jq_filter
     Zizq.enqueue_bulk do |b|
-      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "high", region: "eu" })
-      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "low", region: "eu" })
-      b.enqueue_raw(queue: "integration", type: "jq_test", payload: { priority: "high", region: "us" })
+      b.enqueue_raw(
+        queue: "integration",
+        type: "jq_test",
+        payload: {
+          priority: "high",
+          region: "eu"
+        }
+      )
+      b.enqueue_raw(
+        queue: "integration",
+        type: "jq_test",
+        payload: {
+          priority: "low",
+          region: "eu"
+        }
+      )
+      b.enqueue_raw(
+        queue: "integration",
+        type: "jq_test",
+        payload: {
+          priority: "high",
+          region: "us"
+        }
+      )
     end
 
-    high_priority = Zizq.query
-      .add_jq_filter('.priority == "high"')
-      .to_a
+    high_priority = Zizq.query.add_jq_filter('.priority == "high"').to_a
     assert_equal 2, high_priority.length
 
-    high_eu = Zizq.query
-      .add_jq_filter('.priority == "high"')
-      .add_jq_filter('.region == "eu"')
-      .first
+    high_eu =
+      Zizq
+        .query
+        .add_jq_filter('.priority == "high"')
+        .add_jq_filter('.region == "eu"')
+        .first
     assert high_eu
     assert_equal({ "priority" => "high", "region" => "eu" }, high_eu.payload)
   end
@@ -375,9 +426,8 @@ class IntegrationTest < Minitest::Test
     Zizq.enqueue(IntegrationTestJob, 1, x: "b")
     Zizq.enqueue(IntegrationTestJob, 2, x: "a")
 
-    matches = Zizq.query
-      .by_job_class_and_args(IntegrationTestJob, 1, x: "a")
-      .to_a
+    matches =
+      Zizq.query.by_job_class_and_args(IntegrationTestJob, 1, x: "a").to_a
     assert_equal 1, matches.length
   end
 
@@ -387,21 +437,21 @@ class IntegrationTest < Minitest::Test
     Zizq.enqueue(IntegrationTestJob, 2, x: "a", y: true)
 
     # Subset match on positional arg only.
-    by_first_arg = Zizq.query
-      .by_job_class_and_args_subset(IntegrationTestJob, 1)
-      .to_a
+    by_first_arg =
+      Zizq.query.by_job_class_and_args_subset(IntegrationTestJob, 1).to_a
     assert_equal 2, by_first_arg.length
 
     # Subset match on kwargs only.
-    by_kwarg = Zizq.query
-      .by_job_class_and_args_subset(IntegrationTestJob, x: "a")
-      .to_a
+    by_kwarg =
+      Zizq.query.by_job_class_and_args_subset(IntegrationTestJob, x: "a").to_a
     assert_equal 2, by_kwarg.length
 
     # Subset match combining positional arg + kwarg.
-    combined = Zizq.query
-      .by_job_class_and_args_subset(IntegrationTestJob, 1, x: "a")
-      .to_a
+    combined =
+      Zizq
+        .query
+        .by_job_class_and_args_subset(IntegrationTestJob, 1, x: "a")
+        .to_a
     assert_equal 1, combined.length
   end
 
@@ -410,9 +460,8 @@ class IntegrationTest < Minitest::Test
     ActiveJobTestJob.perform_later(1, label: "b")
     ActiveJobTestJob.perform_later(2, label: "a")
 
-    matches = Zizq.query
-      .by_job_class_and_args(ActiveJobTestJob, 1, label: "a")
-      .to_a
+    matches =
+      Zizq.query.by_job_class_and_args(ActiveJobTestJob, 1, label: "a").to_a
     assert_equal 1, matches.length
   end
 
@@ -422,21 +471,21 @@ class IntegrationTest < Minitest::Test
     ActiveJobTestJob.perform_later(2, label: "a")
 
     # Subset match on positional arg only.
-    by_first_arg = Zizq.query
-      .by_job_class_and_args_subset(ActiveJobTestJob, 1)
-      .to_a
+    by_first_arg =
+      Zizq.query.by_job_class_and_args_subset(ActiveJobTestJob, 1).to_a
     assert_equal 2, by_first_arg.length
 
     # Subset match on kwarg only.
-    by_label = Zizq.query
-      .by_job_class_and_args_subset(ActiveJobTestJob, label: "a")
-      .to_a
+    by_label =
+      Zizq.query.by_job_class_and_args_subset(ActiveJobTestJob, label: "a").to_a
     assert_equal 2, by_label.length
 
     # Combined.
-    combined = Zizq.query
-      .by_job_class_and_args_subset(ActiveJobTestJob, 1, label: "a")
-      .to_a
+    combined =
+      Zizq
+        .query
+        .by_job_class_and_args_subset(ActiveJobTestJob, 1, label: "a")
+        .to_a
     assert_equal 1, combined.length
   end
 
@@ -458,13 +507,25 @@ class IntegrationTest < Minitest::Test
   # the server returns 403 Forbidden.
 
   def test_crontab_define_and_refetch
-    tab = Zizq.define_crontab("integration-test") do |cron|
-      cron.define_entry("entry-a", "* * * * *").enqueue(IntegrationTestJob, 1, label: "a")
-      cron.define_entry("entry-b", "*/5 * * * *").enqueue(ActiveJobTestJob, 2, label: "b")
-      cron.define_entry("entry-c", "0 0 * * *").enqueue_raw(
-        type: "cron_test_c", queue: "cron-integration", payload: {},
-      )
-    end
+    tab =
+      Zizq.define_crontab("integration-test") do |cron|
+        cron.define_entry("entry-a", "* * * * *").enqueue(
+          IntegrationTestJob,
+          1,
+          label: "a"
+        )
+        cron.define_entry("entry-b", "*/5 * * * *").enqueue(
+          ActiveJobTestJob,
+          2,
+          label: "b"
+        )
+        cron.define_entry("entry-c", "0 0 * * *").enqueue_raw(
+          type: "cron_test_c",
+          queue: "cron-integration",
+          payload: {
+          }
+        )
+      end
 
     assert_equal 3, tab.entries.size
 
@@ -486,30 +547,49 @@ class IntegrationTest < Minitest::Test
   rescue Zizq::ClientError => e
     skip "Cron scheduling requires a Pro license" if e.status == 403
   ensure
-    Zizq.crontab("integration-test").delete! rescue nil
+    begin
+      Zizq.crontab("integration-test").delete!
+    rescue StandardError
+      nil
+    end
   end
 
   def test_crontab_redefine_removes_absent_entries
     # Define with three entries.
     Zizq.define_crontab("integration-test") do |cron|
       cron.define_entry("keep-a", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
       cron.define_entry("keep-b", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
       cron.define_entry("remove-c", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
     end
 
     # Redefine with only two entries.
     Zizq.define_crontab("integration-test") do |cron|
       cron.define_entry("keep-a", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
       cron.define_entry("keep-b", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
     end
 
@@ -522,7 +602,11 @@ class IntegrationTest < Minitest::Test
   rescue Zizq::ClientError => e
     skip "Cron scheduling requires a Pro license" if e.status == 403
   ensure
-    Zizq.crontab("integration-test").delete! rescue nil
+    begin
+      Zizq.crontab("integration-test").delete!
+    rescue StandardError
+      nil
+    end
   end
 
   def test_delete_all_crons_wipes_every_group
@@ -542,7 +626,10 @@ class IntegrationTest < Minitest::Test
   def test_crontab_entry_pause
     Zizq.define_crontab("integration-test") do |cron|
       cron.define_entry("pausable", "* * * * *").enqueue_raw(
-        type: "cron_test", queue: "cron-integration", payload: {},
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
       )
     end
 
@@ -559,6 +646,10 @@ class IntegrationTest < Minitest::Test
   rescue Zizq::ClientError => e
     skip "Cron scheduling requires a Pro license" if e.status == 403
   ensure
-    Zizq.crontab("integration-test").delete! rescue nil
+    begin
+      Zizq.crontab("integration-test").delete!
+    rescue StandardError
+      nil
+    end
   end
 end

@@ -96,18 +96,24 @@ module Zizq
       @queues = queues || config.queues || []
       @thread_count = thread_count || config.thread_count || DEFAULT_THREADS
       @fiber_count = fiber_count || config.fiber_count || DEFAULT_FIBERS
-      @prefetch = prefetch || config.prefetch || @thread_count * @fiber_count * 2
-      @retry_min_wait = retry_min_wait || config.retry_min_wait || DEFAULT_RETRY_MIN_WAIT
-      @retry_max_wait = retry_max_wait || config.retry_max_wait || DEFAULT_RETRY_MAX_WAIT
-      @retry_multiplier = retry_multiplier || config.retry_multiplier || DEFAULT_RETRY_MULTIPLIER
+      @prefetch =
+        prefetch || config.prefetch || @thread_count * @fiber_count * 2
+      @retry_min_wait =
+        retry_min_wait || config.retry_min_wait || DEFAULT_RETRY_MIN_WAIT
+      @retry_max_wait =
+        retry_max_wait || config.retry_max_wait || DEFAULT_RETRY_MAX_WAIT
+      @retry_multiplier =
+        retry_multiplier || config.retry_multiplier || DEFAULT_RETRY_MULTIPLIER
       @logger = logger || Zizq.configuration.logger
       @dispatcher = dispatcher || Zizq.configuration.dequeue_middleware
 
       if @thread_count < 1
-        raise ArgumentError, "thread_count must be at least 1 (got #{@thread_count})"
+        raise ArgumentError,
+              "thread_count must be at least 1 (got #{@thread_count})"
       end
       if @fiber_count < 1
-        raise ArgumentError, "fiber_count must be at least 1 (got #{@fiber_count})"
+        raise ArgumentError,
+              "fiber_count must be at least 1 (got #{@fiber_count})"
       end
 
       reset_runtime_state
@@ -125,7 +131,11 @@ module Zizq
     # and `Thread::Queue#close`).
     def stop #: () -> void
       @lifecycle.drain!
-      @dispatch_queue.close rescue nil
+      begin
+        @dispatch_queue.close
+      rescue StandardError
+        nil
+      end
     end
 
     # Request an immediate shutdown.
@@ -144,7 +154,11 @@ module Zizq
     def kill #: () -> void
       @killing = true
       @lifecycle.drain!
-      @dispatch_queue.close rescue nil
+      begin
+        @dispatch_queue.close
+      rescue StandardError
+        nil
+      end
     end
 
     # Start the worker.
@@ -162,11 +176,11 @@ module Zizq
           "Zizq worker starting: %d threads, %d fibers, prefetch=%d",
           thread_count,
           fiber_count,
-          prefetch,
+          prefetch
         )
       end
 
-      logger.info { "Queues: #{queues.empty? ? '(all)' : queues.join(', ')}" }
+      logger.info { "Queues: #{queues.empty? ? "(all)" : queues.join(", ")}" }
 
       # Everything runs in the background initially.
       @ack_processor.start
@@ -182,7 +196,11 @@ module Zizq
         # Close the streaming response immediately so the server
         # re-dispatches any in-flight jobs after its visibility timeout.
         # This also unblocks the producer's IO read.
-        @streaming_response&.close rescue nil
+        begin
+          @streaming_response&.close
+        rescue StandardError
+          nil
+        end
 
         # Workers will finish their current job (can't be interrupted)
         # and then see the closed dispatch queue and exit.
@@ -205,7 +223,11 @@ module Zizq
         # Close the streaming response to unblock the producer's IO read.
         # This happens after workers and acks have drained so the server
         # doesn't requeue in-flight jobs while workers are still finishing.
-        @streaming_response&.close rescue nil
+        begin
+          @streaming_response&.close
+        rescue StandardError
+          nil
+        end
       end
 
       # Signal the producer that cleanup is complete. The watcher fiber
@@ -224,21 +246,23 @@ module Zizq
     # times on the same Worker instance. Called from `#initialize` and
     # from the top of `#run`.
     def reset_runtime_state #: () -> void
-      @backoff = Backoff.new(
-        min_wait:   @retry_min_wait,
-        max_wait:   @retry_max_wait,
-        multiplier: @retry_multiplier,
-      )
+      @backoff =
+        Backoff.new(
+          min_wait: @retry_min_wait,
+          max_wait: @retry_max_wait,
+          multiplier: @retry_multiplier
+        )
       @lifecycle = Lifecycle.new
       @dispatch_queue = Thread::Queue.new
       @streaming_response = nil #: untyped
       @killing = false
-      @ack_processor = AckProcessor.new(
-        client:   Zizq.client,
-        capacity: @prefetch * 2,
-        logger:   @logger,
-        backoff:  @backoff,
-      )
+      @ack_processor =
+        AckProcessor.new(
+          client: Zizq.client,
+          capacity: @prefetch * 2,
+          logger: @logger,
+          backoff: @backoff
+        )
     end
 
     def start_producer_thread #: () -> Thread
@@ -275,11 +299,11 @@ module Zizq
               client.take_jobs(
                 prefetch:,
                 queues:,
-                on_connect: -> {
+                on_connect: -> do
                   logger.info { "Connected. Listening for jobs." }
                   @backoff.reset
-                },
-                on_response: ->(resp) { @streaming_response = resp },
+                end,
+                on_response: ->(resp) { @streaming_response = resp }
               ) do |job|
                 begin
                   logger.debug do
@@ -316,7 +340,7 @@ module Zizq
                   "%s: %s. Reconnecting in %.2fs...",
                   error.class,
                   error.message,
-                  @backoff.duration,
+                  @backoff.duration
                 )
               end
 
@@ -332,7 +356,11 @@ module Zizq
         end
 
         # Ensure queue is closed so workers can drain and exit
-        @dispatch_queue.close rescue nil
+        begin
+          @dispatch_queue.close
+        rescue StandardError
+          nil
+        end
         logger.info { "Zizq producer thread stopped" }
       ensure
         # Wake the main thread if the producer crashes during normal
@@ -361,9 +389,7 @@ module Zizq
     # and dispatches them to the correct job class until the queue is closed
     # and drained.
     def run_loop(thread_idx, fiber_idx) #: (Integer, Integer) -> void
-      logger.info do
-        format("Worker %d:%d started", thread_idx, fiber_idx)
-      end
+      logger.info { format("Worker %d:%d started", thread_idx, fiber_idx) }
 
       loop do
         # pop returns nil when queue is closed and empty
@@ -373,9 +399,7 @@ module Zizq
         dispatch(job)
       end
 
-      logger.info do
-        format("Worker %d:%d stopped", thread_idx, fiber_idx)
-      end
+      logger.info { format("Worker %d:%d stopped", thread_idx, fiber_idx) }
     end
 
     # Fiber-based worker loop. Requires the `async` gem.
@@ -384,9 +408,7 @@ module Zizq
 
       Async do |task|
         fiber_count.times do |fiber_idx|
-          task.async do
-            run_loop(thread_idx, fiber_idx)
-          end
+          task.async { run_loop(thread_idx, fiber_idx) }
         end
       end
     end
@@ -428,12 +450,7 @@ module Zizq
       push_ack(job_id)
 
       logger.debug do
-        format(
-          "Job %s (%s) completed in %.4fs",
-          job_type,
-          job_id,
-          elapsed_time
-        )
+        format("Job %s (%s) completed in %.4fs", job_type, job_id, elapsed_time)
       end
     rescue Async::Stop, ClosedQueueError
       # In the case jobs take too long to terminate, they are force killed
@@ -455,13 +472,14 @@ module Zizq
     # @rbs error: Exception
     # @rbs return: void
     def push_nack(job_id, error)
-      @ack_processor.push(AckProcessor::Nack.new(
-        job_id:     job_id,
-        message:    "#{error.class}: #{error.message}",
-        error_type: error.class.name,
-        backtrace:  error.backtrace&.join("\n")
-      ))
+      @ack_processor.push(
+        AckProcessor::Nack.new(
+          job_id: job_id,
+          message: "#{error.class}: #{error.message}",
+          error_type: error.class.name,
+          backtrace: error.backtrace&.join("\n")
+        )
+      )
     end
-
   end
 end

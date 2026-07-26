@@ -65,7 +65,7 @@ module Zizq
     # side. This method is not used in the ActiveJob dispatch path.
     def zizq_deserialize(_payload) #: (untyped) -> [Array[untyped], Hash[Symbol, untyped]]
       raise NotImplementedError,
-        "ActiveJob handles deserialization via ActiveJob::Base.execute"
+            "ActiveJob handles deserialization via ActiveJob::Base.execute"
     end
 
     # Override unique key generation to hash only the arguments portion

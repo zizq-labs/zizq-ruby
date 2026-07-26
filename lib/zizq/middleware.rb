@@ -52,13 +52,14 @@ module Zizq
       private
 
       def build #: () -> untyped
-        @built ||= if @entries.empty?
-          @terminal
-        else
-          @entries.reverse.reduce(@terminal) do |next_link, mw|
-            Link.new(mw, next_link)
+        @built ||=
+          if @entries.empty?
+            @terminal
+          else
+            @entries
+              .reverse
+              .reduce(@terminal) { |next_link, mw| Link.new(mw, next_link) }
           end
-        end
       end
     end
 

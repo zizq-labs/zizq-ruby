@@ -3,7 +3,7 @@
 require "uri"
 
 class MonitoredUrl < Sequel::Model
-  SOURCES  = %w[manual sitemap].freeze
+  SOURCES = %w[manual sitemap].freeze
   STATUSES = %w[up down].freeze
 
   plugin :timestamps, update_on_create: true
@@ -11,15 +11,17 @@ class MonitoredUrl < Sequel::Model
 
   one_to_many :checks
 
-  dataset_module do
-    def enabled = where(enabled: true)
-  end
+  dataset_module { def enabled = where(enabled: true) }
 
   def validate
     super
     errors.add(:url, "is required") if url.to_s.strip.empty?
-    errors.add(:source, "must be one of #{SOURCES.inspect}") unless SOURCES.include?(source)
-    errors.add(:last_status, "must be one of #{STATUSES.inspect}") if last_status && !STATUSES.include?(last_status)
+    unless SOURCES.include?(source)
+      errors.add(:source, "must be one of #{SOURCES.inspect}")
+    end
+    if last_status && !STATUSES.include?(last_status)
+      errors.add(:last_status, "must be one of #{STATUSES.inspect}")
+    end
 
     validate_url_scheme if url && !url.to_s.empty?
   end
@@ -29,20 +31,22 @@ class MonitoredUrl < Sequel::Model
   # newly-created Check.
   def record_check!(result)
     db.transaction do
-      check = add_check(
-        checked_at:       result.checked_at,
-        status:           result.status,
-        http_status:      result.http_status,
-        response_time_ms: result.response_time_ms,
-        final_url:        result.final_url,
-        error_message:    result.error_message,
-        created_at:       Time.now,
-      )
+      check =
+        add_check(
+          checked_at: result.checked_at,
+          status: result.status,
+          http_status: result.http_status,
+          response_time_ms: result.response_time_ms,
+          final_url: result.final_url,
+          error_message: result.error_message,
+          created_at: Time.now
+        )
 
       update(
-        last_checked_at:      result.checked_at,
-        last_status:          result.status,
-        consecutive_failures: result.status == "up" ? 0 : consecutive_failures + 1,
+        last_checked_at: result.checked_at,
+        last_status: result.status,
+        consecutive_failures:
+          result.status == "up" ? 0 : consecutive_failures + 1
       )
 
       check

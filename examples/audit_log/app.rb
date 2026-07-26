@@ -22,10 +22,14 @@ require "zizq"
 
 # --- Database ------------------------------------------------------
 
-DB = Sequel.connect(
-  ENV.fetch("DATABASE_URL", "sqlite://storage/#{ENV.fetch('RACK_ENV', 'development')}.sqlite3"),
-  max_connections: Integer(ENV.fetch("DB_POOL_SIZE", "10")),
-)
+DB =
+  Sequel.connect(
+    ENV.fetch(
+      "DATABASE_URL",
+      "sqlite://storage/#{ENV.fetch("RACK_ENV", "development")}.sqlite3"
+    ),
+    max_connections: Integer(ENV.fetch("DB_POOL_SIZE", "10"))
+  )
 DB.run "PRAGMA journal_mode=WAL"
 
 # Without this, SQLite's TEXT timestamps drop the offset and get
@@ -55,8 +59,9 @@ ZIZQ_QUEUE = "audit"
 Zizq.configure do |c|
   c.url = ENV.fetch("ZIZQ_URL", "http://127.0.0.1:7890")
   c.tls.ca = ENV["ZIZQ_CA"].to_s.then { |s| s.empty? ? nil : s }
-  c.tls.client_cert = ENV["ZIZQ_CLIENT_CERT"].to_s.then { |s| s.empty? ? nil : s }
-  c.tls.client_key  = ENV["ZIZQ_CLIENT_KEY"].to_s.then { |s| s.empty? ? nil : s }
+  c.tls.client_cert =
+    ENV["ZIZQ_CLIENT_CERT"].to_s.then { |s| s.empty? ? nil : s }
+  c.tls.client_key = ENV["ZIZQ_CLIENT_KEY"].to_s.then { |s| s.empty? ? nil : s }
 
   # Not using Zizq::Job or ActiveJob so we're full stack compatible.
   c.dispatcher = AUDIT_ROUTER
@@ -70,17 +75,18 @@ end
 class AuditLogApp < Sinatra::Base
   PAGE_SIZE = 50
 
-  set :root,    File.expand_path(__dir__)
-  set :views,   File.expand_path("views", __dir__)
+  set :root, File.expand_path(__dir__)
+  set :views, File.expand_path("views", __dir__)
   set :public_folder, File.expand_path("public", __dir__)
 
-  set :bind,    ENV.fetch("BIND", "127.0.0.1")
-  set :port,    Integer(ENV.fetch("PORT", "3000"))
+  set :bind, ENV.fetch("BIND", "127.0.0.1")
+  set :port, Integer(ENV.fetch("PORT", "3000"))
 
   # Sinatra 4's Rack::Protection HostAuthorization only allows
   # localhost by default. `DEV_HOSTS` opens it up for LAN access.
   if (extra_hosts = ENV["DEV_HOSTS"]) && !extra_hosts.empty?
-    set :host_authorization, { permitted_hosts: extra_hosts.split(",").map(&:strip) }
+    set :host_authorization,
+        { permitted_hosts: extra_hosts.split(",").map(&:strip) }
   end
 
   helpers do
@@ -88,16 +94,23 @@ class AuditLogApp < Sinatra::Base
       return "" unless time
       seconds = (Time.now - time).to_i
       case seconds
-      when ...0        then time.utc.iso8601   # future
-      when 0..59       then "#{seconds}s ago"
-      when 60..3599    then "#{seconds / 60}m ago"
-      when 3600..86399 then "#{seconds / 3600}h ago"
-      else                  "#{seconds / 86_400}d ago"
+      when ...0
+        time.utc.iso8601 # future
+      when 0..59
+        "#{seconds}s ago"
+      when 60..3599
+        "#{seconds / 60}m ago"
+      when 3600..86_399
+        "#{seconds / 3600}h ago"
+      else
+        "#{seconds / 86_400}d ago"
       end
     end
 
     def format_data(json_value)
-      return "" if json_value.nil? || (json_value.is_a?(Hash) && json_value.empty?)
+      if json_value.nil? || (json_value.is_a?(Hash) && json_value.empty?)
+        return ""
+      end
       JSON.pretty_generate(json_value)
     end
   end

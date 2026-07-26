@@ -10,24 +10,26 @@ class ScheduleChecksJob
 
   zizq_queue ZIZQ_QUEUE
 
-  STALE_AFTER = 60   # seconds
-  BATCH_SIZE  = 500
+  STALE_AFTER = 60 # seconds
+  BATCH_SIZE = 500
 
   def perform
-    stale_ids = MonitoredUrl
-      .where(enabled: true)
-      .where(
-        Sequel.lit("last_checked_at IS NULL OR last_checked_at < ?", Time.now - STALE_AFTER),
-      )
-      .select_map(:id)
+    stale_ids =
+      MonitoredUrl
+        .where(enabled: true)
+        .where(
+          Sequel.lit(
+            "last_checked_at IS NULL OR last_checked_at < ?",
+            Time.now - STALE_AFTER
+          )
+        )
+        .select_map(:id)
 
     # `enqueue_bulk` collapses N jobs into a single Zizq round-trip,
     # so even a backlog of thousands of URLs dispatches in just a
     # handful of requests.
     stale_ids.each_slice(BATCH_SIZE) do |batch|
-      Zizq.enqueue_bulk do |b|
-        batch.each { |id| b.enqueue(CheckUrlJob, id) }
-      end
+      Zizq.enqueue_bulk { |b| batch.each { |id| b.enqueue(CheckUrlJob, id) } }
     end
   end
 end

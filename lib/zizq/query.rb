@@ -62,17 +62,19 @@ module Zizq
     # @rbs limit: Integer?
     # @rbs page_size: Integer?
     # @rbs return: void
-    def initialize(id: nil,
-                   queue: nil,
-                   type: nil,
-                   status: nil,
-                   jq_filter: nil,
-                   priority: nil,
-                   ready_at: nil,
-                   attempts: nil,
-                   order: nil,
-                   limit: nil,
-                   page_size: nil)
+    def initialize(
+      id: nil,
+      queue: nil,
+      type: nil,
+      status: nil,
+      jq_filter: nil,
+      priority: nil,
+      ready_at: nil,
+      attempts: nil,
+      order: nil,
+      limit: nil,
+      page_size: nil
+    )
       @id = id
       @queue = queue
       @type = type
@@ -232,8 +234,11 @@ module Zizq
     # @rbs return: Query
     def by_job_class_and_args(job_class, *args, **kwargs)
       validate_job_class!(job_class)
-      name = job_class.name or raise ArgumentError, "anonymous classes are not supported"
-      by_type(name).add_jq_filter(job_class.zizq_payload_filter(*args, **kwargs))
+      name = job_class.name or
+        raise ArgumentError, "anonymous classes are not supported"
+      by_type(name).add_jq_filter(
+        job_class.zizq_payload_filter(*args, **kwargs)
+      )
     end
 
     # Filter by job class and a subset of arguments.
@@ -250,8 +255,11 @@ module Zizq
     # @rbs return: Query
     def by_job_class_and_args_subset(job_class, *args, **kwargs)
       validate_job_class!(job_class)
-      name = job_class.name or raise ArgumentError, "anonymous classes are not supported"
-      by_type(name).add_jq_filter(job_class.zizq_payload_subset_filter(*args, **kwargs))
+      name = job_class.name or
+        raise ArgumentError, "anonymous classes are not supported"
+      by_type(name).add_jq_filter(
+        job_class.zizq_payload_subset_filter(*args, **kwargs)
+      )
     end
 
     # Replace the jq payload filter expression.
@@ -363,16 +371,17 @@ module Zizq
     def count(*args, &block)
       return super if block || !args.empty?
 
-      total = Zizq.client.count_jobs(
-        id: @id,
-        queue: @queue,
-        type: @type,
-        status: @status,
-        filter: @jq_filter,
-        priority: @priority,
-        ready_at: @ready_at,
-        attempts: @attempts,
-      )
+      total =
+        Zizq.client.count_jobs(
+          id: @id,
+          queue: @queue,
+          type: @type,
+          status: @status,
+          filter: @jq_filter,
+          priority: @priority,
+          ready_at: @ready_at,
+          attempts: @attempts
+        )
 
       @limit ? [total, @limit].min : total
     end
@@ -483,18 +492,23 @@ module Zizq
       enumerator = enum_for(:each_page)
 
       if block_given?
-        page = Zizq.client.list_jobs(
-          id: @id,
-          queue: @queue,
-          type: @type,
-          status: @status,
-          filter: @jq_filter,
-          priority: @priority,
-          ready_at: @ready_at,
-          attempts: @attempts,
-          limit: [@page_size, @limit, (@page_size || @limit) && MAX_PAGE_SIZE].compact.min,
-          order: @order,
-        )
+        page =
+          Zizq.client.list_jobs(
+            id: @id,
+            queue: @queue,
+            type: @type,
+            status: @status,
+            filter: @jq_filter,
+            priority: @priority,
+            ready_at: @ready_at,
+            attempts: @attempts,
+            limit: [
+              @page_size,
+              @limit,
+              (@page_size || @limit) && MAX_PAGE_SIZE
+            ].compact.min,
+            order: @order
+          )
 
         remaining = @limit
 
@@ -529,12 +543,14 @@ module Zizq
     # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs return: Integer
-    def update_all(queue: Zizq::UNCHANGED,
-                   priority: Zizq::UNCHANGED,
-                   ready_at: Zizq::UNCHANGED,
-                   retry_limit: Zizq::UNCHANGED,
-                   backoff: Zizq::UNCHANGED,
-                   retention: Zizq::UNCHANGED)
+    def update_all(
+      queue: Zizq::UNCHANGED,
+      priority: Zizq::UNCHANGED,
+      ready_at: Zizq::UNCHANGED,
+      retry_limit: Zizq::UNCHANGED,
+      backoff: Zizq::UNCHANGED,
+      retention: Zizq::UNCHANGED
+    )
       where = {
         id: @id,
         queue: @queue,
@@ -543,7 +559,7 @@ module Zizq
         filter: @jq_filter,
         priority: @priority,
         ready_at: @ready_at,
-        attempts: @attempts,
+        attempts: @attempts
       }
 
       apply = {
@@ -552,7 +568,7 @@ module Zizq
         ready_at:,
         retry_limit:,
         backoff:,
-        retention:,
+        retention:
       }
 
       if @limit || @page_size
@@ -567,10 +583,11 @@ module Zizq
           ids_on_page = page.jobs.map(&:id)
           ids_on_page = ids_on_page.take(remaining) if remaining
 
-          updated += Zizq.client.update_all_jobs(
-            where: where.merge(id: ids_on_page),
-            apply:,
-          )
+          updated +=
+            Zizq.client.update_all_jobs(
+              where: where.merge(id: ids_on_page),
+              apply:
+            )
 
           remaining -= ids_on_page.size if remaining
         end
@@ -603,7 +620,7 @@ module Zizq
         filter: @jq_filter,
         priority: @priority,
         ready_at: @ready_at,
-        attempts: @attempts,
+        attempts: @attempts
       }
 
       if @limit || @page_size
@@ -618,9 +635,8 @@ module Zizq
           ids_on_page = page.jobs.map(&:id)
           ids_on_page = ids_on_page.take(remaining) if remaining
 
-          deleted += Zizq.client.delete_all_jobs(
-            where: where.merge(id: ids_on_page),
-          )
+          deleted +=
+            Zizq.client.delete_all_jobs(where: where.merge(id: ids_on_page))
 
           remaining -= ids_on_page.size if remaining
         end
@@ -636,17 +652,19 @@ module Zizq
     # Build a new Query with the given overrides, preserving all other fields.
     #
     # @rbs return: Query
-    def rebuild(id: @id,
-                queue: @queue,
-                type: @type,
-                status: @status,
-                jq_filter: @jq_filter,
-                priority: @priority,
-                ready_at: @ready_at,
-                attempts: @attempts,
-                order: @order,
-                limit: @limit,
-                page_size: @page_size)
+    def rebuild(
+      id: @id,
+      queue: @queue,
+      type: @type,
+      status: @status,
+      jq_filter: @jq_filter,
+      priority: @priority,
+      ready_at: @ready_at,
+      attempts: @attempts,
+      order: @order,
+      limit: @limit,
+      page_size: @page_size
+    )
       self.class.new(
         id:,
         queue:,
@@ -658,7 +676,7 @@ module Zizq
         attempts:,
         limit:,
         order:,
-        page_size:,
+        page_size:
       )
     end
 
@@ -667,8 +685,8 @@ module Zizq
     def validate_job_class!(job_class)
       unless job_class.is_a?(JobConfig)
         raise ArgumentError,
-          "#{job_class} does not include Zizq::JobConfig " \
-          "(include Zizq::Job or extend Zizq::ActiveJobConfig)"
+              "#{job_class} does not include Zizq::JobConfig " \
+                "(include Zizq::Job or extend Zizq::ActiveJobConfig)"
       end
     end
   end

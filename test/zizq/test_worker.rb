@@ -76,7 +76,7 @@ class TestWorker < ZizqTestCase
       c.url = URL
       c.worker.thread_count = 3
       c.worker.fiber_count = 7
-      c.worker.queues = [ "emails", "webhooks" ]
+      c.worker.queues = %w[emails webhooks]
       c.worker.prefetch = 50
     end
 
@@ -93,14 +93,15 @@ class TestWorker < ZizqTestCase
       c.url = URL
       c.worker.thread_count = 3
       c.worker.fiber_count = 7
-      c.worker.queues = [ "emails" ]
+      c.worker.queues = ["emails"]
     end
 
-    worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, queues: [ "other" ])
+    worker =
+      Zizq::Worker.new(thread_count: 1, fiber_count: 2, queues: ["other"])
 
     assert_equal 1, worker.thread_count
     assert_equal 2, worker.fiber_count
-    assert_equal [ "other" ], worker.queues
+    assert_equal ["other"], worker.queues
   end
 
   def test_falls_back_to_hardcoded_defaults_when_neither_set
@@ -115,23 +116,42 @@ class TestWorker < ZizqTestCase
 
   def test_dispatches_job_successfully
     payload = { "args" => [42], "kwargs" => { "action" => "signup" } }
-    job1 = { "id" => "j1", "type" => "RecordingJob", "queue" => "test",
-             "priority" => 100, "attempts" => 1, "dequeued_at" => 1000,
-             "payload" => payload }
+    job1 = {
+      "id" => "j1",
+      "type" => "RecordingJob",
+      "queue" => "test",
+      "priority" => 100,
+      "attempts" => 1,
+      "dequeued_at" => 1000,
+      "payload" => payload
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      }
+    )
+
+    ack_stub = stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        queues: [],
+        prefetch: 1,
+        logger: Logger.new(File::NULL)
       )
-
-    ack_stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
-
-    worker = Zizq::Worker.new(thread_count: 1, queues: [], prefetch: 1,
- logger: Logger.new(File::NULL))
 
     t = Thread.new { worker.run }
 
@@ -155,29 +175,54 @@ class TestWorker < ZizqTestCase
 
   def test_nacks_failing_job
     payload = { "args" => [], "kwargs" => {} }
-    job1 = { "id" => "j1", "type" => "FailingJob", "queue" => "default",
-             "priority" => 32_768, "attempts" => 1, "payload" => payload }
+    job1 = {
+      "id" => "j1",
+      "type" => "FailingJob",
+      "queue" => "default",
+      "priority" => 32_768,
+      "attempts" => 1,
+      "payload" => payload
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
-
-    nack_stub = stub_request(:post, "#{URL}/jobs/j1/failure")
-      .with { |req|
-        body = JSON.parse(req.body)
-        body["message"].include?("RuntimeError") &&
-          body["message"].include?("boom") &&
-          body["error_type"] == "RuntimeError"
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
       }
-      .to_return(status: 200, body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
-                 headers: { "Content-Type" => "application/json" })
+    )
 
-    worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
- logger: Logger.new(File::NULL))
+    nack_stub =
+      stub_request(:post, "#{URL}/jobs/j1/failure")
+        .with do |req|
+          body = JSON.parse(req.body)
+          body["message"].include?("RuntimeError") &&
+            body["message"].include?("boom") &&
+            body["error_type"] == "RuntimeError"
+        end
+        .to_return(
+          status: 200,
+          body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        )
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        prefetch: 1,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 
@@ -192,28 +237,54 @@ class TestWorker < ZizqTestCase
   end
 
   def test_nacks_unknown_job_type
-    job1 = { "id" => "j1", "type" => "NonExistentJobClass", "queue" => "default",
-             "priority" => 32_768, "attempts" => 1, "payload" => {} }
+    job1 = {
+      "id" => "j1",
+      "type" => "NonExistentJobClass",
+      "queue" => "default",
+      "priority" => 32_768,
+      "attempts" => 1,
+      "payload" => {
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      }
+    )
 
     # Should nack without kill -- just a normal failure so backoff retry kicks in
-    nack_stub = stub_request(:post, "#{URL}/jobs/j1/failure")
-      .with { |req|
-        body = JSON.parse(req.body)
-        body["error_type"] == "NameError" && !body.key?("kill")
-      }
-      .to_return(status: 200, body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
-                 headers: { "Content-Type" => "application/json" })
+    nack_stub =
+      stub_request(:post, "#{URL}/jobs/j1/failure")
+        .with do |req|
+          body = JSON.parse(req.body)
+          body["error_type"] == "NameError" && !body.key?("kill")
+        end
+        .to_return(
+          status: 200,
+          body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        )
 
-    worker = Zizq::Worker.new(thread_count: 1, prefetch: 1,
- logger: Logger.new(File::NULL))
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        prefetch: 1,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 
@@ -238,24 +309,43 @@ class TestWorker < ZizqTestCase
 
   def test_dispatches_job_with_fibers
     payload = { "args" => [42], "kwargs" => { "action" => "signup" } }
-    job1 = { "id" => "j1", "type" => "RecordingJob", "queue" => "test",
-             "priority" => 100, "attempts" => 1, "dequeued_at" => 1000,
-             "payload" => payload }
+    job1 = {
+      "id" => "j1",
+      "type" => "RecordingJob",
+      "queue" => "test",
+      "priority" => 100,
+      "attempts" => 1,
+      "dequeued_at" => 1000,
+      "payload" => payload
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=2")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
+    stub_request(:get, "#{URL}/jobs/take?prefetch=2").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      }
+    )
 
-    ack_stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
+    ack_stub = stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
 
     # 1 thread with 2 fibers exercises the Async code path
-    worker = Zizq::Worker.new(thread_count: 1, fiber_count: 2, prefetch: 2,
- logger: Logger.new(File::NULL))
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 2,
+        prefetch: 2,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 
@@ -275,32 +365,54 @@ class TestWorker < ZizqTestCase
 
   def test_nacks_failing_job_with_fibers
     payload = { "args" => [], "kwargs" => {} }
-    job1 = { "id" => "j1", "type" => "FailingJob", "queue" => "default",
-             "priority" => 32_768, "attempts" => 1, "payload" => payload }
+    job1 = {
+      "id" => "j1",
+      "type" => "FailingJob",
+      "queue" => "default",
+      "priority" => 32_768,
+      "attempts" => 1,
+      "payload" => payload
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=2")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
-
-    nack_stub = stub_request(:post, "#{URL}/jobs/j1/failure")
-      .with { |req|
-        body = JSON.parse(req.body)
-        body["message"].include?("RuntimeError") &&
-          body["message"].include?("boom")
+    stub_request(:get, "#{URL}/jobs/take?prefetch=2").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
       }
-      .to_return(status: 200, body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
-                 headers: { "Content-Type" => "application/json" })
-
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      fiber_count: 2,
-      prefetch: 2,
-      logger: Logger.new(File::NULL),
     )
+
+    nack_stub =
+      stub_request(:post, "#{URL}/jobs/j1/failure")
+        .with do |req|
+          body = JSON.parse(req.body)
+          body["message"].include?("RuntimeError") &&
+            body["message"].include?("boom")
+        end
+        .to_return(
+          status: 200,
+          body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        )
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 2,
+        prefetch: 2,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 
@@ -317,31 +429,51 @@ class TestWorker < ZizqTestCase
   def test_multiple_fibers_process_concurrently
     payload1 = { "args" => [1], "kwargs" => {} }
     payload2 = { "args" => [2], "kwargs" => {} }
-    job1 = { "id" => "j1", "type" => "RecordingJob", "queue" => "test",
-             "priority" => 100, "attempts" => 1, "dequeued_at" => 1000,
-             "payload" => payload1 }
-    job2 = { "id" => "j2", "type" => "RecordingJob", "queue" => "test",
-             "priority" => 100, "attempts" => 1, "dequeued_at" => 1001,
-             "payload" => payload2 }
+    job1 = {
+      "id" => "j1",
+      "type" => "RecordingJob",
+      "queue" => "test",
+      "priority" => 100,
+      "attempts" => 1,
+      "dequeued_at" => 1000,
+      "payload" => payload1
+    }
+    job2 = {
+      "id" => "j2",
+      "type" => "RecordingJob",
+      "queue" => "test",
+      "priority" => 100,
+      "attempts" => 1,
+      "dequeued_at" => 1001,
+      "payload" => payload2
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=2")
-      .to_return(
-        { status: 200,
-          body: "#{JSON.generate(job1)}\n#{JSON.generate(job2)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
-
-    stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
-
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      fiber_count: 2,
-      prefetch: 2,
-      logger: Logger.new(File::NULL),
+    stub_request(:get, "#{URL}/jobs/take?prefetch=2").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n#{JSON.generate(job2)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      }
     )
+
+    stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 2,
+        prefetch: 2,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 
@@ -372,25 +504,40 @@ class TestWorker < ZizqTestCase
     end
 
     payload = { "args" => [42], "kwargs" => {} }
-    job1 = { "id" => "j1", "type" => "RecordingJob", "queue" => "test",
-             "priority" => 100, "attempts" => 0, "payload" => payload }
+    job1 = {
+      "id" => "j1",
+      "type" => "RecordingJob",
+      "queue" => "test",
+      "priority" => 100,
+      "attempts" => 0,
+      "payload" => payload
+    }
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(
-        { status: 200, body: "#{JSON.generate(job1)}\n",
-          headers: { "Content-Type" => "application/x-ndjson" } },
-        { status: 200, body: "",
-          headers: { "Content-Type" => "application/x-ndjson" } }
-      )
-
-    ack_stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
-
-    worker = Zizq::Worker.new(
-      thread_count: 1,
-      prefetch: 1,
-      logger: Logger.new(File::NULL),
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      {
+        status: 200,
+        body: "#{JSON.generate(job1)}\n",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      },
+      {
+        status: 200,
+        body: "",
+        headers: {
+          "Content-Type" => "application/x-ndjson"
+        }
+      }
     )
+
+    ack_stub = stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        prefetch: 1,
+        logger: Logger.new(File::NULL)
+      )
 
     t = Thread.new { worker.run }
 

@@ -5,6 +5,8 @@ class Check < Sequel::Model
 
   def validate
     super
-    errors.add(:status, "must be one of #{MonitoredUrl::STATUSES.inspect}") unless MonitoredUrl::STATUSES.include?(status)
+    unless MonitoredUrl::STATUSES.include?(status)
+      errors.add(:status, "must be one of #{MonitoredUrl::STATUSES.inspect}")
+    end
   end
 end

@@ -79,13 +79,9 @@ module Zizq
           # Partition: acks go bulk, nacks go individually.
           acks, nacks = batch.partition { |i| i.is_a?(Ack) }
 
-          unless acks.empty?
-            barrier.async { process_ack_batch(acks) }
-          end
+          barrier.async { process_ack_batch(acks) } unless acks.empty?
 
-          nacks.each do |nack|
-            barrier.async { process_nack(nack) }
-          end
+          nacks.each { |nack| barrier.async { process_nack(nack) } }
         end
 
         barrier.wait
@@ -101,9 +97,13 @@ module Zizq
       begin
         @client.report_success_bulk(ids)
       rescue ClientError => e
-        @logger.warn { "Bulk ack (#{ids.size} jobs) returned #{e.status} (dropping: #{e.message})" }
+        @logger.warn do
+          "Bulk ack (#{ids.size} jobs) returned #{e.status} (dropping: #{e.message})"
+        end
       rescue => e
-        @logger.warn { "Retrying bulk ack (#{ids.size} jobs) in #{backoff.duration}s: #{e.message}" }
+        @logger.warn do
+          "Retrying bulk ack (#{ids.size} jobs) in #{backoff.duration}s: #{e.message}"
+        end
         backoff.wait
         retry
       end
@@ -119,11 +119,17 @@ module Zizq
           backtrace: nack.backtrace
         )
       rescue NotFoundError
-        @logger.debug { "Nack for #{nack.job_id} returned 404 (already handled)" }
+        @logger.debug do
+          "Nack for #{nack.job_id} returned 404 (already handled)"
+        end
       rescue ClientError => e
-        @logger.error { "Nack for #{nack.job_id} returned #{e.status} (dropping)" }
+        @logger.error do
+          "Nack for #{nack.job_id} returned #{e.status} (dropping)"
+        end
       rescue => e
-        @logger.warn { "Retrying nack for #{nack.job_id} in #{backoff.duration}s: #{e.message}" }
+        @logger.warn do
+          "Retrying nack for #{nack.job_id} in #{backoff.duration}s: #{e.message}"
+        end
         backoff.wait
         retry
       end

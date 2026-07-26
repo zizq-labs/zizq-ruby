@@ -11,22 +11,24 @@ class TestNotifyWebhookJob < Minitest::Test
     @original_webhook = ENV["WEBHOOK_URL"]
     ENV["WEBHOOK_URL"] = WEBHOOK
 
-    @monitored = MonitoredUrl.create(
-      url:                  "https://site.example.com",
-      last_status:          "down",
-      last_checked_at:      Time.now - 60,
-      consecutive_failures: 3,
-    )
-    @check = Check.create(
-      monitored_url:    @monitored,
-      checked_at:       Time.now - 60,
-      status:           "down",
-      http_status:      500,
-      response_time_ms: 120,
-      final_url:        "https://site.example.com/",
-      error_message:    "HTTP 500",
-      created_at:       Time.now - 60,
-    )
+    @monitored =
+      MonitoredUrl.create(
+        url: "https://site.example.com",
+        last_status: "down",
+        last_checked_at: Time.now - 60,
+        consecutive_failures: 3
+      )
+    @check =
+      Check.create(
+        monitored_url: @monitored,
+        checked_at: Time.now - 60,
+        status: "down",
+        http_status: 500,
+        response_time_ms: 120,
+        final_url: "https://site.example.com/",
+        error_message: "HTTP 500",
+        created_at: Time.now - 60
+      )
   end
 
   def teardown
@@ -45,14 +47,14 @@ class TestNotifyWebhookJob < Minitest::Test
     assert_requested :post, WEBHOOK do |req|
       assert_equal "application/json", req.headers["Content-Type"]
       body = JSON.parse(req.body)
-      assert_equal @check.id,      body["check_id"]
-      assert_equal @monitored.id,  body["monitored_url_id"]
+      assert_equal @check.id, body["check_id"]
+      assert_equal @monitored.id, body["monitored_url_id"]
       assert_equal @monitored.url, body["url"]
-      assert_equal "down",         body["status"]
-      assert_equal 500,            body["http_status"]
-      assert_equal 120,            body["response_time_ms"]
-      assert_equal 3,              body["consecutive_failures"]
-      assert_equal "HTTP 500",     body["error_message"]
+      assert_equal "down", body["status"]
+      assert_equal 500, body["http_status"]
+      assert_equal 120, body["response_time_ms"]
+      assert_equal 3, body["consecutive_failures"]
+      assert_equal "HTTP 500", body["error_message"]
       true
     end
   end
@@ -78,17 +80,14 @@ class TestNotifyWebhookJob < Minitest::Test
 
     # No raise — the worker sees the job as successful, Zizq won't
     # retry. We still warn on stderr for visibility.
-    assert_silent_or_warned do
-      NotifyWebhookJob.new.perform(@check.id)
-    end
+    assert_silent_or_warned { NotifyWebhookJob.new.perform(@check.id) }
   end
 
   def test_5xx_raises_so_zizq_retries
     stub_request(:post, WEBHOOK).to_return(status: 503)
 
-    error = assert_raises(RuntimeError) do
-      NotifyWebhookJob.new.perform(@check.id)
-    end
+    error =
+      assert_raises(RuntimeError) { NotifyWebhookJob.new.perform(@check.id) }
     assert_match(/HTTP 503/, error.message)
   end
 

@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+set -e
+
+staged=$(git diff --cached --name-only --diff-filter=d -- '*.rb')
+[ -z "$staged" ] && exit 0
+
+echo "$staged" | xargs bundle exec stree write
+echo "$staged" | xargs git add

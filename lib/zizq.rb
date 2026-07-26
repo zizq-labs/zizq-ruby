@@ -12,35 +12,37 @@ require_relative "zizq/configuration"
 autoload :MessagePack, "msgpack"
 
 module Zizq
-  autoload :AckProcessor,        "zizq/ack_processor"
-  autoload :ActiveJobConfig,     "zizq/active_job_config"
-  autoload :Backoff,             "zizq/backoff"
-  autoload :BulkEnqueue,         "zizq/bulk_enqueue"
-  autoload :Client,              "zizq/client"
-  autoload :Crontab,             "zizq/crontab"
-  autoload :CrontabBuilder,      "zizq/crontab_builder"
-  autoload :CrontabEntry,        "zizq/crontab_entry"
+  autoload :AckProcessor, "zizq/ack_processor"
+  autoload :ActiveJobConfig, "zizq/active_job_config"
+  autoload :Backoff, "zizq/backoff"
+  autoload :BulkEnqueue, "zizq/bulk_enqueue"
+  autoload :Client, "zizq/client"
+  autoload :Crontab, "zizq/crontab"
+  autoload :CrontabBuilder, "zizq/crontab_builder"
+  autoload :CrontabEntry, "zizq/crontab_entry"
   autoload :CrontabEntryBuilder, "zizq/crontab_entry_builder"
-  autoload :EnqueueRequest,      "zizq/enqueue_request"
-  autoload :EnqueueWith,         "zizq/enqueue_with"
-  autoload :Job,                 "zizq/job"
-  autoload :JobConfig,           "zizq/job_config"
-  autoload :Middleware,          "zizq/middleware"
-  autoload :Lifecycle,           "zizq/lifecycle"
-  autoload :Query,               "zizq/query"
-  autoload :Resources,           "zizq/resources"
-  autoload :Router,              "zizq/router"
-  autoload :Test,                "zizq/test"
-  autoload :TlsConfiguration,    "zizq/tls_configuration"
-  autoload :Worker,              "zizq/worker"
+  autoload :EnqueueRequest, "zizq/enqueue_request"
+  autoload :EnqueueWith, "zizq/enqueue_with"
+  autoload :Job, "zizq/job"
+  autoload :JobConfig, "zizq/job_config"
+  autoload :Middleware, "zizq/middleware"
+  autoload :Lifecycle, "zizq/lifecycle"
+  autoload :Query, "zizq/query"
+  autoload :Resources, "zizq/resources"
+  autoload :Router, "zizq/router"
+  autoload :Test, "zizq/test"
+  autoload :TlsConfiguration, "zizq/tls_configuration"
+  autoload :Worker, "zizq/worker"
   autoload :WorkerConfiguration, "zizq/worker_configuration"
 
   # Sentinel indicating a field should not be included in the request.
   # Used as the default for update parameters.
-  module UNCHANGED; end
+  module UNCHANGED
+  end
 
   # Sentinel indicating a field should be sent as null to reset to server default.
-  module RESET; end
+  module RESET
+  end
 
   @client_mutex = Mutex.new
 
@@ -81,24 +83,26 @@ module Zizq
     # returned instead — buffering enqueues in memory rather than
     # talking to a real server.
     def client #: () -> Client
-      @client ||= begin
-        @client_mutex.synchronize do
-          break @client if @client
+      @client ||=
+        begin
+          @client_mutex.synchronize do
+            break @client if @client
 
-          configuration.validate!
-          @client = if configuration.test_mode
-            Test::Client.new
-          else
-            Client.new(
-              url: configuration.url,
-              format: configuration.format,
-              ssl_context: configuration.ssl_context,
-              read_timeout: configuration.read_timeout,
-              stream_idle_timeout: configuration.stream_idle_timeout
-            )
+            configuration.validate!
+            @client =
+              if configuration.test_mode
+                Test::Client.new
+              else
+                Client.new(
+                  url: configuration.url,
+                  format: configuration.format,
+                  ssl_context: configuration.ssl_context,
+                  read_timeout: configuration.read_timeout,
+                  stream_idle_timeout: configuration.stream_idle_timeout
+                )
+              end
           end
         end
-      end
     end
 
     # Resets all global state: configuration and shared client.
@@ -339,9 +343,10 @@ module Zizq
       yield builder
       return [] if builder.requests.empty?
 
-      jobs = builder.requests.map do |req|
-        configuration.enqueue_middleware.call(req).to_enqueue_params
-      end
+      jobs =
+        builder.requests.map do |req|
+          configuration.enqueue_middleware.call(req).to_enqueue_params
+        end
 
       client.enqueue_bulk(jobs:)
     end
@@ -356,7 +361,8 @@ module Zizq
     # @rbs return: EnqueueRequest
     def build_enqueue_request(job_class, *args, **kwargs, &block)
       unless job_class.is_a?(Class) && job_class.is_a?(Zizq::JobConfig)
-        raise ArgumentError, "#{job_class.inspect} must include Zizq::Job or extend Zizq::ActiveJobConfig"
+        raise ArgumentError,
+              "#{job_class.inspect} must include Zizq::Job or extend Zizq::ActiveJobConfig"
       end
 
       zizq_job_class = job_class #: Zizq::JobConfig

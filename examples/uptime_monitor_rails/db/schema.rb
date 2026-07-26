@@ -33,7 +33,9 @@ ActiveRecord::Schema[8.1].define(version: 2026_05_25_034617) do
     t.string "source_sitemap_url"
     t.datetime "updated_at", null: false
     t.string "url", null: false
-    t.index "url, COALESCE(source_sitemap_url, '')", name: "idx_monitored_urls_url_scoped", unique: true
+    t.index "url, COALESCE(source_sitemap_url, '')",
+            name: "idx_monitored_urls_url_scoped",
+            unique: true
   end
 
   add_foreign_key "checks", "monitored_urls", on_delete: :cascade
