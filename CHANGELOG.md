@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.6.0
+
+- **Batched jobs** (Pro) — enable server-side folding of successive
+  enqueues into a single pending job via a new class-level DSL:
+
+      class SendPushNotifications
+        include Zizq::Job
+        zizq_batched true, limit: 100
+
+        def perform(notifications, platform:)
+          # notifications is an Array, batched across enqueues
+        end
+      end
+
+  Options: `arg:` (positional index, default `0`) or `kwarg:`
+  (keyword name) selects the value that gets accumulated; the other
+  arguments participate in the batch key so enqueues with the same
+  non-batch args fold together while different non-batch args go into
+  separate batches. `limit:` (required) caps the combined length
+  before the batch is sealed and a new one starts — all-or-nothing
+  (an incoming payload that would push the batch over-limit seals the
+  existing one and starts fresh; there's no split-and-overflow).
+  `dedup: true` appends `| unique` to the fold; `sorted: true`
+  appends `| sort`; `dedup:` subsumes `sorted:` since jq's `unique`
+  already sorts. Cannot be combined with `zizq_unique` — the client
+  raises at class-definition time and the server independently
+  rejects the combination.
+
+- **`zizq_batch_key(*args, **kwargs)`** — computes the batch key by
+  hashing all arguments except the batch target, prefixed with the
+  class name. Same override pattern as `zizq_unique_key`:
+
+      def self.zizq_batch_key(_notifications, tenant_id:, **_)
+        "#{name}:tenant-#{tenant_id}"
+      end
+
+  Refactored `JobConfig` to split the "which arguments to hash" step
+  (`hashable_args`, overridden by `ActiveJobConfig` to strip the AJ
+  envelope's volatile fields) from the "how to hash" step
+  (`hash_args`), so both `zizq_unique_key` and `zizq_batch_key`
+  share the same primitive.
+
+- **`zizq_batch_expressions`** — returns the static `when`/`fold` jq
+  pair generated from the DSL flags. Targets `.args[N]` /
+  `.kwargs.NAME` for `Zizq::Job`, `.arguments[N]` /
+  `.arguments[-1].NAME` for `ActiveJobConfig`. Override to supply
+  fully custom expressions when the DSL flags aren't expressive
+  enough.
+
+- **`Zizq::EnqueueRequest#batch`**, **`Client#enqueue(batch:)`**,
+  **`Client#enqueue_bulk`** (per-job `batch:`), and
+  **`Zizq.enqueue_raw(batch:)`** all accept the API format
+  `{key:, when:, fold:}` hash for cases where the DSL isn't in use.
+  The ActiveJob adapter wires the DSL-derived batch config into every
+  `enqueue`/`enqueue_at`/`enqueue_all` call automatically.
+
+- **`Resources::Job#folded?`** — mirrors `#duplicate?`; true on
+  enqueue responses when the request was folded into an existing
+  pending job. **`Resources::JobTemplate#batch`** returns the stored
+  batch config on any job read (`Client#get_job`, `Client#list_jobs`,
+  the enqueue response) so you can inspect exactly what's being
+  evaluated when a fold isn't behaving as expected.
+
+- Requires Zizq server **0.6.0** or later.
+
 ## 0.5.0
 
 - **Three new `Zizq::Query` range filters**: `#by_priority`,
