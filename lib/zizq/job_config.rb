@@ -175,6 +175,10 @@ module Zizq
       if unique.nil?
         @zizq_unique || false
       else
+        if unique && zizq_batched
+          raise ArgumentError,
+                "#{self}: zizq_unique cannot be combined with zizq_batched"
+        end
         @zizq_unique = !!unique
         @zizq_unique_scope = scope
         @zizq_unique
@@ -191,6 +195,105 @@ module Zizq
       else
         @zizq_unique_scope
       end
+    end
+
+    # Declare or read batched-job configuration for this class.
+    #
+    # When enabled, subsequent enqueues that share the batch key are
+    # folded into the pending job's payload rather than creating a new
+    # job. The batch target is a specific positional arg (`arg:`) or
+    # keyword arg (`kwarg:`) whose value must be an array; other args
+    # participate in the batch key.
+    #
+    #   zizq_batched true, limit: 100                     # arg: 0 by default
+    #   zizq_batched true, kwarg: :notifications, limit: 100
+    #   zizq_batched true, limit: 50, dedup: true         # + `| unique`
+    #   zizq_batched true, limit: 50, sorted: true        # + `| sort`
+    #   zizq_batched false                                # disable in a subclass
+    #
+    # Cannot be combined with `zizq_unique` — the server rejects the
+    # combination and the client raises at declaration time.
+    #
+    # @rbs enabled: bool?
+    # @rbs arg: Integer?
+    # @rbs kwarg: Symbol?
+    # @rbs limit: Integer?
+    # @rbs dedup: bool
+    # @rbs sorted: bool
+    # @rbs return: bool
+    def zizq_batched(
+      enabled = nil,
+      arg: nil,
+      kwarg: nil,
+      limit: nil,
+      dedup: false,
+      sorted: false
+    )
+      return @zizq_batched || false if enabled.nil?
+
+      if enabled
+        if zizq_unique
+          raise ArgumentError,
+                "#{self}: zizq_batched cannot be combined with zizq_unique"
+        end
+        if arg && kwarg
+          raise ArgumentError,
+                "#{self}: zizq_batched cannot specify both arg: and kwarg:"
+        end
+        if limit.nil?
+          raise ArgumentError, "#{self}: zizq_batched requires limit:"
+        end
+        unless limit.is_a?(Integer) && limit.positive?
+          raise ArgumentError,
+                "#{self}: zizq_batched limit: must be a positive Integer"
+        end
+
+        @zizq_batched = true
+        @zizq_batch_arg = kwarg.nil? ? (arg || 0) : nil
+        @zizq_batch_kwarg = kwarg
+        @zizq_batch_limit = limit
+        @zizq_batch_dedup = dedup
+        @zizq_batch_sorted = sorted
+      else
+        @zizq_batched = false
+        @zizq_batch_arg = nil
+        @zizq_batch_kwarg = nil
+        @zizq_batch_limit = nil
+        @zizq_batch_dedup = false
+        @zizq_batch_sorted = false
+      end
+
+      @zizq_batched
+    end
+
+    # Positional arg index that participates in the batch payload, or
+    # `nil` if `kwarg:` was chosen instead.
+    def zizq_batch_arg #: () -> Integer?
+      @zizq_batch_arg
+    end
+
+    # Keyword arg name that participates in the batch payload, or `nil`
+    # if `arg:` was chosen instead.
+    def zizq_batch_kwarg #: () -> Symbol?
+      @zizq_batch_kwarg
+    end
+
+    # Maximum combined length of the batch payload before the current
+    # batch is sealed and a fresh one starts.
+    def zizq_batch_limit #: () -> Integer?
+      @zizq_batch_limit
+    end
+
+    # Whether the fold expression appends `| unique` to dedup entries
+    # within a batch.
+    def zizq_batch_dedup? #: () -> bool
+      @zizq_batch_dedup || false
+    end
+
+    # Whether the fold expression appends `| sort` to sort entries
+    # within a batch.
+    def zizq_batch_sorted? #: () -> bool
+      @zizq_batch_sorted || false
     end
 
     # Compute the unique key for a job with the given arguments.

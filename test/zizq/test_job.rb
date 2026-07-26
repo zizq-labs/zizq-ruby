@@ -566,6 +566,137 @@ class TestJob < ZizqTestCase
     refute klass.zizq_unique
   end
 
+  # --- zizq_batched ---
+
+  def test_batched_is_false_by_default
+    refute DefaultQueueJob.zizq_batched
+  end
+
+  def test_batched_can_be_enabled_with_defaults
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100
+      end
+    assert klass.zizq_batched
+    assert_equal 0, klass.zizq_batch_arg # arg: 0 is the default target
+    assert_nil klass.zizq_batch_kwarg
+    assert_equal 100, klass.zizq_batch_limit
+    refute klass.zizq_batch_dedup?
+    refute klass.zizq_batch_sorted?
+  end
+
+  def test_batched_with_explicit_arg
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, arg: 2, limit: 50
+      end
+    assert_equal 2, klass.zizq_batch_arg
+    assert_nil klass.zizq_batch_kwarg
+  end
+
+  def test_batched_with_kwarg
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, kwarg: :notifications, limit: 50
+      end
+    assert_nil klass.zizq_batch_arg
+    assert_equal :notifications, klass.zizq_batch_kwarg
+  end
+
+  def test_batched_with_dedup_and_sorted
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100, dedup: true, sorted: true
+      end
+    assert klass.zizq_batch_dedup?
+    assert klass.zizq_batch_sorted?
+  end
+
+  def test_batched_rejects_both_arg_and_kwarg
+    assert_raises(ArgumentError) do
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, arg: 0, kwarg: :notifications, limit: 100
+      end
+    end
+  end
+
+  def test_batched_requires_limit
+    assert_raises(ArgumentError) do
+      Class.new do
+        include Zizq::Job
+        zizq_batched true
+      end
+    end
+  end
+
+  def test_batched_rejects_non_positive_limit
+    assert_raises(ArgumentError) do
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 0
+      end
+    end
+    assert_raises(ArgumentError) do
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: -1
+      end
+    end
+  end
+
+  def test_batched_rejects_after_zizq_unique
+    err =
+      assert_raises(ArgumentError) do
+        Class.new do
+          include Zizq::Job
+          zizq_unique true
+          zizq_batched true, limit: 100
+        end
+      end
+    assert_match(/cannot be combined with zizq_unique/, err.message)
+  end
+
+  def test_zizq_unique_rejects_after_batched
+    err =
+      assert_raises(ArgumentError) do
+        Class.new do
+          include Zizq::Job
+          zizq_batched true, limit: 100
+          zizq_unique true
+        end
+      end
+    assert_match(/cannot be combined with zizq_batched/, err.message)
+  end
+
+  def test_batched_disable_clears_settings
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, arg: 1, limit: 50, dedup: true
+      end
+    klass.zizq_batched false
+    refute klass.zizq_batched
+    assert_nil klass.zizq_batch_arg
+    assert_nil klass.zizq_batch_limit
+    refute klass.zizq_batch_dedup?
+  end
+
+  def test_batched_disable_then_enable_unique_is_allowed
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100
+      end
+    klass.zizq_batched false
+    klass.zizq_unique true
+    assert klass.zizq_unique
+  end
+
   # --- zizq_unique_key ---
 
   def test_unique_key_is_deterministic
