@@ -47,10 +47,9 @@ module Zizq
       job_class = Object.const_get(job.type)
 
       unless (
-          job_class.is_a?(Class) &&
-          job_class.include?(Zizq::Job) &&
-          job_class.is_a?(Zizq::JobConfig)
-      )
+               job_class.is_a?(Class) && job_class.include?(Zizq::Job) &&
+                 job_class.is_a?(Zizq::JobConfig)
+             )
         raise "#{job.type} does not include Zizq::Job"
       end
 
@@ -58,9 +57,10 @@ module Zizq
       instance = zizq_job_class.new
       instance.set_zizq_job(job)
 
-      args, kwargs = zizq_job_class.zizq_deserialize(
-        job.payload || { "args" => [], "kwargs" => {} }
-      )
+      args, kwargs =
+        zizq_job_class.zizq_deserialize(
+          job.payload || { "args" => [], "kwargs" => {} }
+        )
 
       instance.perform(*args, **kwargs)
     end
@@ -106,7 +106,7 @@ module Zizq
       # Any failure to deserialize the arguments will cause the job to fail and
       # backoff according to the backoff policy.
       def zizq_deserialize(payload) #: (Hash[String, untyped]) -> [Array[untyped], Hash[Symbol, untyped]]
-        args   = payload.fetch("args")
+        args = payload.fetch("args")
         kwargs = payload.fetch("kwargs").transform_keys(&:to_sym)
         [args, kwargs]
       end
@@ -143,6 +143,23 @@ module Zizq
           "(.kwargs | contains(#{JSON.generate(serialized_kwargs)}))"
         ].join(" and ")
       end
+
+      # Static jq expressions for the batched-job configuration on this
+      # class. Targets `.args[N]` for a positional batch arg or
+      # `.kwargs.NAME` for a keyword batch arg, matching the payload
+      # shape produced by the default `zizq_serialize`.
+      def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+        return nil unless zizq_batched
+
+        target =
+          if (idx = zizq_batch_arg)
+            ".args[#{idx}]"
+          else
+            ".kwargs.#{zizq_batch_kwarg}"
+          end
+
+        build_batch_expressions(target)
+      end
     end
 
     # This is your job's main entrypoint when it is run by the worker.
@@ -154,7 +171,8 @@ module Zizq
     # easier to evolve over time in a backwards compatible way with any already
     # enqueued jobs.
     def perform(*args, **kwargs) #: (*untyped, **untyped) -> void
-      raise NotImplementedError, "#{self.class.name}#perform must be implemented"
+      raise NotImplementedError,
+            "#{self.class.name}#perform must be implemented"
     end
 
     # --- Metadata helpers ---
@@ -164,17 +182,17 @@ module Zizq
     # metadata.
 
     # The unique job ID assigned by the server.
-    def zizq_id = @zizq_job&.id         #: () -> String?
+    def zizq_id = @zizq_job&.id #: () -> String?
 
     # How many times this job has previously been attempted (0 on the first
     # run, 1 on the second, etc...).
-    def zizq_attempts = @zizq_job&.attempts   #: () -> Integer?
+    def zizq_attempts = @zizq_job&.attempts #: () -> Integer?
 
     # The queue this job was dequeued from.
-    def zizq_queue = @zizq_job&.queue      #: () -> String?
+    def zizq_queue = @zizq_job&.queue #: () -> String?
 
     # The priority this job was enqueued with.
-    def zizq_priority = @zizq_job&.priority   #: () -> Integer?
+    def zizq_priority = @zizq_job&.priority #: () -> Integer?
 
     # Time at which this job was dequeued (fractional seconds since the Unix
     # epoch). This can be converted to `Time` by using `Time.at(dequeued_at)`

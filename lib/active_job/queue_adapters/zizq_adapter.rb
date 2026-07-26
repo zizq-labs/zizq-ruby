@@ -33,7 +33,8 @@ module ActiveJob
     class ZizqAdapter
       # Enqueue a job for immediate execution.
       def enqueue(job)
-        result = Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
+        result =
+          Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
         job.provider_job_id = result.id
         job.successfully_enqueued = true
         result
@@ -42,7 +43,8 @@ module ActiveJob
       # Enqueue a job for execution at a specific time.
       def enqueue_at(job, timestamp)
         job.scheduled_at = timestamp
-        result = Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
+        result =
+          Zizq.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
         job.provider_job_id = result.id
         job.successfully_enqueued = true
         result
@@ -53,16 +55,19 @@ module ActiveJob
       # Called by `ActiveJob.perform_all_later` (Rails 7.1+).
       # Returns the number of successfully enqueued jobs.
       def enqueue_all(jobs)
-        results = Zizq.enqueue_bulk do |b|
-          jobs.each do |job|
-            b.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
+        results =
+          Zizq.enqueue_bulk do |b|
+            jobs.each do |job|
+              b.enqueue_raw(**build_enqueue_request(job).to_enqueue_params)
+            end
           end
-        end
 
-        jobs.zip(results).each do |job, result|
-          job.provider_job_id = result.id
-          job.successfully_enqueued = true
-        end
+        jobs
+          .zip(results)
+          .each do |job, result|
+            job.provider_job_id = result.id
+            job.successfully_enqueued = true
+          end
 
         jobs.size
       rescue => e
@@ -85,22 +90,39 @@ module ActiveJob
       def build_enqueue_request(job)
         klass = job.class
 
-        req = Zizq::EnqueueRequest.new(
-          queue:    job.queue_name,
-          type:     klass.name,
-          payload:  job.serialize,
-          priority: job.priority,
-          ready_at: job.scheduled_at
-        )
+        req =
+          Zizq::EnqueueRequest.new(
+            queue: job.queue_name,
+            type: klass.name,
+            payload: job.serialize,
+            priority: job.priority,
+            ready_at: job.scheduled_at
+          )
 
         if klass.respond_to?(:zizq_unique) && klass.zizq_unique
           req.unique_key = klass.zizq_unique_key(*job.arguments)
           req.unique_while = klass.zizq_unique_scope
         end
 
-        req.retry_limit  = klass.zizq_retry_limit  if klass.respond_to?(:zizq_retry_limit) && klass.zizq_retry_limit
-        req.backoff      = klass.zizq_backoff       if klass.respond_to?(:zizq_backoff) && klass.zizq_backoff
-        req.retention    = klass.zizq_retention     if klass.respond_to?(:zizq_retention) && klass.zizq_retention
+        if klass.respond_to?(:zizq_batched) && klass.zizq_batched
+          expr = klass.zizq_batch_expressions
+          if expr
+            req.batch = {
+              key: klass.zizq_batch_key(*job.arguments),
+              when: expr[:when],
+              fold: expr[:fold]
+            }
+          end
+        end
+
+        req.retry_limit = klass.zizq_retry_limit if klass.respond_to?(
+          :zizq_retry_limit
+        ) && klass.zizq_retry_limit
+        req.backoff = klass.zizq_backoff if klass.respond_to?(:zizq_backoff) &&
+          klass.zizq_backoff
+        req.retention = klass.zizq_retention if klass.respond_to?(
+          :zizq_retention
+        ) && klass.zizq_retention
 
         req
       end

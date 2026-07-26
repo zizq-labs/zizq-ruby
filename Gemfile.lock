@@ -1,7 +1,7 @@
 PATH
   remote: .
   specs:
-    zizq (0.5.0)
+    zizq (0.6.0)
       async-http (~> 0.82)
       msgpack (~> 1.7)
 
@@ -108,6 +108,7 @@ GEM
       racc
     pp (0.6.3)
       prettyprint
+    prettier_print (1.2.1)
     prettyprint (0.2.0)
     prism (1.9.0)
     protocol-hpack (1.5.1)
@@ -164,6 +165,8 @@ GEM
       uri (>= 0.12.0)
     stringio (3.2.0)
     strscan (3.1.8)
+    syntax_tree (6.3.0)
+      prettier_print (>= 1.2.0)
     terminal-table (4.0.0)
       unicode-display_width (>= 1.1.1, < 4)
     timecop (0.9.11)
@@ -206,6 +209,7 @@ DEPENDENCIES
   rake (~> 13.4)
   rbs-inline (~> 0.14)
   steep (~> 2.0)
+  syntax_tree (~> 6.3.0)
   timecop (~> 0.9)
   vernier (~> 1.10)
   webmock (~> 3.26)

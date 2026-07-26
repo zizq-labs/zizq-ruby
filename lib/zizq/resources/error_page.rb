@@ -10,7 +10,8 @@ module Zizq
     # @rbs inherits Page[ErrorRecord]
     class ErrorPage < Page
       def items #: () -> Array[ErrorRecord]
-        @items ||= (@data["errors"] || []).map { |e| ErrorRecord.new(client, e) }
+        @items ||=
+          (@data["errors"] || []).map { |e| ErrorRecord.new(client, e) }
       end
 
       alias errors items

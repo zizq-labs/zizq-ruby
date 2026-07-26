@@ -25,10 +25,7 @@ module Zizq
       # @rbs limit: Integer?
       # @rbs page_size: Integer?
       # @rbs return: void
-      def initialize(id,
-                     order: nil,
-                     limit: nil,
-                     page_size: nil)
+      def initialize(id, order: nil, limit: nil, page_size: nil)
         @id = id
         @order = order
         @limit = limit
@@ -204,11 +201,16 @@ module Zizq
         enumerator = enum_for(:each_page)
 
         if block_given?
-          page = Zizq.client.list_errors(
-            @id,
-            limit: [@page_size, @limit, (@page_size || @limit) && MAX_PAGE_SIZE].compact.min,
-            order: @order,
-          )
+          page =
+            Zizq.client.list_errors(
+              @id,
+              limit: [
+                @page_size,
+                @limit,
+                (@page_size || @limit) && MAX_PAGE_SIZE
+              ].compact.min,
+              order: @order
+            )
 
           remaining = @limit
 

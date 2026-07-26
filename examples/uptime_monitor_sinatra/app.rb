@@ -12,11 +12,15 @@ require "zizq"
 
 # --- Database ------------------------------------------------------
 
-DB = Sequel.connect(
-  ENV.fetch("DATABASE_URL", "sqlite://storage/#{ENV.fetch('RACK_ENV', 'development')}.sqlite3"),
-  max_connections: Integer(ENV.fetch("DB_POOL_SIZE", "20")),
-)
-DB.run "PRAGMA journal_mode=WAL"   # multi-connection-friendly
+DB =
+  Sequel.connect(
+    ENV.fetch(
+      "DATABASE_URL",
+      "sqlite://storage/#{ENV.fetch("RACK_ENV", "development")}.sqlite3"
+    ),
+    max_connections: Integer(ENV.fetch("DB_POOL_SIZE", "20"))
+  )
+DB.run "PRAGMA journal_mode=WAL" # multi-connection-friendly
 
 # --- Zizq ----------------------------------------------------------
 
@@ -24,9 +28,10 @@ ZIZQ_QUEUE = "uptime_monitor/zizq_job"
 
 Zizq.configure do |c|
   c.url = ENV.fetch("ZIZQ_URL", "http://127.0.0.1:7890")
-  c.tls.ca = ENV["ZIZQ_CA"].to_s.then{|s| s.empty? ? nil : s}
-  c.tls.client_cert = ENV["ZIZQ_CLIENT_CERT"].to_s.then{|s| s.empty? ? nil : s}
-  c.tls.client_key = ENV["ZIZQ_CLIENT_KEY"].to_s.then{|s| s.empty? ? nil : s}
+  c.tls.ca = ENV["ZIZQ_CA"].to_s.then { |s| s.empty? ? nil : s }
+  c.tls.client_cert =
+    ENV["ZIZQ_CLIENT_CERT"].to_s.then { |s| s.empty? ? nil : s }
+  c.tls.client_key = ENV["ZIZQ_CLIENT_KEY"].to_s.then { |s| s.empty? ? nil : s }
   # Multi-threaded, not Async.
   c.worker.thread_count = Integer(ENV.fetch("ZIZQ_WORKER_THREADS", "4"))
   c.worker.queues = [ZIZQ_QUEUE]
@@ -83,8 +88,9 @@ unless ENV["RACK_ENV"] == "test" || ENV["ZIZQ_DISABLE_WORKER"] == "1"
   # and ignore so the app still boots usefully for ad-hoc checks.
   begin
     Zizq.define_crontab("uptime_monitor_sinatra") do |cron|
-      cron.define_entry("schedule_checks", "*/5 * * * * *")
-          .enqueue(ScheduleChecksJob)
+      cron.define_entry("schedule_checks", "*/5 * * * * *").enqueue(
+        ScheduleChecksJob
+      )
     end
   rescue Zizq::ResponseError => e
     raise unless e.status == 403
@@ -115,14 +121,14 @@ end
 # --- Application ---------------------------------------------------
 
 class UptimeMonitorApp < Sinatra::Base
-  set :root,    File.expand_path(__dir__)
-  set :views,   File.expand_path("views", __dir__)
+  set :root, File.expand_path(__dir__)
+  set :views, File.expand_path("views", __dir__)
   set :public_folder, File.expand_path("public", __dir__)
 
   # Sinatra default port doesn't honour PORT; foreman exports it
   # via .env. Just here for `ruby app.rb` runs.
-  set :bind,    ENV.fetch("BIND", "127.0.0.1")
-  set :port,    Integer(ENV.fetch("PORT", "3000"))
+  set :bind, ENV.fetch("BIND", "127.0.0.1")
+  set :port, Integer(ENV.fetch("PORT", "3000"))
 
   # Sessions back the flash messages on form post. Pin the secret
   # via `SESSION_SECRET` so cookies survive process restarts (.env
@@ -138,7 +144,8 @@ class UptimeMonitorApp < Sinatra::Base
   # comma-separated allowlist (e.g. `magnolia.local,foo.example`) for
   # accessing the dev server from another machine on the network.
   if (extra_hosts = ENV["DEV_HOSTS"]) && !extra_hosts.empty?
-    set :host_authorization, { permitted_hosts: extra_hosts.split(",").map(&:strip) }
+    set :host_authorization,
+        { permitted_hosts: extra_hosts.split(",").map(&:strip) }
   end
 
   helpers do
@@ -155,18 +162,24 @@ class UptimeMonitorApp < Sinatra::Base
       return "never" unless time
       seconds = (Time.now - time).to_i
       case seconds
-      when 0..59       then "#{seconds}s ago"
-      when 60..3599    then "#{seconds / 60}m ago"
-      when 3600..86399 then "#{seconds / 3600}h ago"
-      else                  "#{seconds / 86_400}d ago"
+      when 0..59
+        "#{seconds}s ago"
+      when 60..3599
+        "#{seconds / 60}m ago"
+      when 3600..86_399
+        "#{seconds / 3600}h ago"
+      else
+        "#{seconds / 86_400}d ago"
       end
     end
   end
 
   get "/" do
-    @monitored_urls = MonitoredUrl
-      .order(Sequel.desc(:last_checked_at), Sequel.desc(:created_at))
-      .all
+    @monitored_urls =
+      MonitoredUrl.order(
+        Sequel.desc(:last_checked_at),
+        Sequel.desc(:created_at)
+      ).all
 
     if request.xhr?
       erb :_urls, layout: false

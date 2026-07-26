@@ -62,24 +62,23 @@ module Zizq
     # @rbs read_timeout: Numeric
     # @rbs stream_idle_timeout: Numeric
     # @rbs return: void
-    def initialize(url:,
-                   format: :msgpack,
-                   ssl_context: nil,
-                   read_timeout: 30,
-                   stream_idle_timeout: 30)
+    def initialize(
+      url:,
+      format: :msgpack,
+      ssl_context: nil,
+      read_timeout: 30,
+      stream_idle_timeout: 30
+    )
       @url = url.chomp("/")
       @format = format
 
       endpoint_options = {
         protocol: Async::HTTP::Protocol::HTTP2,
-        timeout: read_timeout,
+        timeout: read_timeout
       } #: Hash[Symbol, untyped]
       endpoint_options[:ssl_context] = ssl_context if ssl_context
 
-      @endpoint = Async::HTTP::Endpoint.parse(
-        @url,
-        **endpoint_options,
-      )
+      @endpoint = Async::HTTP::Endpoint.parse(@url, **endpoint_options)
 
       # Streaming take uses a dedicated HTTP/1.1 endpoint. The take
       # connection is long-lived and carries only one request, so HTTP/2's
@@ -93,14 +92,13 @@ module Zizq
       # timeout so server heartbeats (~3s) keep it alive while only
       # genuinely dead connections (no data for the full window)
       # trigger a reconnect.
-      stream_endpoint_options = endpoint_options.merge(
-        protocol: Async::HTTP::Protocol::HTTP11,
-        timeout: stream_idle_timeout,
-      )
-      @stream_endpoint = Async::HTTP::Endpoint.parse(
-        @url,
-        **stream_endpoint_options,
-      )
+      stream_endpoint_options =
+        endpoint_options.merge(
+          protocol: Async::HTTP::Protocol::HTTP11,
+          timeout: stream_idle_timeout
+        )
+      @stream_endpoint =
+        Async::HTTP::Endpoint.parse(@url, **stream_endpoint_options)
 
       @mutex = Mutex.new
 
@@ -166,17 +164,21 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: Resources::Job
-    def enqueue(queue:,
-                type:,
-                payload:,
-                priority: nil,
-                ready_at: nil,
-                retry_limit: nil,
-                backoff: nil,
-                retention: nil,
-                unique_key: nil,
-                unique_while: nil)
+    def enqueue(
+      queue:,
+      type:,
+      payload:,
+      priority: nil,
+      ready_at: nil,
+      retry_limit: nil,
+      backoff: nil,
+      retention: nil,
+      unique_key: nil,
+      unique_while: nil,
+      batch: nil
+    )
       body = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       body[:priority] = priority if priority
       # ready_at is fractional seconds in Ruby; the server expects ms.
@@ -186,6 +188,7 @@ module Zizq
       body[:retention] = retention if retention
       body[:unique_key] = unique_key if unique_key
       body[:unique_while] = unique_while.to_s if unique_while
+      body[:batch] = batch if batch
 
       response = post("/jobs", body)
       data = handle_response!(response, expected: [200, 201])
@@ -204,18 +207,26 @@ module Zizq
     # @rbs return: Array[Resources::Job]
     def enqueue_bulk(jobs:)
       body = {
-        jobs: jobs.map do |job|
-          wire = { type: job[:type], queue: job[:queue], payload: job[:payload] } #: Hash[Symbol, untyped]
-          wire[:priority] = job[:priority] if job[:priority]
-          # ready_at is fractional seconds in Ruby; the server expects ms.
-          wire[:ready_at] = (job[:ready_at].to_f * 1000).to_i if job[:ready_at]
-          wire[:retry_limit] = job[:retry_limit] if job[:retry_limit]
-          wire[:backoff] = job[:backoff] if job[:backoff]
-          wire[:retention] = job[:retention] if job[:retention]
-          wire[:unique_key] = job[:unique_key] if job[:unique_key]
-          wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
-          wire
-        end
+        jobs:
+          jobs.map do |job|
+            wire = {
+              type: job[:type],
+              queue: job[:queue],
+              payload: job[:payload]
+            } #: Hash[Symbol, untyped]
+            wire[:priority] = job[:priority] if job[:priority]
+            # ready_at is fractional seconds in Ruby; the server expects ms.
+            wire[:ready_at] = (job[:ready_at].to_f * 1000).to_i if job[
+              :ready_at
+            ]
+            wire[:retry_limit] = job[:retry_limit] if job[:retry_limit]
+            wire[:backoff] = job[:backoff] if job[:backoff]
+            wire[:retention] = job[:retention] if job[:retention]
+            wire[:unique_key] = job[:unique_key] if job[:unique_key]
+            wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
+            wire[:batch] = job[:batch] if job[:batch]
+            wire
+          end
       }
 
       response = post("/jobs/bulk", body)
@@ -253,17 +264,19 @@ module Zizq
     # @rbs order: Zizq::sort_direction?
     # @rbs limit: Integer?
     # @rbs return: Resources::JobPage
-    def list_jobs(id: nil,
-                  status: nil,
-                  queue: nil,
-                  type: nil,
-                  filter: nil,
-                  priority: nil,
-                  ready_at: nil,
-                  attempts: nil,
-                  from: nil,
-                  order: nil,
-                  limit: nil)
+    def list_jobs(
+      id: nil,
+      status: nil,
+      queue: nil,
+      type: nil,
+      filter: nil,
+      priority: nil,
+      ready_at: nil,
+      attempts: nil,
+      from: nil,
+      order: nil,
+      limit: nil
+    )
       options = {
         id:,
         status:,
@@ -275,7 +288,7 @@ module Zizq
         attempts: encode_range(attempts),
         from:,
         order:,
-        limit:,
+        limit:
       }.compact #: Hash[Symbol, untyped]
 
       multi_keys = %i[id status queue type]
@@ -283,7 +296,9 @@ module Zizq
 
       # An empty filter ([] or "") matches nothing — short-circuit.
       multi_keys.each do |key|
-        return Resources::JobPage.new(self, { "jobs" => [], "pages" => {} }) if params[key] == ""
+        if params[key] == ""
+          return Resources::JobPage.new(self, { "jobs" => [], "pages" => {} })
+        end
       end
 
       response = get("/jobs", params:)
@@ -305,14 +320,16 @@ module Zizq
     # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
     # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs return: Integer
-    def count_jobs(id: nil,
-                   status: nil,
-                   queue: nil,
-                   type: nil,
-                   filter: nil,
-                   priority: nil,
-                   ready_at: nil,
-                   attempts: nil)
+    def count_jobs(
+      id: nil,
+      status: nil,
+      queue: nil,
+      type: nil,
+      filter: nil,
+      priority: nil,
+      ready_at: nil,
+      attempts: nil
+    )
       options = {
         id:,
         status:,
@@ -321,16 +338,14 @@ module Zizq
         filter:,
         priority: encode_range(priority),
         ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
-        attempts: encode_range(attempts),
+        attempts: encode_range(attempts)
       }.compact #: Hash[Symbol, untyped]
 
       multi_keys = %i[id status queue type]
       params = build_where_params(options, multi_keys:)
 
       # An empty filter ([] or "") matches nothing — short-circuit.
-      multi_keys.each do |key|
-        return 0 if params[key] == ""
-      end
+      multi_keys.each { |key| return 0 if params[key] == "" }
 
       response = get("/jobs/count", params:)
       data = handle_response!(response, expected: 200)
@@ -363,9 +378,7 @@ module Zizq
       params = build_where_params(filter_params, multi_keys:)
 
       # An empty multi-value filter matches nothing — short-circuit.
-      multi_keys.each do |key|
-        return 0 if params[key] == ""
-      end
+      multi_keys.each { |key| return 0 if params[key] == "" }
 
       response = delete("/jobs", params:)
       data = handle_response!(response, expected: 200)
@@ -408,21 +421,24 @@ module Zizq
     # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs return: Resources::Job
-    def update_job(id,
-                   queue: UNCHANGED,
-                   priority: UNCHANGED,
-                   ready_at: UNCHANGED,
-                   retry_limit: UNCHANGED,
-                   backoff: UNCHANGED,
-                   retention: UNCHANGED)
-      body = build_set_body(
-        queue:,
-        priority:,
-        ready_at:,
-        retry_limit:,
-        backoff:,
-        retention:
-      )
+    def update_job(
+      id,
+      queue: UNCHANGED,
+      priority: UNCHANGED,
+      ready_at: UNCHANGED,
+      retry_limit: UNCHANGED,
+      backoff: UNCHANGED,
+      retention: UNCHANGED
+    )
+      body =
+        build_set_body(
+          queue:,
+          priority:,
+          ready_at:,
+          retry_limit:,
+          backoff:,
+          retention:
+        )
       response = patch("/jobs/#{enc(id)}", body)
       data = handle_response!(response, expected: 200)
       Resources::Job.new(self, data)
@@ -448,9 +464,7 @@ module Zizq
       params = build_where_params(filter_params, multi_keys:)
 
       # An empty multi-value filter matches nothing — short-circuit.
-      multi_keys.each do |key|
-        return 0 if params[key] == ""
-      end
+      multi_keys.each { |key| return 0 if params[key] == "" }
 
       body = validate_and_build_set(**apply)
       response = patch("/jobs", body, params:)
@@ -602,7 +616,14 @@ module Zizq
     # @rbs timezone: String?
     # @rbs paused: bool?
     # @rbs return: Resources::CronEntry
-    def add_cron_group_entry(group, name:, expression:, job:, timezone: nil, paused: nil)
+    def add_cron_group_entry(
+      group,
+      name:,
+      expression:,
+      job:,
+      timezone: nil,
+      paused: nil
+    )
       body = build_cron_entry(name:, expression:, job:, timezone:, paused:)
       response = post("/crons/#{enc(group)}/entries", body)
       data = handle_response!(response, expected: 201)
@@ -620,8 +641,16 @@ module Zizq
     # @rbs timezone: String?
     # @rbs paused: bool?
     # @rbs return: Resources::CronEntry
-    def replace_cron_group_entry(group, entry, expression:, job:, timezone: nil, paused: nil)
-      body = build_cron_entry(name: entry, expression:, job:, timezone:, paused:)
+    def replace_cron_group_entry(
+      group,
+      entry,
+      expression:,
+      job:,
+      timezone: nil,
+      paused: nil
+    )
+      body =
+        build_cron_entry(name: entry, expression:, job:, timezone:, paused:)
       response = put("/crons/#{enc(group)}/entries/#{enc(entry)}", body)
       data = handle_response!(response, expected: 200)
       Resources::CronEntry.new(self, data)
@@ -634,7 +663,8 @@ module Zizq
     # @rbs paused: bool
     # @rbs return: Resources::CronEntry
     def update_cron_group_entry(group, entry, paused:)
-      response = patch("/crons/#{enc(group)}/entries/#{enc(entry)}", { paused: })
+      response =
+        patch("/crons/#{enc(group)}/entries/#{enc(entry)}", { paused: })
       data = handle_response!(response, expected: 200)
       Resources::CronEntry.new(self, data)
     end
@@ -723,7 +753,14 @@ module Zizq
     # @rbs retry_at: Float?
     # @rbs kill: bool
     # @rbs return: Resources::Job
-    def report_failure(id, message:, error_type: nil, backtrace: nil, retry_at: nil, kill: false)
+    def report_failure(
+      id,
+      message:,
+      error_type: nil,
+      backtrace: nil,
+      retry_at: nil,
+      kill: false
+    )
       body = { message: } #: Hash[Symbol, untyped]
       body[:error_type] = error_type if error_type
       body[:backtrace] = backtrace if backtrace
@@ -772,7 +809,14 @@ module Zizq
     # @rbs worker_id: String?
     # @rbs &block: (Resources::Job) -> void
     # @rbs return: void
-    def take_jobs(prefetch: 1, queues: [], worker_id: nil, on_connect: nil, on_response: nil, &block)
+    def take_jobs(
+      prefetch: 1,
+      queues: [],
+      worker_id: nil,
+      on_connect: nil,
+      on_response: nil,
+      &block
+    )
       raise ArgumentError, "take_jobs requires a block" unless block
 
       params = { prefetch: } #: Hash[Symbol, untyped]
@@ -786,7 +830,10 @@ module Zizq
         response = stream_http.get(path, headers)
 
         begin
-          raise StreamError, "take jobs stream returned HTTP #{response.status}" unless response.status == 200
+          unless response.status == 200
+            raise StreamError,
+                  "take jobs stream returned HTTP #{response.status}"
+          end
           on_connect&.call
           on_response&.call(response)
 
@@ -800,11 +847,17 @@ module Zizq
           body = response.body || []
 
           case @format
-          when :json then self.class.parse_ndjson(body, &wrapper)
-          when :msgpack then self.class.parse_msgpack_stream(body, &wrapper)
+          when :json
+            self.class.parse_ndjson(body, &wrapper)
+          when :msgpack
+            self.class.parse_msgpack_stream(body, &wrapper)
           end
         ensure
-          response.close rescue nil
+          begin
+            response.close
+          rescue StandardError
+            nil
+          end
         end
       end
     rescue SocketError,
@@ -887,7 +940,10 @@ module Zizq
     # so that resource objects like Page can follow links without resorting
     # to `.send`.
     def get_path(path) #: (String) -> Hash[String, untyped]
-      response = request { |http| consume_response(http.get(path, {"accept" => @content_type})) }
+      response =
+        request do |http|
+          consume_response(http.get(path, { "accept" => @content_type }))
+        end
       handle_response!(response, expected: 200)
     end
 
@@ -900,9 +956,7 @@ module Zizq
 
     # Build a relative path with optional query parameters.
     def build_path(path, params: {}) #: (String, ?params: Hash[Symbol, untyped]) -> String
-      unless params.empty?
-        path = "#{path}?#{URI.encode_www_form(params)}"
-      end
+      path = "#{path}?#{URI.encode_www_form(params)}" unless params.empty?
       path
     end
 
@@ -914,13 +968,19 @@ module Zizq
     # @rbs timezone: String?
     # @rbs paused: bool?
     # @rbs return: Hash[Symbol, untyped]
-    def build_cron_entry(name: nil, expression: nil, job: nil, timezone: nil, paused: nil)
+    def build_cron_entry(
+      name: nil,
+      expression: nil,
+      job: nil,
+      timezone: nil,
+      paused: nil
+    )
       {
         name:,
         expression:,
         timezone:,
         paused:,
-        job: build_cron_job(**job),
+        job: build_cron_job(**job)
       }.compact
     end
 
@@ -938,15 +998,17 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs return: Hash[Symbol, untyped]
-    def build_cron_job(type: nil,
-                       queue: nil,
-                       payload: nil,
-                       priority: nil,
-                       retry_limit: nil,
-                       backoff: nil,
-                       retention: nil,
-                       unique_key: nil,
-                       unique_while: nil)
+    def build_cron_job(
+      type: nil,
+      queue: nil,
+      payload: nil,
+      priority: nil,
+      retry_limit: nil,
+      backoff: nil,
+      retention: nil,
+      unique_key: nil,
+      unique_while: nil
+    )
       job = { type:, queue:, payload: } #: Hash[Symbol, untyped]
       job[:priority] = priority if priority
       job[:retry_limit] = retry_limit if retry_limit
@@ -970,14 +1032,16 @@ module Zizq
     # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
     # @rbs attempts: (Integer | Range[Integer?])?
     # @rbs return: Hash[Symbol, untyped]
-    def validate_where(id: nil,
-                       status: nil,
-                       queue: nil,
-                       type: nil,
-                       filter: nil,
-                       priority: nil,
-                       ready_at: nil,
-                       attempts: nil)
+    def validate_where(
+      id: nil,
+      status: nil,
+      queue: nil,
+      type: nil,
+      filter: nil,
+      priority: nil,
+      ready_at: nil,
+      attempts: nil
+    )
       {
         id:,
         status:,
@@ -986,7 +1050,7 @@ module Zizq
         filter:,
         priority: encode_range(priority),
         ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
-        attempts: encode_range(attempts),
+        attempts: encode_range(attempts)
       }.compact
     end
 
@@ -1016,7 +1080,7 @@ module Zizq
       when Range
         if value.exclude_end?
           raise ArgumentError,
-            "exclusive ranges are not supported by the server; use an inclusive range (a..b) instead"
+                "exclusive ranges are not supported by the server; use an inclusive range (a..b) instead"
         end
         "#{value.begin&.then(&block)}..#{value.end&.then(&block)}"
       else
@@ -1034,13 +1098,22 @@ module Zizq
     # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
     # @rbs return: Hash[Symbol, untyped]
-    def validate_and_build_set(queue: UNCHANGED,
-                               priority: UNCHANGED,
-                               ready_at: UNCHANGED,
-                               retry_limit: UNCHANGED,
-                               backoff: UNCHANGED,
-                               retention: UNCHANGED)
-      build_set_body(queue:, priority:, ready_at:, retry_limit:, backoff:, retention:)
+    def validate_and_build_set(
+      queue: UNCHANGED,
+      priority: UNCHANGED,
+      ready_at: UNCHANGED,
+      retry_limit: UNCHANGED,
+      backoff: UNCHANGED,
+      retention: UNCHANGED
+    )
+      build_set_body(
+        queue:,
+        priority:,
+        ready_at:,
+        retry_limit:,
+        backoff:,
+        retention:
+      )
     end
 
     # Build the JSON body hash for a PATCH request from set parameters.
@@ -1051,26 +1124,40 @@ module Zizq
     # - Other values are converted to their wire format.
     #
     # @rbs return: Hash[Symbol, untyped]
-    def build_set_body(queue: UNCHANGED,
-                       priority: UNCHANGED,
-                       ready_at: UNCHANGED,
-                       retry_limit: UNCHANGED,
-                       backoff: UNCHANGED,
-                       retention: UNCHANGED)
+    def build_set_body(
+      queue: UNCHANGED,
+      priority: UNCHANGED,
+      ready_at: UNCHANGED,
+      retry_limit: UNCHANGED,
+      backoff: UNCHANGED,
+      retention: UNCHANGED
+    )
       body = {} #: Hash[Symbol, untyped]
 
       unless queue.equal?(UNCHANGED)
-        raise ArgumentError, "queue cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is" if queue.nil?
+        if queue.nil?
+          raise ArgumentError,
+                "queue cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is"
+        end
         body[:queue] = queue
       end
 
       unless priority.equal?(UNCHANGED)
-        raise ArgumentError, "priority cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is" if priority.nil?
+        if priority.nil?
+          raise ArgumentError,
+                "priority cannot be nil; use Zizq::RESET to clear or Zizq::UNCHANGED to leave as-is"
+        end
         body[:priority] = priority
       end
 
       unless ready_at.equal?(UNCHANGED)
-        body[:ready_at] = ready_at.equal?(RESET) ? nil : (ready_at.to_f * 1000).to_i
+        body[:ready_at] = (
+          if ready_at.equal?(RESET)
+            nil
+          else
+            (ready_at.to_f * 1000).to_i
+          end
+        )
       end
 
       unless retry_limit.equal?(UNCHANGED)
@@ -1094,8 +1181,12 @@ module Zizq
           nil
         else
           ret = {} #: Hash[Symbol, Integer]
-          ret[:completed_ms] = (retention[:completed].to_f * 1000).to_i if retention[:completed]
-          ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
+          ret[:completed_ms] = (
+            retention[:completed].to_f * 1000
+          ).to_i if retention[:completed]
+          ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[
+            :dead
+          ]
           ret
         end
       end
@@ -1118,22 +1209,32 @@ module Zizq
 
     def encode_body(body) #: (Hash[Symbol, untyped]) -> String
       case @format
-      when :msgpack then MessagePack.pack(body)
-      when :json then JSON.generate(body)
-      else raise ArgumentError, "Unknown format: #{@format}"
+      when :msgpack
+        MessagePack.pack(body)
+      when :json
+        JSON.generate(body)
+      else
+        raise ArgumentError, "Unknown format: #{@format}"
       end
     end
 
     def decode_body(data, content_type: nil) #: (String, ?content_type: String?) -> Hash[String, untyped]
-      format = case content_type
-               when /msgpack/ then :msgpack
-               when /json/ then :json
-               else @format
-               end
+      format =
+        case content_type
+        when /msgpack/
+          :msgpack
+        when /json/
+          :json
+        else
+          @format
+        end
       case format
-      when :msgpack then MessagePack.unpack(data)
-      when :json then JSON.parse(data)
-      else raise ArgumentError, "Unknown format: #{format}"
+      when :msgpack
+        MessagePack.unpack(data)
+      when :json
+        JSON.parse(data)
+      else
+        raise ArgumentError, "Unknown format: #{format}"
       end
     end
 
@@ -1153,7 +1254,11 @@ module Zizq
     # Read the response body and close it, returning a RawResponse that is
     # safe to use outside the reactor.
     def consume_response(response) #: (untyped) -> RawResponse
-      RawResponse.new(status: response.status, body: response.read, content_type: response.headers["content-type"])
+      RawResponse.new(
+        status: response.status,
+        body: response.read,
+        content_type: response.headers["content-type"]
+      )
     ensure
       response.close
     end
@@ -1239,24 +1344,22 @@ module Zizq
     end
 
     def thread_local_http(key, endpoint) #: (Symbol, Async::HTTP::Endpoint) -> Async::HTTP::Client
-      Thread.current.thread_variable_get(key) || begin
-        client = Async::HTTP::Client.new(endpoint)
-        @mutex.synchronize do
-          @http_clients.reject! { |ref| !ref.weakref_alive? }
-          @http_clients << WeakRef.new(client)
+      Thread.current.thread_variable_get(key) ||
+        begin
+          client = Async::HTTP::Client.new(endpoint)
+          @mutex.synchronize do
+            @http_clients.reject! { |ref| !ref.weakref_alive? }
+            @http_clients << WeakRef.new(client)
+          end
+          Thread.current.thread_variable_set(key, client)
+          client
         end
-        Thread.current.thread_variable_set(key, client)
-        client
-      end
     end
 
     def get(path, params: {}) #: (String, ?params: Hash[Symbol, untyped]) -> RawResponse
       request do |http|
         consume_response(
-          http.get(
-            build_path(path, params:),
-            {"accept" => @content_type}
-          )
+          http.get(build_path(path, params:), { "accept" => @content_type })
         )
       end
     end
@@ -1266,7 +1369,7 @@ module Zizq
         consume_response(
           http.post(
             build_path(path),
-            {"content-type" => @content_type, "accept" => @content_type},
+            { "content-type" => @content_type, "accept" => @content_type },
             Protocol::HTTP::Body::Buffered.wrap(encode_body(body))
           )
         )
@@ -1276,10 +1379,7 @@ module Zizq
     def raw_post(path) #: (String) -> RawResponse
       request do |http|
         consume_response(
-          http.post(
-            build_path(path),
-            {"accept" => @content_type}
-          )
+          http.post(build_path(path), { "accept" => @content_type })
         )
       end
     end
@@ -1289,7 +1389,7 @@ module Zizq
         consume_response(
           http.put(
             build_path(path),
-            {"content-type" => @content_type, "accept" => @content_type},
+            { "content-type" => @content_type, "accept" => @content_type },
             Protocol::HTTP::Body::Buffered.wrap(encode_body(body))
           )
         )
@@ -1299,10 +1399,7 @@ module Zizq
     def delete(path, params: {}) #: (String, ?params: Hash[Symbol, untyped]) -> RawResponse
       request do |http|
         consume_response(
-          http.delete(
-            build_path(path, params:),
-            {"accept" => @content_type}
-          )
+          http.delete(build_path(path, params:), { "accept" => @content_type })
         )
       end
     end
@@ -1312,7 +1409,7 @@ module Zizq
         consume_response(
           http.patch(
             build_path(path, params:),
-            {"content-type" => @content_type, "accept" => @content_type},
+            { "content-type" => @content_type, "accept" => @content_type },
             Protocol::HTTP::Body::Buffered.wrap(encode_body(body))
           )
         )
@@ -1330,18 +1427,24 @@ module Zizq
         return nil if status == 204
         decode_body(response.body, content_type: ct)
       else
-        body = begin
-          decode_body(response.body, content_type: ct)
-        rescue
-          nil
-        end
+        body =
+          begin
+            decode_body(response.body, content_type: ct)
+          rescue StandardError
+            nil
+          end
         message = body&.fetch("error", nil) || "HTTP #{status}"
-        error_class = case status
-                      when 404 then NotFoundError
-                      when 400..499 then ClientError
-                      when 500..599 then ServerError
-                      else ResponseError
-                      end
+        error_class =
+          case status
+          when 404
+            NotFoundError
+          when 400..499
+            ClientError
+          when 500..599
+            ServerError
+          else
+            ResponseError
+          end
         raise error_class.new(message, status: status, body: body)
       end
     end

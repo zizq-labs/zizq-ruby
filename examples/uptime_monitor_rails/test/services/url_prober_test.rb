@@ -27,8 +27,12 @@ class UrlProberTest < ActiveSupport::TestCase
   end
 
   test "follows a redirect and reports the final URL" do
-    stub_request(:get, "https://example.com")
-      .to_return(status: 301, headers: { "Location" => "https://final.example.com/" })
+    stub_request(:get, "https://example.com").to_return(
+      status: 301,
+      headers: {
+        "Location" => "https://final.example.com/"
+      }
+    )
     stub_request(:get, "https://final.example.com/").to_return(status: 200)
 
     result = UrlProber.call("https://example.com")
@@ -39,8 +43,12 @@ class UrlProberTest < ActiveSupport::TestCase
   end
 
   test "resolves relative Location headers against the previous URL" do
-    stub_request(:get, "https://example.com/start")
-      .to_return(status: 302, headers: { "Location" => "/landing" })
+    stub_request(:get, "https://example.com/start").to_return(
+      status: 302,
+      headers: {
+        "Location" => "/landing"
+      }
+    )
     stub_request(:get, "https://example.com/landing").to_return(status: 200)
 
     result = UrlProber.call("https://example.com/start")
@@ -51,8 +59,12 @@ class UrlProberTest < ActiveSupport::TestCase
 
   test "too many redirects is down" do
     (0..UrlProber::MAX_REDIRECTS).each do |i|
-      stub_request(:get, "https://example.com/#{i}")
-        .to_return(status: 302, headers: { "Location" => "https://example.com/#{i + 1}" })
+      stub_request(:get, "https://example.com/#{i}").to_return(
+        status: 302,
+        headers: {
+          "Location" => "https://example.com/#{i + 1}"
+        }
+      )
     end
 
     result = UrlProber.call("https://example.com/0")
@@ -77,12 +89,14 @@ class UrlProberTest < ActiveSupport::TestCase
     result = UrlProber.call("https://slow.example.com")
 
     assert_equal "down", result.status
-    assert_equal "Timed out after #{UrlProber::TIMEOUT_SECONDS}s", result.error_message
+    assert_equal "Timed out after #{UrlProber::TIMEOUT_SECONDS}s",
+                 result.error_message
   end
 
   test "network error is down with the exception captured" do
-    stub_request(:get, "https://nonexistent.invalid")
-      .to_raise(Socket::ResolutionError.new("getaddrinfo: nope"))
+    stub_request(:get, "https://nonexistent.invalid").to_raise(
+      Socket::ResolutionError.new("getaddrinfo: nope")
+    )
 
     result = UrlProber.call("https://nonexistent.invalid")
 
@@ -98,8 +112,13 @@ class UrlProberTest < ActiveSupport::TestCase
         <url><loc>https://example.com/page</loc></url>
       </urlset>
     XML
-    stub_request(:get, "https://example.com/sitemap.xml")
-      .to_return(status: 200, headers: { "Content-Type" => "application/xml" }, body: body)
+    stub_request(:get, "https://example.com/sitemap.xml").to_return(
+      status: 200,
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body: body
+    )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
 
@@ -115,8 +134,13 @@ class UrlProberTest < ActiveSupport::TestCase
         <sitemap><loc>https://example.com/sitemap-1.xml</loc></sitemap>
       </sitemapindex>
     XML
-    stub_request(:get, "https://example.com/sitemap.xml")
-      .to_return(status: 200, headers: { "Content-Type" => "text/xml" }, body: body)
+    stub_request(:get, "https://example.com/sitemap.xml").to_return(
+      status: 200,
+      headers: {
+        "Content-Type" => "text/xml"
+      },
+      body: body
+    )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
 
@@ -126,8 +150,10 @@ class UrlProberTest < ActiveSupport::TestCase
   test "non-sitemap XML (e.g. RSS) is not flagged" do
     stub_request(:get, "https://example.com/feed.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/rss+xml" },
-      body: %(<?xml version="1.0"?><rss><channel></channel></rss>),
+      headers: {
+        "Content-Type" => "application/rss+xml"
+      },
+      body: %(<?xml version="1.0"?><rss><channel></channel></rss>)
     )
 
     result = UrlProber.call("https://example.com/feed.xml")
@@ -139,8 +165,10 @@ class UrlProberTest < ActiveSupport::TestCase
   test "non-XML response is not inspected for sitemap content" do
     stub_request(:get, "https://example.com").to_return(
       status: 200,
-      headers: { "Content-Type" => "text/html" },
-      body: "<html></html>",
+      headers: {
+        "Content-Type" => "text/html"
+      },
+      body: "<html></html>"
     )
 
     result = UrlProber.call("https://example.com")
@@ -152,14 +180,19 @@ class UrlProberTest < ActiveSupport::TestCase
   test "malformed XML with an XML content-type captures the parse error" do
     stub_request(:get, "https://example.com/sitemap.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/xml" },
-      body: "<unclosed",
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body: "<unclosed"
     )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
 
     assert_equal "up", result.status # HTTP succeeded, parse problem is application-level
     refute result.is_sitemap
-    assert_match(/Body advertised XML but failed to parse/, result.error_message)
+    assert_match(
+      /Body advertised XML but failed to parse/,
+      result.error_message
+    )
   end
 end

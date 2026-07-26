@@ -17,8 +17,10 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
   def stub_sitemap(*urls, body: nil)
     stub_request(:get, SITEMAP_URL).to_return(
       status: 200,
-      headers: { "Content-Type" => "application/xml" },
-      body: body || sitemap_body(*urls),
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body: body || sitemap_body(*urls)
     )
   end
 
@@ -38,12 +40,13 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
   test "re-enables previously disabled children that are back in the sitemap" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
-    child = MonitoredUrl.create!(
-      url:                "https://example.com/a",
-      source:             "sitemap",
-      source_sitemap_url: sitemap.url,
-      enabled:            false,
-    )
+    child =
+      MonitoredUrl.create!(
+        url: "https://example.com/a",
+        source: "sitemap",
+        source_sitemap_url: sitemap.url,
+        enabled: false
+      )
     stub_sitemap("https://example.com/a")
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
@@ -53,11 +56,12 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
   test "disables children no longer present in the sitemap" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
-    to_remove = MonitoredUrl.create!(
-      url:                "https://example.com/old",
-      source:             "sitemap",
-      source_sitemap_url: sitemap.url,
-    )
+    to_remove =
+      MonitoredUrl.create!(
+        url: "https://example.com/old",
+        source: "sitemap",
+        source_sitemap_url: sitemap.url
+      )
     stub_sitemap("https://example.com/new")
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
@@ -72,23 +76,33 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
 
-    assert_equal 1, MonitoredUrl.where(url: "https://example.com/page", source_sitemap_url: nil).count
-    assert_equal 1, MonitoredUrl.where(url: "https://example.com/page", source_sitemap_url: sitemap.url).count
+    assert_equal 1,
+                 MonitoredUrl.where(
+                   url: "https://example.com/page",
+                   source_sitemap_url: nil
+                 ).count
+    assert_equal 1,
+                 MonitoredUrl.where(
+                   url: "https://example.com/page",
+                   source_sitemap_url: sitemap.url
+                 ).count
   end
 
   test "malformed sitemap leaves existing children untouched" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
-    child = MonitoredUrl.create!(
-      url:                "https://example.com/keep",
-      source:             "sitemap",
-      source_sitemap_url: sitemap.url,
-      enabled:            true,
-    )
+    child =
+      MonitoredUrl.create!(
+        url: "https://example.com/keep",
+        source: "sitemap",
+        source_sitemap_url: sitemap.url,
+        enabled: true
+      )
     stub_sitemap(body: "<unclosed")
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
 
-    assert child.reload.enabled?, "existing children should be untouched when the sitemap fails to parse"
+    assert child.reload.enabled?,
+           "existing children should be untouched when the sitemap fails to parse"
   end
 
   test "enqueues an immediate CheckUrlJob for each enabled child after reconcile" do
@@ -102,24 +116,28 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
   test "emits a sitemap.scanned audit event with the discovered count" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
-    stub_sitemap("https://example.com/a", "https://example.com/b", "https://example.com/c")
+    stub_sitemap(
+      "https://example.com/a",
+      "https://example.com/b",
+      "https://example.com/c"
+    )
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
 
     event = Zizq::Test.enqueued_jobs(only_types: "audit.create").first
     refute_nil event
-    assert_equal "sitemap.scanned",    event.payload["event_type"]
-    assert_equal "system",             event.payload["actor"]
-    assert_equal SITEMAP_URL,          event.payload["data"]["sitemap_url"]
-    assert_equal 3,                    event.payload["data"]["discovered_count"]
+    assert_equal "sitemap.scanned", event.payload["event_type"]
+    assert_equal "system", event.payload["actor"]
+    assert_equal SITEMAP_URL, event.payload["data"]["sitemap_url"]
+    assert_equal 3, event.payload["data"]["discovered_count"]
   end
 
   test "doesn't enqueue checks for newly-disabled children" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
     MonitoredUrl.create!(
-      url:                "https://example.com/gone",
-      source:             "sitemap",
-      source_sitemap_url: sitemap.url,
+      url: "https://example.com/gone",
+      source: "sitemap",
+      source_sitemap_url: sitemap.url
     )
     stub_sitemap("https://example.com/still-here")
 
@@ -130,11 +148,12 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
   test "a sitemapindex (no <urlset>) discovers zero URLs and disables prior children" do
     sitemap = MonitoredUrl.create!(url: SITEMAP_URL)
-    old = MonitoredUrl.create!(
-      url:                "https://example.com/old",
-      source:             "sitemap",
-      source_sitemap_url: sitemap.url,
-    )
+    old =
+      MonitoredUrl.create!(
+        url: "https://example.com/old",
+        source: "sitemap",
+        source_sitemap_url: sitemap.url
+      )
     stub_sitemap(body: <<~XML)
       <?xml version="1.0"?>
       <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -144,7 +163,11 @@ class DiscoverSitemapUrlsJobTest < ActiveJob::TestCase
 
     DiscoverSitemapUrlsJob.new.perform(sitemap)
 
-    assert_equal 0, MonitoredUrl.where(source_sitemap_url: sitemap.url, enabled: true).count
+    assert_equal 0,
+                 MonitoredUrl.where(
+                   source_sitemap_url: sitemap.url,
+                   enabled: true
+                 ).count
     refute old.reload.enabled?
   end
 end

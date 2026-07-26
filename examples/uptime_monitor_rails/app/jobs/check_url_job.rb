@@ -11,14 +11,14 @@ class CheckUrlJob < ApplicationJob
     if status_transitioned?(previous_status, result.status)
       Audit.emit(
         event_type: "url.status.changed",
-        actor:      "system",
-        resource:   "monitored_url:#{monitored_url.id}",
-        text:       "#{monitored_url.url} went #{result.status}",
-        data:       {
-          "url"  => monitored_url.url,
+        actor: "system",
+        resource: "monitored_url:#{monitored_url.id}",
+        text: "#{monitored_url.url} went #{result.status}",
+        data: {
+          "url" => monitored_url.url,
           "from" => previous_status,
-          "to"   => result.status,
-        },
+          "to" => result.status
+        }
       )
       NotifyWebhookJob.perform_later(check)
     end

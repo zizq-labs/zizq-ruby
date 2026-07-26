@@ -55,7 +55,8 @@ module Zizq
     # route and no fallback. Caught by Zizq's normal worker error
     # path, which nacks the job for retry (or dead-letters it once
     # the retry limit is hit).
-    class UnknownJobType < Zizq::Error; end
+    class UnknownJobType < Zizq::Error
+    end
 
     # @rbs &block: ?(self) [self: Router] -> void
     def initialize(&block)
@@ -94,7 +95,7 @@ module Zizq
       return @fallback.call(job) if @fallback
 
       raise UnknownJobType,
-        "no handler registered for job type #{job.type.inspect}"
+            "no handler registered for job type #{job.type.inspect}"
     end
   end
 end

@@ -18,10 +18,11 @@ module Zizq
   # All values may be PEM-encoded strings or file paths.
   #
   # Note: Mutual TLS support requires a Zizq Pro license on the server.
-  TlsConfiguration = Struct.new(
-    :ca,          #: String?
-    :client_cert, #: String?
-    :client_key,  #: String?
-    keyword_init: true
-  )
+  TlsConfiguration =
+    Struct.new(
+      :ca, #: String?
+      :client_cert, #: String?
+      :client_key, #: String?
+      keyword_init: true
+    )
 end

@@ -2,7 +2,8 @@
 
 class MonitoredUrlsController < ApplicationController
   def index
-    @monitored_urls = MonitoredUrl.order(last_checked_at: :desc, created_at: :desc)
+    @monitored_urls =
+      MonitoredUrl.order(last_checked_at: :desc, created_at: :desc)
     # On the periodic XHR refresh we just want the table fragment, not
     # the full page wrapper.
     render partial: "urls", layout: false if request.xhr?
@@ -18,10 +19,12 @@ class MonitoredUrlsController < ApplicationController
     if monitored.previously_new_record?
       Audit.emit(
         event_type: "url.added",
-        actor:      "user",
-        resource:   "monitored_url:#{monitored.id}",
-        text:       "Started monitoring #{url}",
-        data:       { "url" => url },
+        actor: "user",
+        resource: "monitored_url:#{monitored.id}",
+        text: "Started monitoring #{url}",
+        data: {
+          "url" => url
+        }
       )
       notice = "Now monitoring #{url}"
     else

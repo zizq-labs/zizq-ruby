@@ -16,9 +16,7 @@ class TestCheckUrlJob < Minitest::Test
     m = MonitoredUrl.create(url: "https://example.com")
     stub_request(:get, "https://example.com").to_return(status: 200)
 
-    Zizq::Test.dispatch_enqueued_jobs do
-      Zizq.enqueue(CheckUrlJob, m.id)
-    end
+    Zizq::Test.dispatch_enqueued_jobs { Zizq.enqueue(CheckUrlJob, m.id) }
 
     m.refresh
     assert_equal "up", m.last_status
@@ -31,9 +29,7 @@ class TestCheckUrlJob < Minitest::Test
 
     # No stub: if the prober ran, WebMock would raise on the unstubbed
     # request and fail the test.
-    Zizq::Test.dispatch_enqueued_jobs do
-      Zizq.enqueue(CheckUrlJob, m.id)
-    end
+    Zizq::Test.dispatch_enqueued_jobs { Zizq.enqueue(CheckUrlJob, m.id) }
 
     assert_not_requested :any, /.*/
     m.refresh
@@ -44,8 +40,11 @@ class TestCheckUrlJob < Minitest::Test
     m = MonitoredUrl.create(url: "https://example.com/sitemap.xml")
     stub_request(:get, "https://example.com/sitemap.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/xml" },
-      body: %(<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>),
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body:
+        %(<?xml version="1.0"?><urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"></urlset>)
     )
 
     Zizq::Test.dispatch_enqueued_jobs(only_types: CheckUrlJob) do
@@ -69,7 +68,12 @@ class TestCheckUrlJob < Minitest::Test
   # --- Status transitions ---------------------------------------------
 
   def test_enqueues_notify_webhook_job_on_an_up_to_down_transition
-    m = MonitoredUrl.create(url: "https://example.com", last_status: "up", last_checked_at: Time.now - 60)
+    m =
+      MonitoredUrl.create(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: Time.now - 60
+      )
     stub_request(:get, "https://example.com").to_return(status: 500)
 
     Zizq::Test.dispatch_enqueued_jobs(only_types: CheckUrlJob) do
@@ -80,7 +84,13 @@ class TestCheckUrlJob < Minitest::Test
   end
 
   def test_enqueues_notify_webhook_job_on_a_down_to_up_transition
-    m = MonitoredUrl.create(url: "https://example.com", last_status: "down", last_checked_at: Time.now - 60, consecutive_failures: 3)
+    m =
+      MonitoredUrl.create(
+        url: "https://example.com",
+        last_status: "down",
+        last_checked_at: Time.now - 60,
+        consecutive_failures: 3
+      )
     stub_request(:get, "https://example.com").to_return(status: 200)
 
     Zizq::Test.dispatch_enqueued_jobs(only_types: CheckUrlJob) do
@@ -113,7 +123,12 @@ class TestCheckUrlJob < Minitest::Test
   end
 
   def test_does_not_enqueue_notify_webhook_job_when_status_is_unchanged
-    m = MonitoredUrl.create(url: "https://example.com", last_status: "up", last_checked_at: Time.now - 60)
+    m =
+      MonitoredUrl.create(
+        url: "https://example.com",
+        last_status: "up",
+        last_checked_at: Time.now - 60
+      )
     stub_request(:get, "https://example.com").to_return(status: 200)
 
     Zizq::Test.dispatch_enqueued_jobs(only_types: CheckUrlJob) do

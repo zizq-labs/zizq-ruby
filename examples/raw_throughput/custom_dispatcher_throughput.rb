@@ -11,10 +11,10 @@
 # Change the environment variable JOB_COUNT to control how many jobs are
 # enqueued.
 
-require_relative './setup'
+require_relative "./setup"
 
-require 'zizq'
-require 'async'
+require "zizq"
+require "async"
 
 # --- Setup ----
 
@@ -37,28 +37,28 @@ Sync do
 end
 
 enqueue_finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-enqueue_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - enqueue_started_at
+enqueue_elapsed =
+  Process.clock_gettime(Process::CLOCK_MONOTONIC) - enqueue_started_at
 
 puts format(
-  "Enqueued %d jobs in %.3fs (%.3f jobs/sec).",
-  JOB_COUNT,
-  enqueue_elapsed,
-  JOB_COUNT/enqueue_elapsed
-)
+       "Enqueued %d jobs in %.3fs (%.3f jobs/sec).",
+       JOB_COUNT,
+       enqueue_elapsed,
+       JOB_COUNT / enqueue_elapsed
+     )
 
 # --- Dequeue Phase ----
 
-worker = Zizq::Worker.new(
-  thread_count: THREADS,
-  fiber_count: FIBERS,
-  dispatcher: ->(job) do
-    if job.queue == "ruby/bench" && job.type == "bench"
-      if job.payload == JOB_COUNT
-        Process.kill("TERM", Process.pid)
+worker =
+  Zizq::Worker.new(
+    thread_count: THREADS,
+    fiber_count: FIBERS,
+    dispatcher: ->(job) do
+      if job.queue == "ruby/bench" && job.type == "bench"
+        Process.kill("TERM", Process.pid) if job.payload == JOB_COUNT
       end
     end
-  end
-)
+  )
 
 Signal.trap("TERM") { worker.stop }
 
@@ -67,11 +67,12 @@ dequeue_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 worker.run
 
 dequeue_finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-dequeue_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - dequeue_started_at
+dequeue_elapsed =
+  Process.clock_gettime(Process::CLOCK_MONOTONIC) - dequeue_started_at
 
 puts format(
-  "Dequeued %d jobs in %.3fs (%.3f jobs/sec).",
-  JOB_COUNT,
-  dequeue_elapsed,
-  JOB_COUNT/dequeue_elapsed
-)
+       "Dequeued %d jobs in %.3fs (%.3f jobs/sec).",
+       JOB_COUNT,
+       dequeue_elapsed,
+       JOB_COUNT / dequeue_elapsed
+     )

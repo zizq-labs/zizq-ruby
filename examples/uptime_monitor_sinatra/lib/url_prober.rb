@@ -20,23 +20,24 @@ require "nokogiri"
 # `DiscoverSitemapUrlsJob` does the full URL extraction; we just set
 # the flag so it knows to run.
 class UrlProber
-  MAX_REDIRECTS        = 5
-  OPEN_TIMEOUT_SECONDS = 5  # connect timeout
+  MAX_REDIRECTS = 5
+  OPEN_TIMEOUT_SECONDS = 5 # connect timeout
   READ_TIMEOUT_SECONDS = 10 # per-read socket timeout (Faraday default unit)
 
   SITEMAP_ROOT_ELEMENTS = %w[urlset sitemapindex].freeze
-  XML_CONTENT_TYPE      = %r{\A(application|text)/(.*\+)?xml\b}i
+  XML_CONTENT_TYPE = %r{\A(application|text)/(.*\+)?xml\b}i
 
-  Result = Struct.new(
-    :status,
-    :http_status,
-    :response_time_ms,
-    :final_url,
-    :error_message,
-    :is_sitemap,
-    :checked_at,
-    keyword_init: true,
-  )
+  Result =
+    Struct.new(
+      :status,
+      :http_status,
+      :response_time_ms,
+      :final_url,
+      :error_message,
+      :is_sitemap,
+      :checked_at,
+      keyword_init: true
+    )
 
   def self.call(url)
     new(url).call
@@ -71,13 +72,13 @@ class UrlProber
     Faraday.new do |f|
       f.response :follow_redirects, limit: MAX_REDIRECTS
       f.options.open_timeout = OPEN_TIMEOUT_SECONDS
-      f.options.timeout      = READ_TIMEOUT_SECONDS
+      f.options.timeout = READ_TIMEOUT_SECONDS
     end
   end
 
   def build_result(response, started)
     final_url = response.env.url.to_s
-    code      = response.status
+    code = response.status
 
     case code
     when 200..299
@@ -94,7 +95,14 @@ class UrlProber
 
   def success(response, final_url, started)
     is_sitemap, parse_error = inspect_for_sitemap(response)
-    build_struct("up", response.status, final_url, started, parse_error, is_sitemap: is_sitemap)
+    build_struct(
+      "up",
+      response.status,
+      final_url,
+      started,
+      parse_error,
+      is_sitemap: is_sitemap
+    )
   end
 
   def failure(http_status, final_url, started, message)
@@ -108,26 +116,36 @@ class UrlProber
   # visible in history without inventing a third status.
   def inspect_for_sitemap(response)
     content_type = response.headers["content-type"].to_s
-    return [false, nil] unless XML_CONTENT_TYPE.match?(content_type)
+    return false, nil unless XML_CONTENT_TYPE.match?(content_type)
 
     # `strict` so genuinely malformed bodies raise rather than parsing
     # to something weird; `nonet` blocks network fetches during parse
     # (XXE protection).
-    doc = Nokogiri::XML(response.body) { |c| c.strict.nonet }
+    doc = Nokogiri.XML(response.body) { |c| c.strict.nonet }
     [SITEMAP_ROOT_ELEMENTS.include?(doc.root&.name), nil]
   rescue Nokogiri::XML::SyntaxError => e
     [false, "Body advertised XML but failed to parse: #{e.message}"]
   end
 
-  def build_struct(status, http_status, final_url, started, message, is_sitemap: false)
+  def build_struct(
+    status,
+    http_status,
+    final_url,
+    started,
+    message,
+    is_sitemap: false
+  )
     Result.new(
-      status:           status,
-      http_status:      http_status,
-      response_time_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
-      final_url:        final_url,
-      error_message:    message,
-      is_sitemap:       is_sitemap,
-      checked_at:       Time.now,
+      status: status,
+      http_status: http_status,
+      response_time_ms:
+        (
+          (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
+        ).round,
+      final_url: final_url,
+      error_message: message,
+      is_sitemap: is_sitemap,
+      checked_at: Time.now
     )
   end
 end

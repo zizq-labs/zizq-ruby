@@ -12,24 +12,33 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def teardown
-    @processors.each { |p| p.stop rescue nil }
+    @processors.each do |p|
+      begin
+        p.stop
+      rescue StandardError
+        nil
+      end
+    end
   end
 
   def new_processor(capacity: 10)
-    proc = Zizq::AckProcessor.new(
-      client: Zizq.client,
-      capacity: capacity,
-      logger: Logger.new(File::NULL),
-      backoff: Zizq::Backoff.new(min_wait: 0.1, max_wait: 5.0, multiplier: 2.0)
-    )
+    proc =
+      Zizq::AckProcessor.new(
+        client: Zizq.client,
+        capacity: capacity,
+        logger: Logger.new(File::NULL),
+        backoff:
+          Zizq::Backoff.new(min_wait: 0.1, max_wait: 5.0, multiplier: 2.0)
+      )
     @processors << proc
     proc
   end
 
   def test_single_ack
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .with { |req| JSON.parse(req.body)["ids"] == ["j1"] }
-      .to_return(status: 204)
+    stub =
+      stub_request(:post, "#{URL}/jobs/success")
+        .with { |req| JSON.parse(req.body)["ids"] == ["j1"] }
+        .to_return(status: 204)
 
     proc = new_processor
     proc.start
@@ -40,44 +49,62 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_single_nack
-    stub = stub_request(:post, "#{URL}/jobs/j1/failure")
-      .with { |req|
-        body = JSON.parse(req.body)
-        body["message"] == "RuntimeError: boom" &&
-          body["error_type"] == "RuntimeError" &&
-          body["backtrace"] == "line1\nline2"
-      }
-      .to_return(status: 200, body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub =
+      stub_request(:post, "#{URL}/jobs/j1/failure")
+        .with do |req|
+          body = JSON.parse(req.body)
+          body["message"] == "RuntimeError: boom" &&
+            body["error_type"] == "RuntimeError" &&
+            body["backtrace"] == "line1\nline2"
+        end
+        .to_return(
+          status: 200,
+          body: JSON.generate({ "id" => "j1", "status" => "scheduled" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        )
 
     proc = new_processor
     proc.start
-    proc.push(Zizq::AckProcessor::Nack.new(
-      job_id: "j1",
-      message: "RuntimeError: boom",
-      error_type: "RuntimeError",
-      backtrace: "line1\nline2"
-    ))
+    proc.push(
+      Zizq::AckProcessor::Nack.new(
+        job_id: "j1",
+        message: "RuntimeError: boom",
+        error_type: "RuntimeError",
+        backtrace: "line1\nline2"
+      )
+    )
     proc.stop
 
     assert_requested(stub, times: 1)
   end
 
   def test_batch_of_mixed_acks_and_nacks
-    bulk_stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
-    nack_stub = stub_request(:post, "#{URL}/jobs/j2/failure")
-      .to_return(status: 200, body: JSON.generate({ "id" => "j2" }),
-                 headers: { "Content-Type" => "application/json" })
-    individual_ack_stub = stub_request(:post, %r{#{URL}/jobs/j[13]/success})
-      .to_return(status: 204)
+    bulk_stub =
+      stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
+    nack_stub =
+      stub_request(:post, "#{URL}/jobs/j2/failure").to_return(
+        status: 200,
+        body: JSON.generate({ "id" => "j2" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+    individual_ack_stub =
+      stub_request(:post, %r{#{URL}/jobs/j[13]/success}).to_return(status: 204)
 
     proc = new_processor
     proc.start
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j1"))
-    proc.push(Zizq::AckProcessor::Nack.new(
-      job_id: "j2", message: "err", error_type: "E", backtrace: nil
-    ))
+    proc.push(
+      Zizq::AckProcessor::Nack.new(
+        job_id: "j2",
+        message: "err",
+        error_type: "E",
+        backtrace: nil
+      )
+    )
     proc.push(Zizq::AckProcessor::Ack.new(job_id: "j3"))
     proc.stop
 
@@ -87,10 +114,17 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_retry_on_500
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return({ status: 500, body: JSON.generate({ "error" => "internal" }),
-                   headers: { "Content-Type" => "application/json" } },
-                 { status: 204 })
+    stub =
+      stub_request(:post, "#{URL}/jobs/success").to_return(
+        {
+          status: 500,
+          body: JSON.generate({ "error" => "internal" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        },
+        { status: 204 }
+      )
 
     proc = new_processor
     proc.start
@@ -103,9 +137,14 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_drop_on_422
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 422, body: JSON.generate({ "not_found" => ["j1"] }),
-                 headers: { "Content-Type" => "application/json" })
+    stub =
+      stub_request(:post, "#{URL}/jobs/success").to_return(
+        status: 422,
+        body: JSON.generate({ "not_found" => ["j1"] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     proc = new_processor
     proc.start
@@ -117,9 +156,14 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_drop_on_4xx
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 400, body: JSON.generate({ "error" => "bad request" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub =
+      stub_request(:post, "#{URL}/jobs/success").to_return(
+        status: 400,
+        body: JSON.generate({ "error" => "bad request" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     proc = new_processor
     proc.start
@@ -131,10 +175,17 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_retries_do_not_block_fresh_acks
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return({ status: 500, body: JSON.generate({ "error" => "internal" }),
-                   headers: { "Content-Type" => "application/json" } },
-                 { status: 204 })
+    stub =
+      stub_request(:post, "#{URL}/jobs/success").to_return(
+        {
+          status: 500,
+          body: JSON.generate({ "error" => "internal" }),
+          headers: {
+            "Content-Type" => "application/json"
+          }
+        },
+        { status: 204 }
+      )
 
     proc = new_processor
     proc.start
@@ -148,8 +199,7 @@ class TestAckProcessor < ZizqTestCase
   end
 
   def test_clean_shutdown_drains_queue
-    stub = stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204)
+    stub = stub_request(:post, "#{URL}/jobs/success").to_return(status: 204)
 
     proc = new_processor
     proc.start

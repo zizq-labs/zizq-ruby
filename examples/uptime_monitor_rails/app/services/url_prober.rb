@@ -22,22 +22,23 @@ require "uri"
 # doesn't extract the URLs — DiscoverSitemapUrlsJob re-fetches and
 # parses in full.
 class UrlProber
-  MAX_REDIRECTS   = 5
+  MAX_REDIRECTS = 5
   TIMEOUT_SECONDS = 10
 
   SITEMAP_ROOT_ELEMENTS = %w[urlset sitemapindex].freeze
-  XML_CONTENT_TYPE      = %r{\A(application|text)/(.*\+)?xml\b}i
+  XML_CONTENT_TYPE = %r{\A(application|text)/(.*\+)?xml\b}i
 
-  Result = Struct.new(
-    :status,
-    :http_status,
-    :response_time_ms,
-    :final_url,
-    :error_message,
-    :is_sitemap,
-    :checked_at,
-    keyword_init: true,
-  )
+  Result =
+    Struct.new(
+      :status,
+      :http_status,
+      :response_time_ms,
+      :final_url,
+      :error_message,
+      :is_sitemap,
+      :checked_at,
+      keyword_init: true
+    )
 
   def self.call(url)
     new(url).call
@@ -70,17 +71,44 @@ class UrlProber
 
         case status_code
         when 200..299
-          return success_with_sitemap_check(response, status_code, current_url, started)
+          return(
+            success_with_sitemap_check(
+              response,
+              status_code,
+              current_url,
+              started
+            )
+          )
         when 300..399
           location = response.headers["location"]
-          return failure(status_code, current_url, started, "Redirect without Location header") unless location
+          unless location
+            return(
+              failure(
+                status_code,
+                current_url,
+                started,
+                "Redirect without Location header"
+              )
+            )
+          end
 
           hops += 1
-          return failure(status_code, current_url, started, "Too many redirects (> #{MAX_REDIRECTS})") if hops > MAX_REDIRECTS
+          if hops > MAX_REDIRECTS
+            return(
+              failure(
+                status_code,
+                current_url,
+                started,
+                "Too many redirects (> #{MAX_REDIRECTS})"
+              )
+            )
+          end
 
           current_url = URI.join(current_url, location).to_s
         else
-          return failure(status_code, current_url, started, "HTTP #{status_code}")
+          return(
+            failure(status_code, current_url, started, "HTTP #{status_code}")
+          )
         end
       ensure
         response&.finish
@@ -88,7 +116,12 @@ class UrlProber
       end
     end
   rescue Async::TimeoutError
-    failure(nil, current_url || @url, started, "Timed out after #{TIMEOUT_SECONDS}s")
+    failure(
+      nil,
+      current_url || @url,
+      started,
+      "Timed out after #{TIMEOUT_SECONDS}s"
+    )
   rescue => e
     failure(nil, current_url || @url, started, "#{e.class}: #{e.message}")
   end
@@ -106,29 +139,46 @@ class UrlProber
         # `strict` so genuinely malformed bodies raise rather than
         # silently parsing to something weird; `nonet` blocks
         # network fetches during parse (XXE protection).
-        doc = Nokogiri::XML(body) { |c| c.strict.nonet }
+        doc = Nokogiri.XML(body) { |c| c.strict.nonet }
         is_sitemap = SITEMAP_ROOT_ELEMENTS.include?(doc.root&.name)
       rescue Nokogiri::XML::SyntaxError => e
         parse_error = "Body advertised XML but failed to parse: #{e.message}"
       end
     end
 
-    build_result("up", http_status, final_url, started, parse_error, is_sitemap: is_sitemap)
+    build_result(
+      "up",
+      http_status,
+      final_url,
+      started,
+      parse_error,
+      is_sitemap: is_sitemap
+    )
   end
 
   def failure(http_status, final_url, started, message)
     build_result("down", http_status, final_url, started, message)
   end
 
-  def build_result(status, http_status, final_url, started, message, is_sitemap: false)
+  def build_result(
+    status,
+    http_status,
+    final_url,
+    started,
+    message,
+    is_sitemap: false
+  )
     Result.new(
-      status:           status,
-      http_status:      http_status,
-      response_time_ms: ((Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000).round,
-      final_url:        final_url,
-      error_message:    message,
-      is_sitemap:       is_sitemap,
-      checked_at:       Time.current,
+      status: status,
+      http_status: http_status,
+      response_time_ms:
+        (
+          (Process.clock_gettime(Process::CLOCK_MONOTONIC) - started) * 1000
+        ).round,
+      final_url: final_url,
+      error_message: message,
+      is_sitemap: is_sitemap,
+      checked_at: Time.current
     )
   end
 end

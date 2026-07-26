@@ -40,13 +40,7 @@ module Zizq
     # @rbs paused: bool?
     # @rbs return: Zizq::CrontabEntryBuilder
     def define_entry(name, expression, timezone: self.timezone, paused: nil)
-      CrontabEntryBuilder.new(
-        target,
-        name,
-        expression,
-        timezone:,
-        paused:,
-      )
+      CrontabEntryBuilder.new(target, name, expression, timezone:, paused:)
     end
   end
 end

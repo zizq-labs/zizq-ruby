@@ -24,8 +24,12 @@ class TestUrlProber < Minitest::Test
   end
 
   def test_follows_a_redirect_and_reports_the_final_url
-    stub_request(:get, "https://example.com")
-      .to_return(status: 301, headers: { "Location" => "https://final.example.com/" })
+    stub_request(:get, "https://example.com").to_return(
+      status: 301,
+      headers: {
+        "Location" => "https://final.example.com/"
+      }
+    )
     stub_request(:get, "https://final.example.com/").to_return(status: 200)
 
     result = UrlProber.call("https://example.com")
@@ -35,8 +39,9 @@ class TestUrlProber < Minitest::Test
   end
 
   def test_network_error_is_down_with_friendly_message
-    stub_request(:get, "https://nonexistent.invalid")
-      .to_raise(Errno::ECONNREFUSED)
+    stub_request(:get, "https://nonexistent.invalid").to_raise(
+      Errno::ECONNREFUSED
+    )
 
     result = UrlProber.call("https://nonexistent.invalid")
 
@@ -54,8 +59,13 @@ class TestUrlProber < Minitest::Test
         <url><loc>https://example.com/page</loc></url>
       </urlset>
     XML
-    stub_request(:get, "https://example.com/sitemap.xml")
-      .to_return(status: 200, headers: { "Content-Type" => "application/xml" }, body: body)
+    stub_request(:get, "https://example.com/sitemap.xml").to_return(
+      status: 200,
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body: body
+    )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
 
@@ -71,8 +81,13 @@ class TestUrlProber < Minitest::Test
         <sitemap><loc>https://example.com/sitemap-1.xml</loc></sitemap>
       </sitemapindex>
     XML
-    stub_request(:get, "https://example.com/sitemap.xml")
-      .to_return(status: 200, headers: { "Content-Type" => "text/xml" }, body: body)
+    stub_request(:get, "https://example.com/sitemap.xml").to_return(
+      status: 200,
+      headers: {
+        "Content-Type" => "text/xml"
+      },
+      body: body
+    )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
 
@@ -82,8 +97,10 @@ class TestUrlProber < Minitest::Test
   def test_non_sitemap_xml_is_not_flagged
     stub_request(:get, "https://example.com/feed.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/rss+xml" },
-      body: %(<?xml version="1.0"?><rss><channel></channel></rss>),
+      headers: {
+        "Content-Type" => "application/rss+xml"
+      },
+      body: %(<?xml version="1.0"?><rss><channel></channel></rss>)
     )
 
     result = UrlProber.call("https://example.com/feed.xml")
@@ -95,8 +112,10 @@ class TestUrlProber < Minitest::Test
   def test_non_xml_response_is_not_inspected_for_sitemap_content
     stub_request(:get, "https://example.com").to_return(
       status: 200,
-      headers: { "Content-Type" => "text/html" },
-      body: "<html></html>",
+      headers: {
+        "Content-Type" => "text/html"
+      },
+      body: "<html></html>"
     )
 
     result = UrlProber.call("https://example.com")
@@ -108,8 +127,10 @@ class TestUrlProber < Minitest::Test
   def test_malformed_xml_with_xml_content_type_captures_the_parse_error
     stub_request(:get, "https://example.com/sitemap.xml").to_return(
       status: 200,
-      headers: { "Content-Type" => "application/xml" },
-      body: "<unclosed",
+      headers: {
+        "Content-Type" => "application/xml"
+      },
+      body: "<unclosed"
     )
 
     result = UrlProber.call("https://example.com/sitemap.xml")
@@ -119,6 +140,9 @@ class TestUrlProber < Minitest::Test
     # Check row's history.
     assert_equal "up", result.status
     refute result.is_sitemap
-    assert_match(/Body advertised XML but failed to parse/, result.error_message)
+    assert_match(
+      /Body advertised XML but failed to parse/,
+      result.error_message
+    )
   end
 end

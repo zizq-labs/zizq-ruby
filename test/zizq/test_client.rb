@@ -20,38 +20,82 @@ class TestClient < ZizqTestCase
   # --- enqueue ---
 
   def test_enqueue_json
-    job_response = { "id" => "abc123", "type" => "SendEmail", "queue" => "emails",
-                     "priority" => 32_768, "status" => "ready", "ready_at" => 1000,
-                     "attempts" => 0 }
+    job_response = {
+      "id" => "abc123",
+      "type" => "SendEmail",
+      "queue" => "emails",
+      "priority" => 32_768,
+      "status" => "ready",
+      "ready_at" => 1000,
+      "attempts" => 0
+    }
 
-    stub_request(:post, "#{URL}/jobs")
-      .with(
-        body: JSON.generate({ queue: "emails", type: "SendEmail", payload: { user_id: 42 } }),
-        headers: { "Content-Type" => "application/json", "Accept" => "application/json" }
+    stub_request(:post, "#{URL}/jobs").with(
+      body:
+        JSON.generate(
+          { queue: "emails", type: "SendEmail", payload: { user_id: 42 } }
+        ),
+      headers: {
+        "Content-Type" => "application/json",
+        "Accept" => "application/json"
+      }
+    ).to_return(
+      status: 201,
+      body: JSON.generate(job_response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result =
+      @json_client.enqueue(
+        queue: "emails",
+        type: "SendEmail",
+        payload: {
+          user_id: 42
+        }
       )
-      .to_return(status: 201, body: JSON.generate(job_response),
-                 headers: { "Content-Type" => "application/json" })
-
-    result = @json_client.enqueue(queue: "emails", type: "SendEmail", payload: { user_id: 42 })
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "abc123", result.id
     assert_equal "SendEmail", result.type
   end
 
   def test_enqueue_msgpack
-    job_response = { "id" => "abc123", "type" => "SendEmail", "queue" => "emails",
-                     "priority" => 32_768, "status" => "ready", "ready_at" => 1000,
-                     "attempts" => 0 }
+    job_response = {
+      "id" => "abc123",
+      "type" => "SendEmail",
+      "queue" => "emails",
+      "priority" => 32_768,
+      "status" => "ready",
+      "ready_at" => 1000,
+      "attempts" => 0
+    }
 
-    stub_request(:post, "#{URL}/jobs")
-      .with(
-        body: MessagePack.pack({ queue: "emails", type: "SendEmail", payload: { user_id: 42 } }),
-        headers: { "Content-Type" => "application/msgpack", "Accept" => "application/msgpack" }
+    stub_request(:post, "#{URL}/jobs").with(
+      body:
+        MessagePack.pack(
+          { queue: "emails", type: "SendEmail", payload: { user_id: 42 } }
+        ),
+      headers: {
+        "Content-Type" => "application/msgpack",
+        "Accept" => "application/msgpack"
+      }
+    ).to_return(
+      status: 201,
+      body: MessagePack.pack(job_response),
+      headers: {
+        "Content-Type" => "application/msgpack"
+      }
+    )
+
+    result =
+      @msgpack_client.enqueue(
+        queue: "emails",
+        type: "SendEmail",
+        payload: {
+          user_id: 42
+        }
       )
-      .to_return(status: 201, body: MessagePack.pack(job_response),
-                 headers: { "Content-Type" => "application/msgpack" })
-
-    result = @msgpack_client.enqueue(queue: "emails", type: "SendEmail", payload: { user_id: 42 })
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "abc123", result.id
   end
@@ -59,8 +103,13 @@ class TestClient < ZizqTestCase
   def test_enqueue_with_priority
     stub_request(:post, "#{URL}/jobs")
       .with { |req| JSON.parse(req.body)["priority"] == 100 }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     @json_client.enqueue(type: "Job", queue: "q", payload: {}, priority: 100)
   end
@@ -68,8 +117,13 @@ class TestClient < ZizqTestCase
   def test_enqueue_with_ready_at
     stub_request(:post, "#{URL}/jobs")
       .with { |req| JSON.parse(req.body)["ready_at"] == 9_999_000 }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     # 9999.0 seconds → 9_999_000 ms on the wire
     @json_client.enqueue(type: "Job", queue: "q", payload: {}, ready_at: 9999.0)
@@ -80,21 +134,39 @@ class TestClient < ZizqTestCase
     ready_at = now + 60
 
     stub_request(:post, "#{URL}/jobs")
-      .with { |req| JSON.parse(req.body)["ready_at"] == (ready_at.to_f * 1000).to_i }
-      .to_return(status: 201, body: JSON.generate({ "id" => "x" }),
-                 headers: { "Content-Type" => "application/json" })
+      .with do |req|
+        JSON.parse(req.body)["ready_at"] == (ready_at.to_f * 1000).to_i
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
-    @json_client.enqueue(type: "Job", queue: "q", payload: {}, ready_at: ready_at)
+    @json_client.enqueue(
+      type: "Job",
+      queue: "q",
+      payload: {
+      },
+      ready_at: ready_at
+    )
   end
 
   def test_enqueue_400_raises_client_error
-    stub_request(:post, "#{URL}/jobs")
-      .to_return(status: 400, body: JSON.generate({ "error" => "queue is required" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs").to_return(
+      status: 400,
+      body: JSON.generate({ "error" => "queue is required" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    err = assert_raises(Zizq::ClientError) do
-      @json_client.enqueue(type: "", queue: "", payload: {})
-    end
+    err =
+      assert_raises(Zizq::ClientError) do
+        @json_client.enqueue(type: "", queue: "", payload: {})
+      end
     assert_equal 400, err.status
     assert_equal "queue is required", err.message
   end
@@ -102,28 +174,58 @@ class TestClient < ZizqTestCase
   # --- enqueue_bulk ---
 
   def test_enqueue_bulk_json
-    jobs_response = { "jobs" => [
-      { "id" => "j1", "type" => "SendEmail", "queue" => "emails", "status" => "ready" },
-      { "id" => "j2", "type" => "ProcessOrder", "queue" => "orders", "status" => "ready" }
-    ] }
+    jobs_response = {
+      "jobs" => [
+        {
+          "id" => "j1",
+          "type" => "SendEmail",
+          "queue" => "emails",
+          "status" => "ready"
+        },
+        {
+          "id" => "j2",
+          "type" => "ProcessOrder",
+          "queue" => "orders",
+          "status" => "ready"
+        }
+      ]
+    }
 
-    stub_request(:post, "#{URL}/jobs/bulk")
-      .with(
-        body: JSON.generate({
-          jobs: [
-            { type: "SendEmail", queue: "emails", payload: { user_id: 42 } },
-            { type: "ProcessOrder", queue: "orders", payload: { order_id: 7 } }
-          ]
-        }),
-        headers: { "Content-Type" => "application/json", "Accept" => "application/json" }
+    stub_request(:post, "#{URL}/jobs/bulk").with(
+      body:
+        JSON.generate(
+          {
+            jobs: [
+              { type: "SendEmail", queue: "emails", payload: { user_id: 42 } },
+              {
+                type: "ProcessOrder",
+                queue: "orders",
+                payload: {
+                  order_id: 7
+                }
+              }
+            ]
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json",
+        "Accept" => "application/json"
+      }
+    ).to_return(
+      status: 201,
+      body: JSON.generate(jobs_response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result =
+      @json_client.enqueue_bulk(
+        jobs: [
+          { type: "SendEmail", queue: "emails", payload: { user_id: 42 } },
+          { type: "ProcessOrder", queue: "orders", payload: { order_id: 7 } }
+        ]
       )
-      .to_return(status: 201, body: JSON.generate(jobs_response),
-                 headers: { "Content-Type" => "application/json" })
-
-    result = @json_client.enqueue_bulk(jobs: [
-      { type: "SendEmail", queue: "emails", payload: { user_id: 42 } },
-      { type: "ProcessOrder", queue: "orders", payload: { order_id: 7 } }
-    ])
     assert_instance_of Array, result
     assert_equal 2, result.size
     assert_instance_of Zizq::Resources::Job, result[0]
@@ -132,23 +234,42 @@ class TestClient < ZizqTestCase
   end
 
   def test_enqueue_bulk_msgpack
-    jobs_response = { "jobs" => [
-      { "id" => "j1", "type" => "SendEmail", "queue" => "emails", "status" => "ready" }
-    ] }
+    jobs_response = {
+      "jobs" => [
+        {
+          "id" => "j1",
+          "type" => "SendEmail",
+          "queue" => "emails",
+          "status" => "ready"
+        }
+      ]
+    }
 
-    stub_request(:post, "#{URL}/jobs/bulk")
-      .with(
-        body: MessagePack.pack({
-          jobs: [{ type: "SendEmail", queue: "emails", payload: { user_id: 42 } }]
-        }),
-        headers: { "Content-Type" => "application/msgpack", "Accept" => "application/msgpack" }
+    stub_request(:post, "#{URL}/jobs/bulk").with(
+      body:
+        MessagePack.pack(
+          {
+            jobs: [
+              { type: "SendEmail", queue: "emails", payload: { user_id: 42 } }
+            ]
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/msgpack",
+        "Accept" => "application/msgpack"
+      }
+    ).to_return(
+      status: 201,
+      body: MessagePack.pack(jobs_response),
+      headers: {
+        "Content-Type" => "application/msgpack"
+      }
+    )
+
+    result =
+      @msgpack_client.enqueue_bulk(
+        jobs: [{ type: "SendEmail", queue: "emails", payload: { user_id: 42 } }]
       )
-      .to_return(status: 201, body: MessagePack.pack(jobs_response),
-                 headers: { "Content-Type" => "application/msgpack" })
-
-    result = @msgpack_client.enqueue_bulk(jobs: [
-      { type: "SendEmail", queue: "emails", payload: { user_id: 42 } }
-    ])
     assert_instance_of Array, result
     assert_equal 1, result.size
     assert_instance_of Zizq::Resources::Job, result[0]
@@ -156,42 +277,169 @@ class TestClient < ZizqTestCase
   end
 
   def test_enqueue_bulk_400_raises_client_error
-    stub_request(:post, "#{URL}/jobs/bulk")
-      .to_return(status: 400, body: JSON.generate({ "error" => "invalid job type" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs/bulk").to_return(
+      status: 400,
+      body: JSON.generate({ "error" => "invalid job type" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    err = assert_raises(Zizq::ClientError) do
-      @json_client.enqueue_bulk(jobs: [{ type: "", queue: "", payload: {} }])
-    end
+    err =
+      assert_raises(Zizq::ClientError) do
+        @json_client.enqueue_bulk(jobs: [{ type: "", queue: "", payload: {} }])
+      end
     assert_equal 400, err.status
     assert_equal "invalid job type", err.message
   end
 
   def test_enqueue_bulk_converts_ready_at_to_ms
     stub_request(:post, "#{URL}/jobs/bulk")
-      .with { |req|
+      .with do |req|
         body = JSON.parse(req.body)
         body["jobs"][0]["ready_at"] == 9_999_000
-      }
-      .to_return(status: 201, body: JSON.generate({ "jobs" => [{ "id" => "x" }] }),
-                 headers: { "Content-Type" => "application/json" })
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "jobs" => [{ "id" => "x" }] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
-    @json_client.enqueue_bulk(jobs: [
-      { type: "Job", queue: "q", payload: {}, ready_at: 9999.0 }
-    ])
+    @json_client.enqueue_bulk(
+      jobs: [{ type: "Job", queue: "q", payload: {}, ready_at: 9999.0 }]
+    )
+  end
+
+  # --- batch (folded jobs) ---
+
+  def test_enqueue_with_batch_sends_batch_field
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["batch"] ==
+          { "key" => "audit", "when" => "true", "fold" => "$existing + $new" }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x", "folded" => false }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    result =
+      @json_client.enqueue(
+        type: "Audit",
+        queue: "q",
+        payload: [1],
+        batch: {
+          key: "audit",
+          when: "true",
+          fold: "$existing + $new"
+        }
+      )
+    refute result.folded?
+  end
+
+  def test_enqueue_folded_response_sets_folded_flag
+    stub_request(:post, "#{URL}/jobs").to_return(
+      status: 200,
+      body: JSON.generate({ "id" => "x", "folded" => true }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.enqueue(type: "Audit", queue: "q", payload: [1])
+    assert result.folded?
+  end
+
+  def test_enqueue_response_batch_config_exposed_via_resource
+    stub_request(:post, "#{URL}/jobs").to_return(
+      status: 200,
+      body:
+        JSON.generate(
+          {
+            "id" => "x",
+            "batch" => {
+              "key" => "audit",
+              "when" => "true",
+              "fold" => "$existing + $new"
+            }
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.enqueue(type: "Audit", queue: "q", payload: [1])
+    assert_equal(
+      { key: "audit", when: "true", fold: "$existing + $new" },
+      result.batch
+    )
+  end
+
+  def test_enqueue_bulk_with_batch_sends_batch_per_job
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["jobs"][0]["batch"] ==
+          { "key" => "audit", "when" => "true", "fold" => "$existing + $new" }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "jobs" => [{ "id" => "x" }] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue_bulk(
+      jobs: [
+        {
+          type: "Audit",
+          queue: "q",
+          payload: [1],
+          batch: {
+            key: "audit",
+            when: "true",
+            fold: "$existing + $new"
+          }
+        }
+      ]
+    )
   end
 
   # --- get_job ---
 
   def test_get_job
-    job = { "id" => "job1", "type" => "Foo", "queue" => "default",
-            "priority" => 32_768, "status" => "ready", "ready_at" => 1000,
-            "attempts" => 0, "payload" => { "key" => "value" } }
+    job = {
+      "id" => "job1",
+      "type" => "Foo",
+      "queue" => "default",
+      "priority" => 32_768,
+      "status" => "ready",
+      "ready_at" => 1000,
+      "attempts" => 0,
+      "payload" => {
+        "key" => "value"
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs/job1")
-      .with(headers: { "Accept" => "application/json" })
-      .to_return(status: 200, body: JSON.generate(job),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/job1").with(
+      headers: {
+        "Accept" => "application/json"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate(job),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_job("job1")
     assert_instance_of Zizq::Resources::Job, result
@@ -200,9 +448,13 @@ class TestClient < ZizqTestCase
   end
 
   def test_get_job_not_found
-    stub_request(:get, "#{URL}/jobs/missing")
-      .to_return(status: 404, body: JSON.generate({ "error" => "not found" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/missing").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_raises(Zizq::NotFoundError) { @json_client.get_job("missing") }
   end
@@ -212,10 +464,17 @@ class TestClient < ZizqTestCase
   def test_list_jobs_no_filters
     response = { "jobs" => [], "pages" => { "self" => "/jobs" } }
 
-    stub_request(:get, "#{URL}/jobs")
-      .with(headers: { "Accept" => "application/json" })
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      headers: {
+        "Accept" => "application/json"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.list_jobs
     assert_instance_of Zizq::Resources::JobPage, result
@@ -223,34 +482,72 @@ class TestClient < ZizqTestCase
   end
 
   def test_list_jobs_with_filters
-    response = { "jobs" => [{ "id" => "j1" }], "pages" => { "self" => "/jobs" } }
+    response = {
+      "jobs" => [{ "id" => "j1" }],
+      "pages" => {
+        "self" => "/jobs"
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs?status=ready,in_flight&queue=emails&limit=10")
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(
+      :get,
+      "#{URL}/jobs?status=ready,in_flight&queue=emails&limit=10"
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    result = @json_client.list_jobs(status: %w[ready in_flight], queue: "emails", limit: 10)
+    result =
+      @json_client.list_jobs(
+        status: %w[ready in_flight],
+        queue: "emails",
+        limit: 10
+      )
     assert_equal 1, result.jobs.size
   end
 
   def test_list_jobs_with_id_filter
-    response = { "jobs" => [{ "id" => "j1" }], "pages" => { "self" => "/jobs" } }
+    response = {
+      "jobs" => [{ "id" => "j1" }],
+      "pages" => {
+        "self" => "/jobs"
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs?id=j1,j2")
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs?id=j1,j2").to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.list_jobs(id: %w[j1 j2])
     assert_equal 1, result.jobs.size
   end
 
   def test_list_jobs_with_payload_filter
-    response = { "jobs" => [{ "id" => "j1" }], "pages" => { "self" => "/jobs" } }
+    response = {
+      "jobs" => [{ "id" => "j1" }],
+      "pages" => {
+        "self" => "/jobs"
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "filter" => ".user_id == 42" })
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "filter" => ".user_id == 42"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.list_jobs(filter: ".user_id == 42")
     assert_equal 1, result.jobs.size
@@ -267,47 +564,77 @@ class TestClient < ZizqTestCase
   # --- range filters ---
 
   def test_list_jobs_with_priority_integer
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "priority" => "50" })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "priority" => "50"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(priority: 50)
   end
 
   def test_list_jobs_with_priority_inclusive_range
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "priority" => "0..100" })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "priority" => "0..100"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(priority: 0..100)
   end
 
   def test_list_jobs_with_priority_endless_range
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "priority" => "100.." })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "priority" => "100.."
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(priority: 100..)
   end
 
   def test_list_jobs_with_priority_beginless_range
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "priority" => "..100" })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "priority" => "..100"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(priority: ..100)
   end
 
   def test_list_jobs_with_attempts_range
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "attempts" => "1.." })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "attempts" => "1.."
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(attempts: 1..)
   end
 
@@ -315,11 +642,17 @@ class TestClient < ZizqTestCase
     # Times in Ruby are fractional seconds; the wire format is ms.
     t1 = Time.at(1_700_000_000)
     t2 = Time.at(1_800_000_000)
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "ready_at" => "1700000000000..1800000000000" })
-      .to_return(status: 200,
-                 body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "ready_at" => "1700000000000..1800000000000"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => { "self" => "/jobs" } }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     @json_client.list_jobs(ready_at: t1..t2)
   end
 
@@ -330,45 +663,74 @@ class TestClient < ZizqTestCase
   end
 
   def test_count_jobs_with_range
-    stub_request(:get, "#{URL}/jobs/count")
-      .with(query: { "priority" => "0..100" })
-      .to_return(status: 200, body: JSON.generate({ "count" => 3 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/count").with(
+      query: {
+        "priority" => "0..100"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "count" => 3 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     assert_equal 3, @json_client.count_jobs(priority: 0..100)
   end
 
   def test_delete_all_jobs_with_range
-    stub_request(:delete, "#{URL}/jobs?attempts=1..")
-      .to_return(status: 200, body: JSON.generate({ "deleted" => 5 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:delete, "#{URL}/jobs?attempts=1..").to_return(
+      status: 200,
+      body: JSON.generate({ "deleted" => 5 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
     assert_equal 5, @json_client.delete_all_jobs(where: { attempts: 1.. })
   end
 
   def test_update_all_jobs_with_range
-    stub_request(:patch, "#{URL}/jobs?priority=200..")
-      .with(body: JSON.generate({ priority: 100 }))
-      .to_return(status: 200, body: JSON.generate({ "patched" => 3 }),
-                 headers: { "Content-Type" => "application/json" })
-    assert_equal 3, @json_client.update_all_jobs(
-      where: { priority: 200.. },
-      apply: { priority: 100 },
+    stub_request(:patch, "#{URL}/jobs?priority=200..").with(
+      body: JSON.generate({ priority: 100 })
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "patched" => 3 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
     )
+    assert_equal 3,
+                 @json_client.update_all_jobs(
+                   where: {
+                     priority: 200..
+                   },
+                   apply: {
+                     priority: 100
+                   }
+                 )
   end
 
   # --- count_jobs ---
 
   def test_count_jobs_no_filters
-    stub_request(:get, "#{URL}/jobs/count")
-      .to_return(status: 200, body: JSON.generate({ "count" => 42 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/count").to_return(
+      status: 200,
+      body: JSON.generate({ "count" => 42 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_equal 42, @json_client.count_jobs
   end
 
   def test_count_jobs_with_filters
-    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready")
-      .to_return(status: 200, body: JSON.generate({ "count" => 7 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready").to_return(
+      status: 200,
+      body: JSON.generate({ "count" => 7 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_equal 7, @json_client.count_jobs(queue: "emails", status: "ready")
   end
@@ -381,16 +743,24 @@ class TestClient < ZizqTestCase
   # --- delete_job ---
 
   def test_delete_job
-    stub_request(:delete, "#{URL}/jobs/j1")
-      .to_return(status: 204, body: "", headers: {})
+    stub_request(:delete, "#{URL}/jobs/j1").to_return(
+      status: 204,
+      body: "",
+      headers: {
+      }
+    )
 
     assert_nil @json_client.delete_job("j1")
   end
 
   def test_delete_job_not_found
-    stub_request(:delete, "#{URL}/jobs/j1")
-      .to_return(status: 404, body: JSON.generate({ "error" => "job not found" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:delete, "#{URL}/jobs/j1").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "job not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_raises(Zizq::NotFoundError) { @json_client.delete_job("j1") }
   end
@@ -398,18 +768,27 @@ class TestClient < ZizqTestCase
   # --- delete_all_jobs ---
 
   def test_delete_all_jobs_with_filters
-    stub_request(:delete, "#{URL}/jobs?queue=emails&status=dead")
-      .to_return(status: 200, body: JSON.generate({ "deleted" => 5 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:delete, "#{URL}/jobs?queue=emails&status=dead").to_return(
+      status: 200,
+      body: JSON.generate({ "deleted" => 5 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    count = @json_client.delete_all_jobs(where: { queue: "emails", status: "dead" })
+    count =
+      @json_client.delete_all_jobs(where: { queue: "emails", status: "dead" })
     assert_equal 5, count
   end
 
   def test_delete_all_jobs_no_filters
-    stub_request(:delete, "#{URL}/jobs")
-      .to_return(status: 200, body: JSON.generate({ "deleted" => 10 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:delete, "#{URL}/jobs").to_return(
+      status: 200,
+      body: JSON.generate({ "deleted" => 10 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     count = @json_client.delete_all_jobs
     assert_equal 10, count
@@ -421,22 +800,32 @@ class TestClient < ZizqTestCase
   end
 
   def test_erase_all_data
-    stub_request(:post, "#{URL}/reset")
-      .to_return(status: 204, body: "", headers: {})
+    stub_request(:post, "#{URL}/reset").to_return(
+      status: 204,
+      body: "",
+      headers: {
+      }
+    )
 
     assert_nil @json_client.erase_all_data
   end
 
   def test_erase_all_data_raises_on_non_204
-    stub_request(:post, "#{URL}/reset")
-      .to_return(status: 500, body: JSON.generate({ "error" => "boom" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/reset").to_return(
+      status: 500,
+      body: JSON.generate({ "error" => "boom" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_raises(Zizq::ServerError) { @json_client.erase_all_data }
   end
 
   def test_delete_all_jobs_rejects_unknown_filter
-    assert_raises(ArgumentError) { @json_client.delete_all_jobs(where: { typo: "x" }) }
+    assert_raises(ArgumentError) do
+      @json_client.delete_all_jobs(where: { typo: "x" })
+    end
   end
 
   # --- update_job ---
@@ -444,13 +833,18 @@ class TestClient < ZizqTestCase
   def test_update_job
     response = { "id" => "j1", "queue" => "q2", "priority" => 10 }
 
-    stub_request(:patch, "#{URL}/jobs/j1")
-      .with(
-        body: JSON.generate({ queue: "q2", priority: 10 }),
-        headers: { "Content-Type" => "application/json" }
-      )
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:patch, "#{URL}/jobs/j1").with(
+      body: JSON.generate({ queue: "q2", priority: 10 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.update_job("j1", queue: "q2", priority: 10)
     assert_instance_of Zizq::Resources::Job, result
@@ -460,10 +854,15 @@ class TestClient < ZizqTestCase
   def test_update_job_with_reset
     response = { "id" => "j1" }
 
-    stub_request(:patch, "#{URL}/jobs/j1")
-      .with(body: JSON.generate({ retry_limit: nil }))
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:patch, "#{URL}/jobs/j1").with(
+      body: JSON.generate({ retry_limit: nil })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     @json_client.update_job("j1", retry_limit: Zizq::RESET)
   end
@@ -471,10 +870,15 @@ class TestClient < ZizqTestCase
   def test_update_job_omits_unchanged_fields
     response = { "id" => "j1", "priority" => 99 }
 
-    stub_request(:patch, "#{URL}/jobs/j1")
-      .with(body: JSON.generate({ priority: 99 }))
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:patch, "#{URL}/jobs/j1").with(
+      body: JSON.generate({ priority: 99 })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     @json_client.update_job("j1", priority: 99)
   end
@@ -484,16 +888,23 @@ class TestClient < ZizqTestCase
   end
 
   def test_update_job_rejects_nil_priority
-    assert_raises(ArgumentError) { @json_client.update_job("j1", priority: nil) }
+    assert_raises(ArgumentError) do
+      @json_client.update_job("j1", priority: nil)
+    end
   end
 
   def test_update_job_converts_ready_at_to_ms
     response = { "id" => "j1" }
 
-    stub_request(:patch, "#{URL}/jobs/j1")
-      .with(body: JSON.generate({ ready_at: 1_500_000_000_000 }))
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:patch, "#{URL}/jobs/j1").with(
+      body: JSON.generate({ ready_at: 1_500_000_000_000 })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     @json_client.update_job("j1", ready_at: 1_500_000_000.0)
   end
@@ -501,20 +912,31 @@ class TestClient < ZizqTestCase
   # --- update_all_jobs ---
 
   def test_update_all_jobs_with_filters
-    stub_request(:patch, "#{URL}/jobs?queue=q1")
-      .with(body: JSON.generate({ queue: "q2" }))
-      .to_return(status: 200, body: JSON.generate({ "patched" => 5 }),
-                 headers: { "Content-Type" => "application/json" })
-
-    count = @json_client.update_all_jobs(
-      where: { queue: "q1" },
-      apply: { queue: "q2" }
+    stub_request(:patch, "#{URL}/jobs?queue=q1").with(
+      body: JSON.generate({ queue: "q2" })
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "patched" => 5 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
     )
+
+    count =
+      @json_client.update_all_jobs(
+        where: {
+          queue: "q1"
+        },
+        apply: {
+          queue: "q2"
+        }
+      )
     assert_equal 5, count
   end
 
   def test_update_all_jobs_empty_id_short_circuits
-    count = @json_client.update_all_jobs(where: { id: [] }, apply: { priority: 1 })
+    count =
+      @json_client.update_all_jobs(where: { id: [] }, apply: { priority: 1 })
     assert_equal 0, count
   end
 
@@ -533,13 +955,22 @@ class TestClient < ZizqTestCase
   # --- get_error ---
 
   def test_get_error
-    response = { "attempt" => 2, "message" => "timeout",
-                 "error_type" => "Timeout::Error", "backtrace" => nil,
-                 "dequeued_at" => 1000, "failed_at" => 2000 }
+    response = {
+      "attempt" => 2,
+      "message" => "timeout",
+      "error_type" => "Timeout::Error",
+      "backtrace" => nil,
+      "dequeued_at" => 1000,
+      "failed_at" => 2000
+    }
 
-    stub_request(:get, "#{URL}/jobs/j1/errors/2")
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/j1/errors/2").to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_error("j1", attempt: 2)
     assert_instance_of Zizq::Resources::ErrorRecord, result
@@ -551,13 +982,22 @@ class TestClient < ZizqTestCase
   # --- list_errors ---
 
   def test_list_errors
-    response = { "errors" => [
-      { "attempt" => 1, "message" => "boom", "failed_at" => 2000 }
-    ], "pages" => { "self" => "/jobs/j1/errors" } }
+    response = {
+      "errors" => [
+        { "attempt" => 1, "message" => "boom", "failed_at" => 2000 }
+      ],
+      "pages" => {
+        "self" => "/jobs/j1/errors"
+      }
+    }
 
-    stub_request(:get, "#{URL}/jobs/j1/errors")
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/j1/errors").to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.list_errors("j1")
     assert_instance_of Zizq::Resources::ErrorPage, result
@@ -568,9 +1008,13 @@ class TestClient < ZizqTestCase
   def test_list_errors_with_options
     response = { "errors" => [], "pages" => { "self" => "/jobs/j1/errors" } }
 
-    stub_request(:get, "#{URL}/jobs/j1/errors?order=desc&limit=5")
-      .to_return(status: 200, body: JSON.generate(response),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/jobs/j1/errors?order=desc&limit=5").to_return(
+      status: 200,
+      body: JSON.generate(response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     @json_client.list_errors("j1", order: :desc, limit: 5)
   end
@@ -578,9 +1022,13 @@ class TestClient < ZizqTestCase
   # --- health ---
 
   def test_health
-    stub_request(:get, "#{URL}/health")
-      .to_return(status: 200, body: JSON.generate({ "status" => "ok" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/health").to_return(
+      status: 200,
+      body: JSON.generate({ "status" => "ok" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.health
     assert_equal "ok", result["status"]
@@ -589,9 +1037,13 @@ class TestClient < ZizqTestCase
   # --- server_version ---
 
   def test_server_version
-    stub_request(:get, "#{URL}/version")
-      .to_return(status: 200, body: JSON.generate({ "version" => "0.1.0" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/version").to_return(
+      status: 200,
+      body: JSON.generate({ "version" => "0.1.0" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     assert_equal "0.1.0", @json_client.server_version
   end
@@ -599,18 +1051,26 @@ class TestClient < ZizqTestCase
   # --- get_queues ---
 
   def test_get_queues
-    stub_request(:get, "#{URL}/queues")
-      .to_return(status: 200, body: JSON.generate({ "queues" => ["emails", "payments"] }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/queues").to_return(
+      status: 200,
+      body: JSON.generate({ "queues" => %w[emails payments] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_queues
-    assert_equal ["emails", "payments"], result
+    assert_equal %w[emails payments], result
   end
 
   def test_get_queues_empty
-    stub_request(:get, "#{URL}/queues")
-      .to_return(status: 200, body: JSON.generate({ "queues" => [] }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/queues").to_return(
+      status: 200,
+      body: JSON.generate({ "queues" => [] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_queues
     assert_equal [], result
@@ -619,77 +1079,98 @@ class TestClient < ZizqTestCase
   # --- report_success (ack) ---
 
   def test_report_success
-    stub_request(:post, "#{URL}/jobs/job1/success")
-      .with(headers: { "Accept" => "application/json" })
-      .to_return(status: 204, body: "")
+    stub_request(:post, "#{URL}/jobs/job1/success").with(
+      headers: {
+        "Accept" => "application/json"
+      }
+    ).to_return(status: 204, body: "")
 
     result = @json_client.report_success("job1")
     assert_nil result
   end
 
   def test_ack_alias
-    stub_request(:post, "#{URL}/jobs/job1/success")
-      .to_return(status: 204, body: "")
+    stub_request(:post, "#{URL}/jobs/job1/success").to_return(
+      status: 204,
+      body: ""
+    )
 
     @json_client.ack("job1")
   end
 
   def test_report_success_404
-    stub_request(:post, "#{URL}/jobs/missing/success")
-      .to_return(status: 404, body: JSON.generate({ "error" => "not found" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs/missing/success").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    assert_raises(Zizq::NotFoundError) { @json_client.report_success("missing") }
+    assert_raises(Zizq::NotFoundError) do
+      @json_client.report_success("missing")
+    end
   end
 
   # --- report_success_bulk (bulk ack) ---
 
   def test_report_success_bulk
-    stub_request(:post, "#{URL}/jobs/success")
-      .with(
-        body: JSON.generate({ ids: ["j1", "j2"] }),
-        headers: { "Content-Type" => "application/json", "Accept" => "application/json" }
-      )
-      .to_return(status: 204, body: "")
+    stub_request(:post, "#{URL}/jobs/success").with(
+      body: JSON.generate({ ids: %w[j1 j2] }),
+      headers: {
+        "Content-Type" => "application/json",
+        "Accept" => "application/json"
+      }
+    ).to_return(status: 204, body: "")
 
-    result = @json_client.report_success_bulk(["j1", "j2"])
+    result = @json_client.report_success_bulk(%w[j1 j2])
     assert_nil result
   end
 
   def test_report_success_bulk_422_accepted
-    stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 422, body: JSON.generate({ "not_found" => ["j2"] }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs/success").to_return(
+      status: 422,
+      body: JSON.generate({ "not_found" => ["j2"] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    result = @json_client.report_success_bulk(["j1", "j2"])
+    result = @json_client.report_success_bulk(%w[j1 j2])
     assert_nil result
   end
 
   def test_report_success_bulk_500_raises
-    stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 500, body: JSON.generate({ "error" => "internal" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs/success").to_return(
+      status: 500,
+      body: JSON.generate({ "error" => "internal" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    assert_raises(Zizq::ServerError) { @json_client.report_success_bulk(["j1"]) }
+    assert_raises(Zizq::ServerError) do
+      @json_client.report_success_bulk(["j1"])
+    end
   end
 
   def test_ack_bulk_alias
-    stub_request(:post, "#{URL}/jobs/success")
-      .to_return(status: 204, body: "")
+    stub_request(:post, "#{URL}/jobs/success").to_return(status: 204, body: "")
 
     result = @json_client.ack_bulk(["j1"])
     assert_nil result
   end
 
   def test_report_success_bulk_msgpack
-    stub_request(:post, "#{URL}/jobs/success")
-      .with(
-        body: MessagePack.pack({ ids: ["j1", "j2"] }),
-        headers: { "Content-Type" => "application/msgpack", "Accept" => "application/msgpack" }
-      )
-      .to_return(status: 204, body: "")
+    stub_request(:post, "#{URL}/jobs/success").with(
+      body: MessagePack.pack({ ids: %w[j1 j2] }),
+      headers: {
+        "Content-Type" => "application/msgpack",
+        "Accept" => "application/msgpack"
+      }
+    ).to_return(status: 204, body: "")
 
-    result = @msgpack_client.report_success_bulk(["j1", "j2"])
+    result = @msgpack_client.report_success_bulk(%w[j1 j2])
     assert_nil result
   end
 
@@ -699,19 +1180,27 @@ class TestClient < ZizqTestCase
     updated_job = { "id" => "job1", "status" => "scheduled", "attempts" => 1 }
 
     stub_request(:post, "#{URL}/jobs/job1/failure")
-      .with { |req|
+      .with do |req|
         body = JSON.parse(req.body)
         body["message"] == "RuntimeError: boom" &&
           body["error_type"] == "RuntimeError" &&
           body["backtrace"] == "line1\nline2"
-      }
-      .to_return(status: 200, body: JSON.generate(updated_job),
-                 headers: { "Content-Type" => "application/json" })
+      end
+      .to_return(
+        status: 200,
+        body: JSON.generate(updated_job),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
-    result = @json_client.report_failure("job1",
-                                         message: "RuntimeError: boom",
-                                         error_type: "RuntimeError",
-                                         backtrace: "line1\nline2")
+    result =
+      @json_client.report_failure(
+        "job1",
+        message: "RuntimeError: boom",
+        error_type: "RuntimeError",
+        backtrace: "line1\nline2"
+      )
     assert_instance_of Zizq::Resources::Job, result
     assert_equal "scheduled", result.status
     assert_equal 1, result.attempts
@@ -720,17 +1209,26 @@ class TestClient < ZizqTestCase
   def test_report_failure_with_kill
     stub_request(:post, "#{URL}/jobs/job1/failure")
       .with { |req| JSON.parse(req.body)["kill"] == true }
-      .to_return(status: 200, body: JSON.generate({ "id" => "job1", "status" => "dead" }),
-                 headers: { "Content-Type" => "application/json" })
+      .to_return(
+        status: 200,
+        body: JSON.generate({ "id" => "job1", "status" => "dead" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
     result = @json_client.report_failure("job1", message: "fatal", kill: true)
     assert_equal "dead", result.status
   end
 
   def test_nack_alias
-    stub_request(:post, "#{URL}/jobs/job1/failure")
-      .to_return(status: 200, body: JSON.generate({ "id" => "job1" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/jobs/job1/failure").to_return(
+      status: 200,
+      body: JSON.generate({ "id" => "job1" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     @json_client.nack("job1", message: "oops")
   end
@@ -738,9 +1236,13 @@ class TestClient < ZizqTestCase
   # --- error handling ---
 
   def test_500_raises_server_error
-    stub_request(:get, "#{URL}/health")
-      .to_return(status: 500, body: JSON.generate({ "error" => "internal" }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/health").to_return(
+      status: 500,
+      body: JSON.generate({ "error" => "internal" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     err = assert_raises(Zizq::ServerError) { @json_client.health }
     assert_equal 500, err.status
@@ -753,10 +1255,17 @@ class TestClient < ZizqTestCase
     job2 = { "id" => "j2", "type" => "Bar", "queue" => "default" }
     body = "#{JSON.generate(job1)}\n\n#{JSON.generate(job2)}\n"
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=5")
-      .with(headers: { "Accept" => "application/x-ndjson" })
-      .to_return(status: 200, body: body,
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=5").with(
+      headers: {
+        "Accept" => "application/x-ndjson"
+      }
+    ).to_return(
+      status: 200,
+      body: body,
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     jobs = []
     @json_client.take_jobs(prefetch: 5) { |job| jobs << job }
@@ -771,9 +1280,13 @@ class TestClient < ZizqTestCase
     # Heartbeat lines are empty
     body = "\n\n#{JSON.generate(job1)}\n\n\n"
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(status: 200, body: body,
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      status: 200,
+      body: body,
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     jobs = []
     @json_client.take_jobs(prefetch: 1) { |job| jobs << job }
@@ -781,18 +1294,32 @@ class TestClient < ZizqTestCase
   end
 
   def test_take_with_queues
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1&queue=emails,webhooks")
-      .to_return(status: 200, body: "",
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(
+      :get,
+      "#{URL}/jobs/take?prefetch=1&queue=emails,webhooks"
+    ).to_return(
+      status: 200,
+      body: "",
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     @json_client.take_jobs(prefetch: 1, queues: %w[emails webhooks]) { |_| }
   end
 
   def test_take_with_worker_id
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .with(headers: { "Worker-Id" => "myworker-1" })
-      .to_return(status: 200, body: "",
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").with(
+      headers: {
+        "Worker-Id" => "myworker-1"
+      }
+    ).to_return(
+      status: 200,
+      body: "",
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     @json_client.take_jobs(prefetch: 1, worker_id: "myworker-1") { |_| }
   end
@@ -804,23 +1331,38 @@ class TestClient < ZizqTestCase
   def test_take_on_connect_called_when_stream_opens
     body = "#{JSON.generate({ "id" => "j1" })}\n"
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(status: 200, body: body,
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      status: 200,
+      body: body,
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     connected = false
-    @json_client.take_jobs(prefetch: 1, on_connect: -> { connected = true }) { |_| }
+    @json_client.take_jobs(
+      prefetch: 1,
+      on_connect: -> { connected = true }
+    ) { |_| }
     assert connected, "on_connect should have been called"
   end
 
   def test_take_on_connect_called_for_empty_stream
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(status: 200, body: "",
-                 headers: { "Content-Type" => "application/x-ndjson" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      status: 200,
+      body: "",
+      headers: {
+        "Content-Type" => "application/x-ndjson"
+      }
+    )
 
     connected = false
-    @json_client.take_jobs(prefetch: 1, on_connect: -> { connected = true }) { |_| }
-    assert connected, "on_connect should fire when a 200 is received (server was reachable)"
+    @json_client.take_jobs(
+      prefetch: 1,
+      on_connect: -> { connected = true }
+    ) { |_| }
+    assert connected,
+           "on_connect should fire when a 200 is received (server was reachable)"
   end
 
   # --- take (MsgPack streaming) ---
@@ -837,10 +1379,17 @@ class TestClient < ZizqTestCase
     body << [0].pack("N")
     body << [packed2.bytesize].pack("N") << packed2
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=2")
-      .with(headers: { "Accept" => "application/vnd.zizq.msgpack-stream" })
-      .to_return(status: 200, body: body,
-                 headers: { "Content-Type" => "application/vnd.zizq.msgpack-stream" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=2").with(
+      headers: {
+        "Accept" => "application/vnd.zizq.msgpack-stream"
+      }
+    ).to_return(
+      status: 200,
+      body: body,
+      headers: {
+        "Content-Type" => "application/vnd.zizq.msgpack-stream"
+      }
+    )
 
     jobs = []
     @msgpack_client.take_jobs(prefetch: 2) { |job| jobs << job }
@@ -856,9 +1405,13 @@ class TestClient < ZizqTestCase
     body << [0].pack("N")
     body << [0].pack("N")
 
-    stub_request(:get, "#{URL}/jobs/take?prefetch=1")
-      .to_return(status: 200, body: body,
-                 headers: { "Content-Type" => "application/vnd.zizq.msgpack-stream" })
+    stub_request(:get, "#{URL}/jobs/take?prefetch=1").to_return(
+      status: 200,
+      body: body,
+      headers: {
+        "Content-Type" => "application/vnd.zizq.msgpack-stream"
+      }
+    )
 
     jobs = []
     @msgpack_client.take_jobs(prefetch: 1) { |job| jobs << job }
@@ -951,9 +1504,13 @@ class TestClient < ZizqTestCase
     # Do this a lot to make sure we're not leaking anything.
     200.times do
       client = Zizq::Client.new(url: URL, format: :json)
-      stub_request(:get, "#{URL}/health")
-        .to_return(status: 200, body: JSON.generate({ "status" => "ok" }),
-                   headers: { "Content-Type" => "application/json" })
+      stub_request(:get, "#{URL}/health").to_return(
+        status: 200,
+        body: JSON.generate({ "status" => "ok" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
 
       client.health
       client.close
@@ -970,27 +1527,40 @@ class TestClient < ZizqTestCase
         "name" => "e1",
         "expression" => "* * * * *",
         "paused" => false,
-        "job" => { "type" => "test", "queue" => "q", "payload" => {} },
-        "next_enqueue_at" => 1_700_000_060_000,
-      },
-    ],
+        "job" => {
+          "type" => "test",
+          "queue" => "q",
+          "payload" => {
+          }
+        },
+        "next_enqueue_at" => 1_700_000_060_000
+      }
+    ]
   }.freeze
 
   CRON_ENTRY_RESPONSE = CRON_GROUP_RESPONSE["entries"][0].freeze
 
   def test_list_cron_groups
-    stub_request(:get, "#{URL}/crons")
-      .to_return(status: 200, body: JSON.generate({ "crons" => ["default", "billing"] }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/crons").to_return(
+      status: 200,
+      body: JSON.generate({ "crons" => %w[default billing] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.list_cron_groups
-    assert_equal ["default", "billing"], result
+    assert_equal %w[default billing], result
   end
 
   def test_get_cron_group
-    stub_request(:get, "#{URL}/crons/default")
-      .to_return(status: 200, body: JSON.generate(CRON_GROUP_RESPONSE),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/crons/default").to_return(
+      status: 200,
+      body: JSON.generate(CRON_GROUP_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_cron_group("default")
     assert_instance_of Zizq::Resources::CronGroup, result
@@ -1001,30 +1571,70 @@ class TestClient < ZizqTestCase
   end
 
   def test_replace_cron_group
-    stub_request(:put, "#{URL}/crons/default")
-      .with(
-        body: JSON.generate({
-          entries: [{ name: "e1", expression: "* * * * *",
-                      job: { type: "test", queue: "q", payload: {} } }],
-        }),
-        headers: { "Content-Type" => "application/json" },
-      )
-      .to_return(status: 200, body: JSON.generate(CRON_GROUP_RESPONSE),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:put, "#{URL}/crons/default").with(
+      body:
+        JSON.generate(
+          {
+            entries: [
+              {
+                name: "e1",
+                expression: "* * * * *",
+                job: {
+                  type: "test",
+                  queue: "q",
+                  payload: {
+                  }
+                }
+              }
+            ]
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    ).to_return(
+      status: 200,
+      body: JSON.generate(CRON_GROUP_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    result = @json_client.replace_cron_group("default",
-      entries: [{ name: "e1", expression: "* * * * *",
-                  job: { type: "test", queue: "q", payload: {} } }])
+    result =
+      @json_client.replace_cron_group(
+        "default",
+        entries: [
+          {
+            name: "e1",
+            expression: "* * * * *",
+            job: {
+              type: "test",
+              queue: "q",
+              payload: {
+              }
+            }
+          }
+        ]
+      )
     assert_instance_of Zizq::Resources::CronGroup, result
     assert_equal "default", result.name
   end
 
   def test_update_cron_group
-    paused_response = CRON_GROUP_RESPONSE.merge("paused" => true, "paused_at" => 1_700_000_000_000)
-    stub_request(:patch, "#{URL}/crons/default")
-      .with(body: JSON.generate({ paused: true }))
-      .to_return(status: 200, body: JSON.generate(paused_response),
-                 headers: { "Content-Type" => "application/json" })
+    paused_response =
+      CRON_GROUP_RESPONSE.merge(
+        "paused" => true,
+        "paused_at" => 1_700_000_000_000
+      )
+    stub_request(:patch, "#{URL}/crons/default").with(
+      body: JSON.generate({ paused: true })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(paused_response),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.update_cron_group("default", paused: true)
     assert_instance_of Zizq::Resources::CronGroup, result
@@ -1032,25 +1642,37 @@ class TestClient < ZizqTestCase
   end
 
   def test_delete_cron_group
-    stub_request(:delete, "#{URL}/crons/default")
-      .to_return(status: 204, body: "", headers: {})
+    stub_request(:delete, "#{URL}/crons/default").to_return(
+      status: 204,
+      body: "",
+      headers: {
+      }
+    )
 
     assert_nil @json_client.delete_cron_group("default")
   end
 
   def test_delete_all_crons
-    stub_request(:delete, "#{URL}/crons")
-      .to_return(status: 200, body: JSON.generate({ "deleted" => 3 }),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:delete, "#{URL}/crons").to_return(
+      status: 200,
+      body: JSON.generate({ "deleted" => 3 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     count = @json_client.delete_all_crons
     assert_equal 3, count
   end
 
   def test_get_cron_group_entry
-    stub_request(:get, "#{URL}/crons/default/entries/e1")
-      .to_return(status: 200, body: JSON.generate(CRON_ENTRY_RESPONSE),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:get, "#{URL}/crons/default/entries/e1").to_return(
+      status: 200,
+      body: JSON.generate(CRON_ENTRY_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.get_cron_group_entry("default", "e1")
     assert_instance_of Zizq::Resources::CronEntry, result
@@ -1059,39 +1681,84 @@ class TestClient < ZizqTestCase
   end
 
   def test_add_cron_group_entry
-    stub_request(:post, "#{URL}/crons/default/entries")
-      .with(body: JSON.generate({
-        name: "e1", expression: "* * * * *",
-        job: { type: "test", queue: "q", payload: {} },
-      }))
-      .to_return(status: 201, body: JSON.generate(CRON_ENTRY_RESPONSE),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:post, "#{URL}/crons/default/entries").with(
+      body:
+        JSON.generate(
+          {
+            name: "e1",
+            expression: "* * * * *",
+            job: {
+              type: "test",
+              queue: "q",
+              payload: {
+              }
+            }
+          }
+        )
+    ).to_return(
+      status: 201,
+      body: JSON.generate(CRON_ENTRY_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    result = @json_client.add_cron_group_entry("default",
-      name: "e1", expression: "* * * * *",
-      job: { type: "test", queue: "q", payload: {} })
+    result =
+      @json_client.add_cron_group_entry(
+        "default",
+        name: "e1",
+        expression: "* * * * *",
+        job: {
+          type: "test",
+          queue: "q",
+          payload: {
+          }
+        }
+      )
     assert_instance_of Zizq::Resources::CronEntry, result
     assert_equal "e1", result.name
   end
 
   def test_replace_cron_group_entry
-    stub_request(:put, "#{URL}/crons/default/entries/e1")
-      .to_return(status: 200, body: JSON.generate(CRON_ENTRY_RESPONSE),
-                 headers: { "Content-Type" => "application/json" })
+    stub_request(:put, "#{URL}/crons/default/entries/e1").to_return(
+      status: 200,
+      body: JSON.generate(CRON_ENTRY_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
-    result = @json_client.replace_cron_group_entry("default", "e1",
-      expression: "* * * * *",
-      job: { type: "test", queue: "q", payload: {} })
+    result =
+      @json_client.replace_cron_group_entry(
+        "default",
+        "e1",
+        expression: "* * * * *",
+        job: {
+          type: "test",
+          queue: "q",
+          payload: {
+          }
+        }
+      )
     assert_instance_of Zizq::Resources::CronEntry, result
     assert_equal "e1", result.name
   end
 
   def test_update_cron_group_entry
-    paused_entry = CRON_ENTRY_RESPONSE.merge("paused" => true, "paused_at" => 1_700_000_000_000)
-    stub_request(:patch, "#{URL}/crons/default/entries/e1")
-      .with(body: JSON.generate({ paused: true }))
-      .to_return(status: 200, body: JSON.generate(paused_entry),
-                 headers: { "Content-Type" => "application/json" })
+    paused_entry =
+      CRON_ENTRY_RESPONSE.merge(
+        "paused" => true,
+        "paused_at" => 1_700_000_000_000
+      )
+    stub_request(:patch, "#{URL}/crons/default/entries/e1").with(
+      body: JSON.generate({ paused: true })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(paused_entry),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
 
     result = @json_client.update_cron_group_entry("default", "e1", paused: true)
     assert_instance_of Zizq::Resources::CronEntry, result
@@ -1099,8 +1766,12 @@ class TestClient < ZizqTestCase
   end
 
   def test_delete_cron_group_entry
-    stub_request(:delete, "#{URL}/crons/default/entries/e1")
-      .to_return(status: 204, body: "", headers: {})
+    stub_request(:delete, "#{URL}/crons/default/entries/e1").to_return(
+      status: 204,
+      body: "",
+      headers: {
+      }
+    )
 
     assert_nil @json_client.delete_cron_group_entry("default", "e1")
   end

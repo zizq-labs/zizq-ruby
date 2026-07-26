@@ -5,13 +5,13 @@ require "test_helper"
 class MonitoredUrlTest < ActiveSupport::TestCase
   def result(status:, **overrides)
     UrlProber::Result.new(
-      status:           status,
-      http_status:      status == "up" ? 200 : 500,
+      status: status,
+      http_status: status == "up" ? 200 : 500,
       response_time_ms: 42,
-      final_url:        "https://example.com/",
-      error_message:    status == "up" ? nil : "HTTP 500",
-      checked_at:       Time.current,
-      **overrides,
+      final_url: "https://example.com/",
+      error_message: status == "up" ? nil : "HTTP 500",
+      checked_at: Time.current,
+      **overrides
     )
   end
 
@@ -42,8 +42,13 @@ class MonitoredUrlTest < ActiveSupport::TestCase
   end
 
   test "valid http/https URLs are accepted" do
-    %w[http://example.com https://example.com https://example.com/path?q=1].each do |good|
-      assert MonitoredUrl.new(url: good).valid?, "expected #{good.inspect} to be valid"
+    %w[
+      http://example.com
+      https://example.com
+      https://example.com/path?q=1
+    ].each do |good|
+      assert MonitoredUrl.new(url: good).valid?,
+             "expected #{good.inspect} to be valid"
     end
   end
 
@@ -57,11 +62,15 @@ class MonitoredUrlTest < ActiveSupport::TestCase
   test "source must be 'manual' or 'sitemap'" do
     refute MonitoredUrl.new(url: "https://example.com", source: "guess").valid?
     assert MonitoredUrl.new(url: "https://example.com", source: "manual").valid?
-    assert MonitoredUrl.new(url: "https://example.com", source: "sitemap").valid?
+    assert MonitoredUrl.new(
+             url: "https://example.com",
+             source: "sitemap"
+           ).valid?
   end
 
   test "record_check! on success appends a Check and resets consecutive_failures" do
-    m = MonitoredUrl.create!(url: "https://example.com", consecutive_failures: 3)
+    m =
+      MonitoredUrl.create!(url: "https://example.com", consecutive_failures: 3)
 
     assert_difference -> { m.checks.count }, 1 do
       m.record_check!(result(status: "up"))
@@ -80,9 +89,12 @@ class MonitoredUrlTest < ActiveSupport::TestCase
   end
 
   test "record_check! on failure increments consecutive_failures" do
-    m = MonitoredUrl.create!(url: "https://example.com", consecutive_failures: 2)
+    m =
+      MonitoredUrl.create!(url: "https://example.com", consecutive_failures: 2)
 
-    m.record_check!(result(status: "down", http_status: 503, error_message: "HTTP 503"))
+    m.record_check!(
+      result(status: "down", http_status: 503, error_message: "HTTP 503")
+    )
 
     m.reload
     assert_equal "down", m.last_status
@@ -95,10 +107,10 @@ class MonitoredUrlTest < ActiveSupport::TestCase
   end
 
   test "enabled scope filters disabled rows" do
-    on  = MonitoredUrl.create!(url: "https://a.example.com")
+    on = MonitoredUrl.create!(url: "https://a.example.com")
     off = MonitoredUrl.create!(url: "https://b.example.com", enabled: false)
 
-    assert_includes     MonitoredUrl.enabled, on
-    refute_includes     MonitoredUrl.enabled, off
+    assert_includes MonitoredUrl.enabled, on
+    refute_includes MonitoredUrl.enabled, off
   end
 end

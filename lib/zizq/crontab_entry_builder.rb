@@ -46,12 +46,7 @@ module Zizq
     # @rbs timezone: String?
     # @rbs paused: bool?
     # @rbs ?&block: (Zizq::CrontabEntry) -> Zizq::CrontabEntry
-    def initialize(target,
-                   name,
-                   expression,
-                   timezone: nil,
-                   paused: nil,
-                   &block)
+    def initialize(target, name, expression, timezone: nil, paused: nil, &block)
       @target = target
       @name = name
       @expression = expression
@@ -86,6 +81,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: void
     def enqueue_raw(queue:, type:, payload:, **opts)
       push_entry(EnqueueRequest.new(queue:, type:, payload:, **opts))
@@ -96,7 +92,7 @@ module Zizq
     # @rbs &block: (BulkEnqueue) -> void
     # @rbs return: self
     def enqueue_bulk(&block)
-      raise NotImplementedError, 'bulk enqueues are not supported via cron'
+      raise NotImplementedError, "bulk enqueues are not supported via cron"
     end
 
     # Provide common fields to be used when enqueueing a job.
@@ -113,19 +109,20 @@ module Zizq
     # @rbs return: untyped
     def push_entry(req)
       if req.ready_at || req.delay
-        raise ArgumentError, 'delayed job are not permitted via cron'
+        raise ArgumentError, "delayed job are not permitted via cron"
       end
 
-      entry = callback.call(
-        CrontabEntry.new(
-          target,
-          name,
-          expression,
-          job: req,
-          timezone:,
-          paused:,
-        ),
-      )
+      entry =
+        callback.call(
+          CrontabEntry.new(
+            target,
+            name,
+            expression,
+            job: req,
+            timezone:,
+            paused:
+          )
+        )
 
       target.entries[entry.name] = entry
     end

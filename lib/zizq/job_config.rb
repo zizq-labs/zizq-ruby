@@ -49,7 +49,8 @@ module Zizq
     #
     # Implemented by the including module.
     def zizq_payload_subset_filter(*args, **kwargs) #: (*untyped, **untyped) -> String
-      raise NotImplementedError, "#{self} must implement zizq_payload_subset_filter"
+      raise NotImplementedError,
+            "#{self} must implement zizq_payload_subset_filter"
     end
 
     # Declare the default queue for this job class.
@@ -116,7 +117,11 @@ module Zizq
           raise ArgumentError, "all of exponent:, base:, jitter: are required"
         end
 
-        @zizq_backoff = { exponent: exponent.to_f, base: base.to_f, jitter: jitter.to_f }
+        @zizq_backoff = {
+          exponent: exponent.to_f,
+          base: base.to_f,
+          jitter: jitter.to_f
+        }
       else
         @zizq_backoff
       end
@@ -170,6 +175,10 @@ module Zizq
       if unique.nil?
         @zizq_unique || false
       else
+        if unique && zizq_batched
+          raise ArgumentError,
+                "#{self}: zizq_unique cannot be combined with zizq_batched"
+        end
         @zizq_unique = !!unique
         @zizq_unique_scope = scope
         @zizq_unique
@@ -188,6 +197,105 @@ module Zizq
       end
     end
 
+    # Declare or read batched-job configuration for this class.
+    #
+    # When enabled, subsequent enqueues that share the batch key are
+    # folded into the pending job's payload rather than creating a new
+    # job. The batch target is a specific positional arg (`arg:`) or
+    # keyword arg (`kwarg:`) whose value must be an array; other args
+    # participate in the batch key.
+    #
+    #   zizq_batched true, limit: 100                     # arg: 0 by default
+    #   zizq_batched true, kwarg: :notifications, limit: 100
+    #   zizq_batched true, limit: 50, dedup: true         # + `| unique`
+    #   zizq_batched true, limit: 50, sorted: true        # + `| sort`
+    #   zizq_batched false                                # disable in a subclass
+    #
+    # Cannot be combined with `zizq_unique` — the server rejects the
+    # combination and the client raises at declaration time.
+    #
+    # @rbs enabled: bool?
+    # @rbs arg: Integer?
+    # @rbs kwarg: Symbol?
+    # @rbs limit: Integer?
+    # @rbs dedup: bool
+    # @rbs sorted: bool
+    # @rbs return: bool
+    def zizq_batched(
+      enabled = nil,
+      arg: nil,
+      kwarg: nil,
+      limit: nil,
+      dedup: false,
+      sorted: false
+    )
+      return @zizq_batched || false if enabled.nil?
+
+      if enabled
+        if zizq_unique
+          raise ArgumentError,
+                "#{self}: zizq_batched cannot be combined with zizq_unique"
+        end
+        if arg && kwarg
+          raise ArgumentError,
+                "#{self}: zizq_batched cannot specify both arg: and kwarg:"
+        end
+        if limit.nil?
+          raise ArgumentError, "#{self}: zizq_batched requires limit:"
+        end
+        unless limit.is_a?(Integer) && limit.positive?
+          raise ArgumentError,
+                "#{self}: zizq_batched limit: must be a positive Integer"
+        end
+
+        @zizq_batched = true
+        @zizq_batch_arg = kwarg.nil? ? (arg || 0) : nil
+        @zizq_batch_kwarg = kwarg
+        @zizq_batch_limit = limit
+        @zizq_batch_dedup = dedup
+        @zizq_batch_sorted = sorted
+      else
+        @zizq_batched = false
+        @zizq_batch_arg = nil
+        @zizq_batch_kwarg = nil
+        @zizq_batch_limit = nil
+        @zizq_batch_dedup = false
+        @zizq_batch_sorted = false
+      end
+
+      @zizq_batched
+    end
+
+    # Positional arg index that participates in the batch payload, or
+    # `nil` if `kwarg:` was chosen instead.
+    def zizq_batch_arg #: () -> Integer?
+      @zizq_batch_arg
+    end
+
+    # Keyword arg name that participates in the batch payload, or `nil`
+    # if `arg:` was chosen instead.
+    def zizq_batch_kwarg #: () -> Symbol?
+      @zizq_batch_kwarg
+    end
+
+    # Maximum combined length of the batch payload before the current
+    # batch is sealed and a fresh one starts.
+    def zizq_batch_limit #: () -> Integer?
+      @zizq_batch_limit
+    end
+
+    # Whether the fold expression appends `| unique` to dedup entries
+    # within a batch.
+    def zizq_batch_dedup? #: () -> bool
+      @zizq_batch_dedup || false
+    end
+
+    # Whether the fold expression appends `| sort` to sort entries
+    # within a batch.
+    def zizq_batch_sorted? #: () -> bool
+      @zizq_batch_sorted || false
+    end
+
     # Compute the unique key for a job with the given arguments.
     #
     # The default implementation uses the class name and hashes the
@@ -198,8 +306,46 @@ module Zizq
     #     super(user_id)  # unique per user, ignoring template
     #   end
     def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
-      payload = normalize_payload(zizq_serialize(*args, **kwargs))
-      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+      hash_args(*args, **kwargs)
+    end
+
+    # Compute the batch key for a job with the given arguments.
+    #
+    # The default implementation drops the configured batch target
+    # (positional `arg:` or `kwarg:`) from the arguments and hashes
+    # everything else. Two enqueues with the same non-batch arguments
+    # therefore produce the same batch key, so they fold into the same
+    # pending job; different non-batch arguments produce different keys
+    # and end up in separate batches.
+    #
+    # Override this method to customize batching — for example, to
+    # batch by tenant regardless of what else is passed:
+    #
+    #   def self.zizq_batch_key(_notifications, tenant_id:, **_)
+    #     "#{name}:tenant-#{tenant_id}"
+    #   end
+    def zizq_batch_key(*args, **kwargs) #: (*untyped, **untyped) -> String
+      filtered_args =
+        args.dup.tap { |a| a.delete_at(zizq_batch_arg) if zizq_batch_arg }
+      filtered_kwargs = kwargs.except(zizq_batch_kwarg)
+
+      hash_args(*filtered_args, **filtered_kwargs)
+    end
+
+    # Build the static jq expressions (`when` predicate, `fold`
+    # reducer) for this class's batch configuration.
+    #
+    # Implemented by the including module — `Zizq::Job` and
+    # `Zizq::ActiveJobConfig` know how to target the right JSON path
+    # for their respective payload shapes. Returns `nil` when the
+    # class is not batched.
+    #
+    # Override to supply completely custom `when`/`fold` expressions
+    # that the DSL flags don't cover.
+    def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+      return nil unless zizq_batched
+
+      raise NotImplementedError, "#{self} must implement zizq_batch_expressions"
     end
 
     # Build a `Zizq::EnqueueRequest` from the class-level job config.
@@ -214,26 +360,84 @@ module Zizq
     #   end
     def zizq_enqueue_request(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueRequest
       EnqueueRequest.new(
-        type:         name || raise(ArgumentError, "Cannot enqueue anonymous class"),
-        queue:        zizq_queue,
-        payload:      zizq_serialize(*args, **kwargs),
-        priority:     zizq_priority,
-        retry_limit:  zizq_retry_limit,
-        backoff:      zizq_backoff,
-        retention:    zizq_retention,
+        type: name || raise(ArgumentError, "Cannot enqueue anonymous class"),
+        queue: zizq_queue,
+        payload: zizq_serialize(*args, **kwargs),
+        priority: zizq_priority,
+        retry_limit: zizq_retry_limit,
+        backoff: zizq_backoff,
+        retention: zizq_retention,
         unique_while: zizq_unique ? zizq_unique_scope : nil,
-        unique_key:   zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
+        unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil,
+        batch: zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil
       )
     end
 
     private
+
+    # Class-name-prefixed SHA256 of the normalized hashable payload.
+    # Shared primitive powering both `zizq_unique_key` and
+    # `zizq_batch_key` — the two features hash arguments the same way,
+    # they just choose *which* arguments to hash.
+    def hash_args(*args, **kwargs) #: (*untyped, **untyped) -> String
+      payload = normalize_payload(hashable_args(*args, **kwargs))
+      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+    end
+
+    # The subset of the serialized payload that participates in key
+    # hashing. Defaults to the full serialized payload; overridden by
+    # `ActiveJobConfig` to hash only the ActiveJob `arguments` array
+    # (skipping volatile envelope fields like `job_id` and
+    # `enqueued_at` that vary per enqueue).
+    def hashable_args(*args, **kwargs) #: (*untyped, **untyped) -> untyped
+      zizq_serialize(*args, **kwargs)
+    end
+
+    # Compose `zizq_batch_expressions` (static) with `zizq_batch_key`
+    # (dynamic, arg-dependent) into a full API serialized `Zizq::batch`.
+    def batch_for_enqueue(*args, **kwargs) #: (*untyped, **untyped) -> Zizq::batch?
+      expr = zizq_batch_expressions
+      return nil unless expr
+
+      {
+        key: zizq_batch_key(*args, **kwargs),
+        when: expr[:when],
+        fold: expr[:fold]
+      }
+    end
+
+    # Compile `when`/`fold` expressions targeting a jq path (e.g.
+    # `.args[0]` for `Zizq::Job` or `.arguments[-1].notifications`
+    # for `ActiveJobConfig`). Applies dedup/sorted flags. Shared
+    # across payload shapes because only the target path differs.
+    def build_batch_expressions(target) #: (String) -> Zizq::batch_expressions
+      limit = zizq_batch_limit
+      when_expr = "($existing#{target} + $new#{target}) | length <= #{limit}"
+
+      fold_expr =
+        if zizq_batch_dedup?
+          # `unique` in jq also sorts, so it subsumes `sorted:` too.
+          "$existing | #{target} = " \
+            "(#{target} + $new#{target} | unique)"
+        elsif zizq_batch_sorted?
+          "$existing | #{target} = " \
+            "(#{target} + $new#{target} | sort)"
+        else
+          "$existing | #{target} += $new#{target}"
+        end
+
+      { when: when_expr, fold: fold_expr }
+    end
 
     # Deep-sort all Hash keys so that serialization is deterministic
     # regardless of insertion order or JSON library.
     def normalize_payload(obj) #: (untyped) -> untyped
       case obj
       when Hash
-        obj.sort_by { |k, _| k.to_s }.map { |k, v| [k, normalize_payload(v)] }.to_h
+        obj
+          .sort_by { |k, _| k.to_s }
+          .map { |k, v| [k, normalize_payload(v)] }
+          .to_h
       when Array
         obj.map { |v| normalize_payload(v) }
       else

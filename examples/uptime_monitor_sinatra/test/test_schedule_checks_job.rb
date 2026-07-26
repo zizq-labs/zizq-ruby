@@ -12,10 +12,11 @@ class TestScheduleChecksJob < Minitest::Test
   end
 
   def test_schedules_check_for_stale_urls
-    stale = MonitoredUrl.create(
-      url:             "https://stale.example.com",
-      last_checked_at: Time.now - ScheduleChecksJob::STALE_AFTER - 1,
-    )
+    stale =
+      MonitoredUrl.create(
+        url: "https://stale.example.com",
+        last_checked_at: Time.now - ScheduleChecksJob::STALE_AFTER - 1
+      )
 
     ScheduleChecksJob.new.perform
 
@@ -23,10 +24,11 @@ class TestScheduleChecksJob < Minitest::Test
   end
 
   def test_skips_urls_checked_within_the_stale_threshold
-    fresh = MonitoredUrl.create(
-      url:             "https://fresh.example.com",
-      last_checked_at: Time.now - 10,
-    )
+    fresh =
+      MonitoredUrl.create(
+        url: "https://fresh.example.com",
+        last_checked_at: Time.now - 10
+      )
 
     ScheduleChecksJob.new.perform
 
@@ -34,11 +36,12 @@ class TestScheduleChecksJob < Minitest::Test
   end
 
   def test_skips_disabled_urls
-    disabled = MonitoredUrl.create(
-      url:             "https://disabled.example.com",
-      enabled:         false,
-      last_checked_at: Time.now - 3600,
-    )
+    disabled =
+      MonitoredUrl.create(
+        url: "https://disabled.example.com",
+        enabled: false,
+        last_checked_at: Time.now - 3600
+      )
 
     ScheduleChecksJob.new.perform
 

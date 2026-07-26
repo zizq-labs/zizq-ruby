@@ -65,16 +65,7 @@ module Zizq
     # side. This method is not used in the ActiveJob dispatch path.
     def zizq_deserialize(_payload) #: (untyped) -> [Array[untyped], Hash[Symbol, untyped]]
       raise NotImplementedError,
-        "ActiveJob handles deserialization via ActiveJob::Base.execute"
-    end
-
-    # Override unique key generation to hash only the arguments portion
-    # of the serialized payload. The full payload contains volatile fields
-    # (job_id, enqueued_at, etc.) that change per instance.
-    def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
-      arguments = new(*args, **kwargs).serialize["arguments"]
-      payload = normalize_payload(arguments)
-      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+            "ActiveJob handles deserialization via ActiveJob::Base.execute"
     end
 
     # Generate a jq expression that exactly matches payloads with the given
@@ -138,6 +129,35 @@ module Zizq
       end
 
       parts.join(" and ")
+    end
+
+    # Static jq expressions for the batched-job configuration on this
+    # class. Targets `.arguments[N]` for a positional batch arg or
+    # `.arguments[-1].NAME` for a keyword batch arg — the latter
+    # assumes the class actually receives kwargs so that the last
+    # argument is the ActiveJob kwargs hash. Behaviour is unspecified
+    # if the declared `kwarg:` isn't present at enqueue time.
+    def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+      return nil unless zizq_batched
+
+      target =
+        if (idx = zizq_batch_arg)
+          ".arguments[#{idx}]"
+        else
+          ".arguments[-1].#{zizq_batch_kwarg}"
+        end
+
+      build_batch_expressions(target)
+    end
+
+    private
+
+    # Hash only the arguments portion of the serialized ActiveJob
+    # payload. The full envelope contains volatile fields (job_id,
+    # enqueued_at, etc.) that change per instance and would defeat
+    # both `zizq_unique_key` and `zizq_batch_key`.
+    def hashable_args(*args, **kwargs) #: (*untyped, **untyped) -> untyped
+      new(*args, **kwargs).serialize["arguments"]
     end
   end
 end

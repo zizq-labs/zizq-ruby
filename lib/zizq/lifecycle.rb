@@ -34,7 +34,11 @@ module Zizq
       return unless @state == :running
 
       @state = :draining
-      @drain_latch.close rescue nil
+      begin
+        @drain_latch.close
+      rescue StandardError
+        nil
+      end
     end
 
     # Transition to :stopped.
@@ -42,7 +46,11 @@ module Zizq
       return if @state == :stopped
 
       @state = :stopped
-      @stop_latch.close rescue nil
+      begin
+        @stop_latch.close
+      rescue StandardError
+        nil
+      end
     end
 
     # Block until the state is no longer :running.

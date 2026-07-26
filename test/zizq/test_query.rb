@@ -12,7 +12,6 @@ class SendJob
 end
 
 class TestQuery < ZizqTestCase
-
   # --- Immutability ---
 
   def test_filter_methods_return_new_instance
@@ -123,18 +122,24 @@ class TestQuery < ZizqTestCase
     # add_jq_filter wraps in parens: "(. == {...})"
     inner = SendJob.zizq_payload_filter(42, template: "welcome")
     expected_filter = "(#{inner})"
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "type" => "SendJob", "filter" => expected_filter })
-      .to_return(json_response(page_body([])))
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "type" => "SendJob",
+        "filter" => expected_filter
+      }
+    ).to_return(json_response(page_body([])))
     Zizq::Query.new.by_job_class_and_args(SendJob, 42, template: "welcome").to_a
   end
 
   def test_by_job_class_and_args_subset_sets_type_and_filter
     inner = SendJob.zizq_payload_subset_filter(42)
     expected_filter = "(#{inner})"
-    stub_request(:get, "#{URL}/jobs")
-      .with(query: { "type" => "SendJob", "filter" => expected_filter })
-      .to_return(json_response(page_body([])))
+    stub_request(:get, "#{URL}/jobs").with(
+      query: {
+        "type" => "SendJob",
+        "filter" => expected_filter
+      }
+    ).to_return(json_response(page_body([])))
     Zizq::Query.new.by_job_class_and_args_subset(SendJob, 42).to_a
   end
 
@@ -189,14 +194,14 @@ class TestQuery < ZizqTestCase
   end
 
   def test_one_when_multiple
-    stub_list(query: { "limit" => "2" }, body: page_body(["j1", "j2"]))
+    stub_list(query: { "limit" => "2" }, body: page_body(%w[j1 j2]))
     refute Zizq::Query.new.one?
   end
 
   # --- reverse_each ---
 
   def test_reverse_each_uses_desc_order
-    stub_list(query: { "order" => "desc" }, body: page_body(["j2", "j1"]))
+    stub_list(query: { "order" => "desc" }, body: page_body(%w[j2 j1]))
     ids = Zizq::Query.new.reverse_each.map(&:id)
     assert_equal %w[j2 j1], ids
   end
@@ -215,19 +220,31 @@ class TestQuery < ZizqTestCase
   end
 
   def test_last_reverses_order_and_fetches_one
-    stub_list(query: { "limit" => "1", "order" => "desc" }, body: page_body(["j99"]))
+    stub_list(
+      query: {
+        "limit" => "1",
+        "order" => "desc"
+      },
+      body: page_body(["j99"])
+    )
     job = Zizq::Query.new.last
     assert_equal "j99", job.id
   end
 
   def test_last_on_desc_query_reverses_to_asc
-    stub_list(query: { "limit" => "1", "order" => "asc" }, body: page_body(["j1"]))
+    stub_list(
+      query: {
+        "limit" => "1",
+        "order" => "asc"
+      },
+      body: page_body(["j1"])
+    )
     job = Zizq::Query.new.order(:desc).last
     assert_equal "j1", job.id
   end
 
   def test_take_fetches_n_jobs
-    stub_list(query: { "limit" => "3" }, body: page_body(["j1", "j2", "j3"]))
+    stub_list(query: { "limit" => "3" }, body: page_body(%w[j1 j2 j3]))
     jobs = Zizq::Query.new.take(3)
     assert_equal %w[j1 j2 j3], jobs.map(&:id)
   end
@@ -248,9 +265,12 @@ class TestQuery < ZizqTestCase
 
   def test_update_one_limits_to_one
     stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
-    stub_request(:patch, "#{URL}/jobs")
-      .with(query: { "id" => "j1" }, body: JSON.generate({ priority: 99 }))
-      .to_return(json_response({ "patched" => 1 }))
+    stub_request(:patch, "#{URL}/jobs").with(
+      query: {
+        "id" => "j1"
+      },
+      body: JSON.generate({ priority: 99 })
+    ).to_return(json_response({ "patched" => 1 }))
 
     count = Zizq::Query.new.update_one(priority: 99)
     assert_equal 1, count
@@ -258,9 +278,11 @@ class TestQuery < ZizqTestCase
 
   def test_delete_one_limits_to_one
     stub_list(query: { "limit" => "1" }, body: page_body(["j1"]))
-    stub_request(:delete, "#{URL}/jobs")
-      .with(query: { "id" => "j1" })
-      .to_return(json_response({ "deleted" => 1 }))
+    stub_request(:delete, "#{URL}/jobs").with(
+      query: {
+        "id" => "j1"
+      }
+    ).to_return(json_response({ "deleted" => 1 }))
 
     count = Zizq::Query.new.delete_one
     assert_equal 1, count
@@ -269,22 +291,23 @@ class TestQuery < ZizqTestCase
   # --- each ---
 
   def test_each_yields_jobs
-    stub_list(body: page_body(["j1", "j2"]))
+    stub_list(body: page_body(%w[j1 j2]))
     ids = Zizq::Query.new.map(&:id)
     assert_equal %w[j1 j2], ids
   end
 
   def test_each_paginates
     stub_list(body: page_body(["j1"], next_path: "/jobs?from=j1"))
-    stub_request(:get, "#{URL}/jobs?from=j1")
-      .to_return(json_response(page_body(["j2"])))
+    stub_request(:get, "#{URL}/jobs?from=j1").to_return(
+      json_response(page_body(["j2"]))
+    )
 
     ids = Zizq::Query.new.map(&:id)
     assert_equal %w[j1 j2], ids
   end
 
   def test_each_respects_limit
-    stub_list(query: { "limit" => "2" }, body: page_body(["j1", "j2", "j3"]))
+    stub_list(query: { "limit" => "2" }, body: page_body(%w[j1 j2 j3]))
     ids = Zizq::Query.new.limit(2).map(&:id)
     assert_equal %w[j1 j2], ids
   end
@@ -298,7 +321,7 @@ class TestQuery < ZizqTestCase
   # --- each_page ---
 
   def test_each_page_yields_pages
-    stub_list(body: page_body(["j1", "j2"]))
+    stub_list(body: page_body(%w[j1 j2]))
     pages = Zizq::Query.new.each_page.to_a
     assert_equal 1, pages.size
     assert_equal %w[j1 j2], pages[0].jobs.map(&:id)
@@ -306,15 +329,21 @@ class TestQuery < ZizqTestCase
 
   def test_each_page_follows_pagination
     stub_list(body: page_body(["j1"], next_path: "/jobs?from=j1"))
-    stub_request(:get, "#{URL}/jobs?from=j1")
-      .to_return(json_response(page_body(["j2"])))
+    stub_request(:get, "#{URL}/jobs?from=j1").to_return(
+      json_response(page_body(["j2"]))
+    )
 
     pages = Zizq::Query.new.each_page.to_a
     assert_equal 2, pages.size
   end
 
   def test_each_page_respects_limit
-    stub_list(query: { "limit" => "2" }, body: page_body(["j1", "j2"], next_path: "/jobs?from=j2&limit=2"))
+    stub_list(
+      query: {
+        "limit" => "2"
+      },
+      body: page_body(%w[j1 j2], next_path: "/jobs?from=j2&limit=2")
+    )
     pages = []
     Zizq::Query.new.limit(2).each_page { |p| pages << p }
     assert_equal 1, pages.size
@@ -323,28 +352,31 @@ class TestQuery < ZizqTestCase
   # --- count ---
 
   def test_count_uses_server_side_count
-    stub_request(:get, "#{URL}/jobs/count")
-      .to_return(json_response({ "count" => 42 }))
+    stub_request(:get, "#{URL}/jobs/count").to_return(
+      json_response({ "count" => 42 })
+    )
 
     assert_equal 42, Zizq::Query.new.count
   end
 
   def test_count_passes_filters
-    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready")
-      .to_return(json_response({ "count" => 7 }))
+    stub_request(:get, "#{URL}/jobs/count?queue=emails&status=ready").to_return(
+      json_response({ "count" => 7 })
+    )
 
     assert_equal 7, Zizq::Query.new.by_queue("emails").by_status("ready").count
   end
 
   def test_count_caps_at_limit
-    stub_request(:get, "#{URL}/jobs/count")
-      .to_return(json_response({ "count" => 100 }))
+    stub_request(:get, "#{URL}/jobs/count").to_return(
+      json_response({ "count" => 100 })
+    )
 
     assert_equal 5, Zizq::Query.new.limit(5).count
   end
 
   def test_count_with_block_falls_back_to_enumerable
-    stub_list(body: page_body(["j1", "j2", "j3"]))
+    stub_list(body: page_body(%w[j1 j2 j3]))
 
     assert_equal 2, Zizq::Query.new.count { |j| j.id != "j2" }
   end
@@ -352,8 +384,9 @@ class TestQuery < ZizqTestCase
   # --- delete_all ---
 
   def test_delete_all_one_shot
-    stub_request(:delete, "#{URL}/jobs?queue=emails")
-      .to_return(json_response({ "deleted" => 5 }))
+    stub_request(:delete, "#{URL}/jobs?queue=emails").to_return(
+      json_response({ "deleted" => 5 })
+    )
 
     count = Zizq::Query.new.by_queue("emails").delete_all
     assert_equal 5, count
@@ -361,16 +394,23 @@ class TestQuery < ZizqTestCase
 
   def test_delete_all_paginated
     stub_list(
-      query: { "queue" => "emails", "limit" => "2" },
-      body: page_body(["j1", "j2"], next_path: "/jobs?queue=emails&from=j2&limit=2"),
+      query: {
+        "queue" => "emails",
+        "limit" => "2"
+      },
+      body:
+        page_body(%w[j1 j2], next_path: "/jobs?queue=emails&from=j2&limit=2")
     )
-    stub_request(:get, "#{URL}/jobs?queue=emails&from=j2&limit=2")
-      .to_return(json_response(page_body(["j3"])))
+    stub_request(:get, "#{URL}/jobs?queue=emails&from=j2&limit=2").to_return(
+      json_response(page_body(["j3"]))
+    )
 
-    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j1,j2")
-      .to_return(json_response({ "deleted" => 2 }))
-    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j3")
-      .to_return(json_response({ "deleted" => 1 }))
+    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j1,j2").to_return(
+      json_response({ "deleted" => 2 })
+    )
+    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j3").to_return(
+      json_response({ "deleted" => 1 })
+    )
 
     count = Zizq::Query.new.by_queue("emails").in_pages_of(2).delete_all
     assert_equal 3, count
@@ -378,23 +418,28 @@ class TestQuery < ZizqTestCase
 
   def test_delete_all_paginated_with_limit
     stub_list(
-      query: { "queue" => "emails", "limit" => "2" },
-      body: page_body(["j1", "j2", "j3"]),
+      query: {
+        "queue" => "emails",
+        "limit" => "2"
+      },
+      body: page_body(%w[j1 j2 j3])
     )
 
-    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j1,j2")
-      .to_return(json_response({ "deleted" => 2 }))
+    stub_request(:delete, "#{URL}/jobs?queue=emails&id=j1,j2").to_return(
+      json_response({ "deleted" => 2 })
+    )
 
-    count = Zizq::Query.new.by_queue("emails").in_pages_of(3).limit(2).delete_all
+    count =
+      Zizq::Query.new.by_queue("emails").in_pages_of(3).limit(2).delete_all
     assert_equal 2, count
   end
 
   # --- update_all ---
 
   def test_update_all_one_shot
-    stub_request(:patch, "#{URL}/jobs?queue=old")
-      .with(body: JSON.generate({ queue: "new" }))
-      .to_return(json_response({ "patched" => 5 }))
+    stub_request(:patch, "#{URL}/jobs?queue=old").with(
+      body: JSON.generate({ queue: "new" })
+    ).to_return(json_response({ "patched" => 5 }))
 
     count = Zizq::Query.new.by_queue("old").update_all(queue: "new")
     assert_equal 5, count
@@ -402,29 +447,35 @@ class TestQuery < ZizqTestCase
 
   def test_update_all_paginated
     stub_list(
-      query: { "queue" => "old", "limit" => "2" },
-      body: page_body(["j1", "j2"], next_path: "/jobs?queue=old&from=j2&limit=2"),
+      query: {
+        "queue" => "old",
+        "limit" => "2"
+      },
+      body: page_body(%w[j1 j2], next_path: "/jobs?queue=old&from=j2&limit=2")
     )
-    stub_request(:get, "#{URL}/jobs?queue=old&from=j2&limit=2")
-      .to_return(json_response(page_body(["j3"])))
+    stub_request(:get, "#{URL}/jobs?queue=old&from=j2&limit=2").to_return(
+      json_response(page_body(["j3"]))
+    )
 
-    stub_request(:patch, "#{URL}/jobs?queue=old&id=j1,j2")
-      .with(body: JSON.generate({ queue: "new" }))
-      .to_return(json_response({ "patched" => 2 }))
-    stub_request(:patch, "#{URL}/jobs?queue=old&id=j3")
-      .with(body: JSON.generate({ queue: "new" }))
-      .to_return(json_response({ "patched" => 1 }))
+    stub_request(:patch, "#{URL}/jobs?queue=old&id=j1,j2").with(
+      body: JSON.generate({ queue: "new" })
+    ).to_return(json_response({ "patched" => 2 }))
+    stub_request(:patch, "#{URL}/jobs?queue=old&id=j3").with(
+      body: JSON.generate({ queue: "new" })
+    ).to_return(json_response({ "patched" => 1 }))
 
-    count = Zizq::Query.new.by_queue("old").in_pages_of(2).update_all(queue: "new")
+    count =
+      Zizq::Query.new.by_queue("old").in_pages_of(2).update_all(queue: "new")
     assert_equal 3, count
   end
 
   def test_update_all_with_reset
-    stub_request(:patch, "#{URL}/jobs?queue=emails")
-      .with(body: JSON.generate({ retry_limit: nil }))
-      .to_return(json_response({ "patched" => 3 }))
+    stub_request(:patch, "#{URL}/jobs?queue=emails").with(
+      body: JSON.generate({ retry_limit: nil })
+    ).to_return(json_response({ "patched" => 3 }))
 
-    count = Zizq::Query.new.by_queue("emails").update_all(retry_limit: Zizq::RESET)
+    count =
+      Zizq::Query.new.by_queue("emails").update_all(retry_limit: Zizq::RESET)
     assert_equal 3, count
   end
 
@@ -441,10 +492,20 @@ class TestQuery < ZizqTestCase
   def page_body(ids, next_path: nil)
     pages = { "self" => "/jobs" }
     pages["next"] = next_path if next_path
-    { "jobs" => ids.map { |id| { "id" => id, "type" => "Test", "queue" => "default" } }, "pages" => pages }
+    {
+      "jobs" =>
+        ids.map { |id| { "id" => id, "type" => "Test", "queue" => "default" } },
+      "pages" => pages
+    }
   end
 
   def json_response(body)
-    { status: 200, body: JSON.generate(body), headers: { "Content-Type" => "application/json" } }
+    {
+      status: 200,
+      body: JSON.generate(body),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    }
   end
 end

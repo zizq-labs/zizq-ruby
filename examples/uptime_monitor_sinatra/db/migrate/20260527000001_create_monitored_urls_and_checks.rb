@@ -5,16 +5,16 @@ Sequel.migration do
     create_table(:monitored_urls) do
       primary_key :id
 
-      String    :url,                  null: false
-      String    :source,               null: false, default: "manual"
-      String    :source_sitemap_url
-      TrueClass :enabled,              null: false, default: true
-      Integer   :consecutive_failures, null: false, default: 0
-      DateTime  :last_checked_at
-      String    :last_status
+      String :url, null: false
+      String :source, null: false, default: "manual"
+      String :source_sitemap_url
+      TrueClass :enabled, null: false, default: true
+      Integer :consecutive_failures, null: false, default: 0
+      DateTime :last_checked_at
+      String :last_status
 
-      DateTime  :created_at, null: false
-      DateTime  :updated_at, null: false
+      DateTime :created_at, null: false
+      DateTime :updated_at, null: false
     end
 
     # Composite unique index that distinguishes manual rows (NULL
@@ -29,15 +29,18 @@ Sequel.migration do
 
     create_table(:checks) do
       primary_key :id
-      foreign_key :monitored_url_id, :monitored_urls,
-                  null: false, on_delete: :cascade, index: true
+      foreign_key :monitored_url_id,
+                  :monitored_urls,
+                  null: false,
+                  on_delete: :cascade,
+                  index: true
 
-      DateTime :checked_at,        null: false
-      String   :status,            null: false
-      Integer  :http_status
-      Integer  :response_time_ms
-      String   :final_url
-      String   :error_message
+      DateTime :checked_at, null: false
+      String :status, null: false
+      Integer :http_status
+      Integer :response_time_ms
+      String :final_url
+      String :error_message
 
       DateTime :created_at, null: false
     end

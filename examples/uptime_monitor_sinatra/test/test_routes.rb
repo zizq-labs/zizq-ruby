@@ -9,7 +9,7 @@ class TestRoutes < Minitest::Test
     assert last_response.ok?
     assert_match(/Uptime Monitor/, last_response.body)
     assert_match(/<form/, last_response.body)
-    assert_match(%r{<div id="urls">}, last_response.body)
+    assert_match(/<div id="urls">/, last_response.body)
   end
 
   def test_xhr_returns_just_the_urls_partial
@@ -17,7 +17,7 @@ class TestRoutes < Minitest::Test
 
     assert last_response.ok?
     refute_match(/<html/, last_response.body)
-    assert_match(%r{<div id="urls">}, last_response.body)
+    assert_match(/<div id="urls">/, last_response.body)
   end
 
   def test_post_creates_a_monitored_url_and_enqueues_a_check
@@ -26,7 +26,7 @@ class TestRoutes < Minitest::Test
     assert last_response.redirect?
     created = MonitoredUrl.first
     assert_equal "https://example.com", created.url
-    assert_equal "manual",               created.source
+    assert_equal "manual", created.source
     assert Zizq::Test.enqueued?(CheckUrlJob, created.id)
   end
 
@@ -78,15 +78,23 @@ class TestRoutes < Minitest::Test
   end
 
   def test_index_lists_existing_urls_with_their_status
-    MonitoredUrl.create(url: "https://up.example.com",      last_status: "up",   last_checked_at: Time.now - 60)
-    MonitoredUrl.create(url: "https://down.example.com",    last_status: "down", last_checked_at: Time.now - 120)
+    MonitoredUrl.create(
+      url: "https://up.example.com",
+      last_status: "up",
+      last_checked_at: Time.now - 60
+    )
+    MonitoredUrl.create(
+      url: "https://down.example.com",
+      last_status: "down",
+      last_checked_at: Time.now - 120
+    )
     MonitoredUrl.create(url: "https://pending.example.com")
 
     get "/"
 
     assert last_response.ok?
-    assert_match(/status-up.*UP/m,           last_response.body)
-    assert_match(/status-down.*DOWN/m,       last_response.body)
+    assert_match(/status-up.*UP/m, last_response.body)
+    assert_match(/status-down.*DOWN/m, last_response.body)
     assert_match(/status-pending.*PENDING/m, last_response.body)
   end
 end

@@ -14,9 +14,8 @@ class TestRouter < ZizqTestCase
 
   def test_route_registered_via_constructor_block_dispatches
     received = nil
-    router = Zizq::Router.new do
-      route("send_email") { |payload| received = payload }
-    end
+    router =
+      Zizq::Router.new { route("send_email") { |payload| received = payload } }
 
     router.call(JobStub.new("send_email", { "user_id" => 42 }))
 
@@ -35,9 +34,8 @@ class TestRouter < ZizqTestCase
 
   def test_symbol_types_are_normalised_to_strings
     received = nil
-    router = Zizq::Router.new do
-      route(:send_email) { |payload| received = payload }
-    end
+    router =
+      Zizq::Router.new { route(:send_email) { |payload| received = payload } }
 
     # Wire format is String; lookup uses String. Symbol registration
     # would otherwise miss.
@@ -50,9 +48,7 @@ class TestRouter < ZizqTestCase
 
   def test_handler_with_arity_zero_is_called_with_no_args
     fired = false
-    router = Zizq::Router.new do
-      route("expire_tokens") { fired = true }
-    end
+    router = Zizq::Router.new { route("expire_tokens") { fired = true } }
 
     router.call(JobStub.new("expire_tokens", {}))
 
@@ -61,9 +57,8 @@ class TestRouter < ZizqTestCase
 
   def test_handler_with_arity_one_receives_only_the_payload
     received = nil
-    router = Zizq::Router.new do
-      route("send_email") { |payload| received = payload }
-    end
+    router =
+      Zizq::Router.new { route("send_email") { |payload| received = payload } }
 
     router.call(JobStub.new("send_email", { "to" => "alice" }))
 
@@ -72,9 +67,12 @@ class TestRouter < ZizqTestCase
 
   def test_handler_with_arity_two_receives_payload_and_job
     captured = nil
-    router = Zizq::Router.new do
-      route("generate_report") { |payload, job| captured = [payload, job.type] }
-    end
+    router =
+      Zizq::Router.new do
+        route("generate_report") do |payload, job|
+          captured = [payload, job.type]
+        end
+      end
 
     router.call(JobStub.new("generate_report", { "id" => 1 }))
 
@@ -85,8 +83,8 @@ class TestRouter < ZizqTestCase
     # Handlers are always invoked as `handler.call(payload, job)`.
     # Block-form procs are lax and tolerate extras; strict lambdas
     # need both parameters declared.
-    one_arg_lambda  = ->(payload) { payload }
-    two_arg_lambda  = ->(payload, _job) { payload }
+    one_arg_lambda = ->(payload) { payload }
+    two_arg_lambda = ->(payload, _job) { payload }
     router = Zizq::Router.new
     router.route("strict_one", &one_arg_lambda)
     router.route("strict_two", &two_arg_lambda)
@@ -95,21 +93,24 @@ class TestRouter < ZizqTestCase
       router.call(JobStub.new("strict_one", { "x" => 1 }))
     end
 
-    assert_equal({ "x" => 1 },
-                 router.call(JobStub.new("strict_two", { "x" => 1 })))
+    assert_equal(
+      { "x" => 1 },
+      router.call(JobStub.new("strict_two", { "x" => 1 }))
+    )
   end
 
   # --- Self / helper methods inside the DSL --------------------------
 
   def test_routes_can_call_helpers_defined_in_the_constructor_block
     received = nil
-    router = Zizq::Router.new do
-      route("send_email") { |payload| received = decorate(payload) }
+    router =
+      Zizq::Router.new do
+        route("send_email") { |payload| received = decorate(payload) }
 
-      def decorate(payload)
-        payload.merge("decorated" => true)
+        def decorate(payload)
+          payload.merge("decorated" => true)
+        end
       end
-    end
 
     router.call(JobStub.new("send_email", { "user_id" => 1 }))
 
@@ -120,18 +121,20 @@ class TestRouter < ZizqTestCase
 
   def test_unknown_type_raises_when_no_fallback_is_registered
     router = Zizq::Router.new
-    error = assert_raises(Zizq::Router::UnknownJobType) do
-      router.call(JobStub.new("missing", {}))
-    end
+    error =
+      assert_raises(Zizq::Router::UnknownJobType) do
+        router.call(JobStub.new("missing", {}))
+      end
     assert_match(/"missing"/, error.message)
   end
 
   def test_fallback_is_invoked_when_no_route_matches
     captured = nil
-    router = Zizq::Router.new do
-      route("known") { }
-      fallback { |job| captured = job.type }
-    end
+    router =
+      Zizq::Router.new do
+        route("known") {}
+        fallback { |job| captured = job.type }
+      end
 
     router.call(JobStub.new("unknown", {}))
 
@@ -140,9 +143,7 @@ class TestRouter < ZizqTestCase
 
   def test_fallback_receives_the_full_job_not_a_payload_pair
     captured = nil
-    router = Zizq::Router.new do
-      fallback { |job| captured = job }
-    end
+    router = Zizq::Router.new { fallback { |job| captured = job } }
 
     job = JobStub.new("anything", { "k" => "v" })
     router.call(job)
@@ -151,16 +152,17 @@ class TestRouter < ZizqTestCase
   end
 
   def test_routes_win_over_fallback_when_both_are_registered
-    route_fired    = false
+    route_fired = false
     fallback_fired = false
-    router = Zizq::Router.new do
-      route("send_email") { route_fired = true }
-      fallback { |_| fallback_fired = true }
-    end
+    router =
+      Zizq::Router.new do
+        route("send_email") { route_fired = true }
+        fallback { |_| fallback_fired = true }
+      end
 
     router.call(JobStub.new("send_email", {}))
 
-    assert  route_fired
+    assert route_fired
     refute fallback_fired
   end
 
@@ -168,9 +170,7 @@ class TestRouter < ZizqTestCase
     captured_jobs = []
     other_dispatcher = ->(job) { captured_jobs << job }
 
-    router = Zizq::Router.new do
-      fallback { |job| other_dispatcher.call(job) }
-    end
+    router = Zizq::Router.new { fallback { |job| other_dispatcher.call(job) } }
 
     job = JobStub.new("unhandled", {})
     router.call(job)

@@ -9,20 +9,22 @@ class NotifyWebhookJobTest < ActiveJob::TestCase
     @original_webhook = ENV["WEBHOOK_URL"]
     ENV["WEBHOOK_URL"] = WEBHOOK
 
-    @monitored = MonitoredUrl.create!(
-      url:                  "https://site.example.com",
-      last_status:          "down",
-      last_checked_at:      1.minute.ago,
-      consecutive_failures: 3,
-    )
-    @check = @monitored.checks.create!(
-      checked_at:       1.minute.ago,
-      status:           "down",
-      http_status:      500,
-      response_time_ms: 120,
-      final_url:        "https://site.example.com/",
-      error_message:    "HTTP 500",
-    )
+    @monitored =
+      MonitoredUrl.create!(
+        url: "https://site.example.com",
+        last_status: "down",
+        last_checked_at: 1.minute.ago,
+        consecutive_failures: 3
+      )
+    @check =
+      @monitored.checks.create!(
+        checked_at: 1.minute.ago,
+        status: "down",
+        http_status: 500,
+        response_time_ms: 120,
+        final_url: "https://site.example.com/",
+        error_message: "HTTP 500"
+      )
   end
 
   teardown do
@@ -74,25 +76,19 @@ class NotifyWebhookJobTest < ActiveJob::TestCase
 
     # `discard_on PermanentFailure` swallows the exception via
     # ActiveJob's rescue chain — perform_now returns nil, no re-raise.
-    assert_nothing_raised do
-      NotifyWebhookJob.perform_now(@check)
-    end
+    assert_nothing_raised { NotifyWebhookJob.perform_now(@check) }
   end
 
   test "5xx response re-raises so Zizq retries with backoff" do
     stub_request(:post, WEBHOOK).to_return(status: 503)
 
-    error = assert_raises(RuntimeError) do
-      NotifyWebhookJob.perform_now(@check)
-    end
+    error = assert_raises(RuntimeError) { NotifyWebhookJob.perform_now(@check) }
     assert_match(/HTTP 503/, error.message)
   end
 
   test "network error re-raises so Zizq retries with backoff" do
     stub_request(:post, WEBHOOK).to_raise(Errno::ECONNREFUSED)
 
-    assert_raises(Errno::ECONNREFUSED) do
-      NotifyWebhookJob.perform_now(@check)
-    end
+    assert_raises(Errno::ECONNREFUSED) { NotifyWebhookJob.perform_now(@check) }
   end
 end

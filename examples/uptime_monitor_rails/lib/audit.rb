@@ -19,13 +19,15 @@ module Audit
   #       text: "https://example.com went down",
   #       data: { "from": "up", "to": "down" }
   #     )
-  def self.emit(event_type:,
-                actor:,
-                text:,
-                resource: nil,
-                data: nil,
-                ip: nil,
-                occurred_at: Time.current)
+  def self.emit(
+    event_type:,
+    actor:,
+    text:,
+    resource: nil,
+    data: nil,
+    ip: nil,
+    occurred_at: Time.current
+  )
     Zizq.enqueue_raw(
       queue: AUDIT_QUEUE,
       type: "audit.create",

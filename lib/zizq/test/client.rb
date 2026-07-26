@@ -26,7 +26,8 @@ module Zizq
     class Client < Zizq::Client
       # Raised when test-mode code reaches an operation that isn't
       # supported (queries, queue listing, worker streams, etc.).
-      class NotSupported < Zizq::Error; end
+      class NotSupported < Zizq::Error
+      end
 
       # Length of a real scru128 id in its base-32 representation.
       # Synthetic test ids are sized to match (`test` prefix + zero
@@ -39,10 +40,10 @@ module Zizq
       # report. Test mode never retries — `in_flight` only ever
       # transitions to `completed` or `dead`.
       STATUS_SCHEDULED = "scheduled"
-      STATUS_READY     = "ready"
+      STATUS_READY = "ready"
       STATUS_IN_FLIGHT = "in_flight"
       STATUS_COMPLETED = "completed"
-      STATUS_DEAD      = "dead"
+      STATUS_DEAD = "dead"
 
       # Default `filter:` lambda — passes every job. Named so the
       # filter pipeline is always callable without nil-checking.
@@ -132,28 +133,33 @@ module Zizq
       end
 
       # @rbs override
-      def enqueue(queue:,
-                  type:,
-                  payload:,
-                  priority: nil,
-                  ready_at: nil,
-                  retry_limit: nil,
-                  backoff: nil,
-                  retention: nil,
-                  unique_key: nil,
-                  unique_while: nil)
-        req = EnqueueRequest.new(
-          queue:,
-          type:,
-          payload: self.class.normalize_payload(payload),
-          priority:,
-          ready_at:,
-          retry_limit:,
-          backoff:,
-          retention:,
-          unique_key:,
-          unique_while:,
-        )
+      def enqueue(
+        queue:,
+        type:,
+        payload:,
+        priority: nil,
+        ready_at: nil,
+        retry_limit: nil,
+        backoff: nil,
+        retention: nil,
+        unique_key: nil,
+        unique_while: nil,
+        batch: nil
+      )
+        req =
+          EnqueueRequest.new(
+            queue:,
+            type:,
+            payload: self.class.normalize_payload(payload),
+            priority:,
+            ready_at:,
+            retry_limit:,
+            backoff:,
+            retention:,
+            unique_key:,
+            unique_while:,
+            batch:
+          )
         @mutex.synchronize { record_unsynchronized(req) }.job
       end
 
@@ -161,18 +167,20 @@ module Zizq
       def enqueue_bulk(jobs:)
         @mutex.synchronize do
           jobs.map do |params|
-            req = EnqueueRequest.new(
-              queue:        params[:queue],
-              type:         params[:type],
-              payload:      self.class.normalize_payload(params[:payload]),
-              priority:     params[:priority],
-              ready_at:     params[:ready_at],
-              retry_limit:  params[:retry_limit],
-              backoff:      params[:backoff],
-              retention:    params[:retention],
-              unique_key:   params[:unique_key],
-              unique_while: params[:unique_while],
-            )
+            req =
+              EnqueueRequest.new(
+                queue: params[:queue],
+                type: params[:type],
+                payload: self.class.normalize_payload(params[:payload]),
+                priority: params[:priority],
+                ready_at: params[:ready_at],
+                retry_limit: params[:retry_limit],
+                backoff: params[:backoff],
+                retention: params[:retention],
+                unique_key: params[:unique_key],
+                unique_while: params[:unique_while],
+                batch: params[:batch]
+              )
             record_unsynchronized(req).job
           end
         end
@@ -202,7 +210,7 @@ module Zizq
           Kernel.raise(
             NotSupported,
             "Zizq::Test::Client##{method_name} is not supported in test mode. " \
-            "Test mode buffers enqueues only — point at a real server, or stub the call."
+              "Test mode buffers enqueues only — point at a real server, or stub the call."
           )
         end
       end
@@ -227,15 +235,20 @@ module Zizq
           "priority" => req.priority,
           "ready_at" => ready_at_ms,
           "retry_limit" => req.retry_limit,
-          "status" => ready_at_ms > now_ms ? STATUS_SCHEDULED : STATUS_READY,
+          "status" => ready_at_ms > now_ms ? STATUS_SCHEDULED : STATUS_READY
         }
-        entry = Entry.new(request: req, job: Resources::Job.new(self, data), data: data)
+        entry =
+          Entry.new(
+            request: req,
+            job: Resources::Job.new(self, data),
+            data: data
+          )
         @entries << entry
         entry
       end
 
       def synthetic_id(counter) #: (Integer) -> String
-        "#{ID_PREFIX}#{counter.to_s.rjust(ID_LENGTH - ID_PREFIX.length, '0')}"
+        "#{ID_PREFIX}#{counter.to_s.rjust(ID_LENGTH - ID_PREFIX.length, "0")}"
       end
 
       public
@@ -267,20 +280,22 @@ module Zizq
       #   truthy to keep. Defaults to `PASS_ALL_FILTER`.
       #
       # `only_*` and `except_*` AND together with the predicate.
-      def apply_filters(entries,
-                        only_queues: nil,
-                        except_queues: nil,
-                        only_types: nil,
-                        except_types: nil,
-                        filter: PASS_ALL_FILTER) #: (Array[Entry], **untyped) -> Array[Entry]
-        only_queues   = normalize_filter(only_queues)
+      def apply_filters(
+        entries,
+        only_queues: nil,
+        except_queues: nil,
+        only_types: nil,
+        except_types: nil,
+        filter: PASS_ALL_FILTER
+      ) #: (Array[Entry], **untyped) -> Array[Entry]
+        only_queues = normalize_filter(only_queues)
         except_queues = normalize_filter(except_queues)
-        only_types    = normalize_filter(only_types)
-        except_types  = normalize_filter(except_types)
+        only_types = normalize_filter(only_types)
+        except_types = normalize_filter(except_types)
 
         entries.select do |entry|
           queue = entry.data["queue"] #: String
-          type  = entry.data["type"]  #: String
+          type = entry.data["type"] #: String
 
           (only_queues.empty? || only_queues.include?(queue)) &&
             (except_queues.empty? || !except_queues.include?(queue)) &&
@@ -313,9 +328,12 @@ module Zizq
 
       def runnable?(entry, now_ms) #: (Entry, Integer) -> bool
         case entry.data["status"]
-        when STATUS_READY     then true
-        when STATUS_SCHEDULED then entry.data["ready_at"] <= now_ms
-        else false
+        when STATUS_READY
+          true
+        when STATUS_SCHEDULED
+          entry.data["ready_at"] <= now_ms
+        else
+          false
         end
       end
 
@@ -323,9 +341,12 @@ module Zizq
       # Strings. Class names match the API's `type` string.
       def normalize_filter(value) #: ((String | Class | Array[String | Class])?) -> Array[String]
         case value
-        when nil then []
-        when Array then value.map { |x| x.to_s }
-        else [value.to_s]
+        when nil
+          []
+        when Array
+          value.map { |x| x.to_s }
+        else
+          [value.to_s]
         end
       end
 
@@ -340,7 +361,7 @@ module Zizq
         begin
           Zizq.configuration.dequeue_middleware.call(entry.job)
           entry.data["status"] = STATUS_COMPLETED
-        rescue
+        rescue StandardError
           entry.data["status"] = STATUS_DEAD
           raise
         end

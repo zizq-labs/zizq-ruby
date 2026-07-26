@@ -11,10 +11,10 @@
 # Change the environment variable JOB_COUNT to control how many jobs are
 # enqueued.
 
-require_relative './setup'
+require_relative "./setup"
 
-require 'zizq'
-require 'async'
+require "zizq"
+require "async"
 
 # --- Setup ----
 
@@ -27,9 +27,7 @@ class TestJob
   include Zizq::Job
 
   def perform(n)
-    if n == JOB_COUNT
-      Process.kill("TERM", Process.pid)
-    end
+    Process.kill("TERM", Process.pid) if n == JOB_COUNT
   end
 end
 
@@ -39,30 +37,24 @@ enqueue_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 
 Sync do
   (1..JOB_COUNT).each_slice(1_000) do |nums|
-    Zizq.enqueue_bulk do |b|
-      nums.each do |n|
-        b.enqueue(TestJob, n)
-      end
-    end
+    Zizq.enqueue_bulk { |b| nums.each { |n| b.enqueue(TestJob, n) } }
   end
 end
 
 enqueue_finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-enqueue_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - enqueue_started_at
+enqueue_elapsed =
+  Process.clock_gettime(Process::CLOCK_MONOTONIC) - enqueue_started_at
 
 puts format(
-  "Enqueued %d jobs in %.3fs (%.3f jobs/sec).",
-  JOB_COUNT,
-  enqueue_elapsed,
-  JOB_COUNT/enqueue_elapsed
-)
+       "Enqueued %d jobs in %.3fs (%.3f jobs/sec).",
+       JOB_COUNT,
+       enqueue_elapsed,
+       JOB_COUNT / enqueue_elapsed
+     )
 
 # --- Dequeue Phase ----
 
-worker = Zizq::Worker.new(
-  thread_count: THREADS,
-  fiber_count: FIBERS,
-)
+worker = Zizq::Worker.new(thread_count: THREADS, fiber_count: FIBERS)
 
 Signal.trap("TERM") { worker.stop }
 
@@ -71,11 +63,12 @@ dequeue_started_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
 worker.run
 
 dequeue_finished_at = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-dequeue_elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - dequeue_started_at
+dequeue_elapsed =
+  Process.clock_gettime(Process::CLOCK_MONOTONIC) - dequeue_started_at
 
 puts format(
-  "Dequeued %d jobs in %.3fs (%.3f jobs/sec).",
-  JOB_COUNT,
-  dequeue_elapsed,
-  JOB_COUNT/dequeue_elapsed
-)
+       "Dequeued %d jobs in %.3fs (%.3f jobs/sec).",
+       JOB_COUNT,
+       dequeue_elapsed,
+       JOB_COUNT / dequeue_elapsed
+     )

@@ -20,13 +20,13 @@ Sequel.migration do
       # convention: dot-namespaced ("user.login.succeeded").
       String :event_type, null: false
 
-      String :actor       # who did it (email, user id, "system")
-      String :ip          # source IP (string — IPv4 or IPv6)
-      String :resource    # what they did it to ("invoice:42")
-      String :text        # free-text human summary
-      String :data        # JSON-serialised structured payload
+      String :actor # who did it (email, user id, "system")
+      String :ip # source IP (string — IPv4 or IPv6)
+      String :resource # what they did it to ("invoice:42")
+      String :text # free-text human summary
+      String :data # JSON-serialised structured payload
 
-      DateTime :created_at, null: false   # when we wrote the row
+      DateTime :created_at, null: false # when we wrote the row
     end
 
     # Most-recent-first feed. The (occurred_at, id) tuple gives a

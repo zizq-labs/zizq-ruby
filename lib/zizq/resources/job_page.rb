@@ -38,18 +38,29 @@ module Zizq
       # @rbs backoff: (Zizq::backoff | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
       # @rbs retention: (Zizq::retention | singleton(Zizq::RESET) | singleton(Zizq::UNCHANGED))?
       # @rbs return: Integer
-      def update_all(queue: Zizq::UNCHANGED,
-                     priority: Zizq::UNCHANGED,
-                     ready_at: Zizq::UNCHANGED,
-                     retry_limit: Zizq::UNCHANGED,
-                     backoff: Zizq::UNCHANGED,
-                     retention: Zizq::UNCHANGED)
+      def update_all(
+        queue: Zizq::UNCHANGED,
+        priority: Zizq::UNCHANGED,
+        ready_at: Zizq::UNCHANGED,
+        retry_limit: Zizq::UNCHANGED,
+        backoff: Zizq::UNCHANGED,
+        retention: Zizq::UNCHANGED
+      )
         ids = jobs.map(&:id)
         return 0 if ids.empty?
 
         client.update_all_jobs(
-          where: { id: ids },
-          apply: { queue:, priority:, ready_at:, retry_limit:, backoff:, retention: },
+          where: {
+            id: ids
+          },
+          apply: {
+            queue:,
+            priority:,
+            ready_at:,
+            retry_limit:,
+            backoff:,
+            retention:
+          }
         )
       end
     end

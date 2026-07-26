@@ -48,6 +48,9 @@ module Zizq
     # Uniqueness scope.
     attr_accessor :unique_while #: Zizq::unique_scope?
 
+    # Batch configuration for folded jobs.
+    attr_accessor :batch #: Zizq::batch?
+
     # @rbs type: String
     # @rbs queue: String
     # @rbs payload: untyped
@@ -59,18 +62,22 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: void
-    def initialize(type:,
-                   queue:,
-                   payload:,
-                   priority: nil,
-                   delay: nil,
-                   ready_at: nil,
-                   retry_limit: nil,
-                   backoff: nil,
-                   retention: nil,
-                   unique_key: nil,
-                   unique_while: nil)
+    def initialize(
+      type:,
+      queue:,
+      payload:,
+      priority: nil,
+      delay: nil,
+      ready_at: nil,
+      retry_limit: nil,
+      backoff: nil,
+      retention: nil,
+      unique_key: nil,
+      unique_while: nil,
+      batch: nil
+    )
       update(
         type:,
         queue:,
@@ -83,6 +90,7 @@ module Zizq
         retention:,
         unique_key:,
         unique_while:,
+        batch:
       )
     end
 
@@ -111,29 +119,34 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: self
-    def update(type: @type,
-               queue: @queue,
-               payload: @payload,
-               priority: @priority,
-               delay: @delay,
-               ready_at: @ready_at,
-               retry_limit: @retry_limit,
-               backoff: @backoff,
-               retention: @retention,
-               unique_key: @unique_key,
-               unique_while: @unique_while)
-      @type         = type
-      @queue        = queue
-      @payload      = payload
-      @priority     = priority
-      @delay        = delay
-      @ready_at     = ready_at
-      @retry_limit  = retry_limit
-      @backoff      = backoff
-      @retention    = retention
-      @unique_key   = unique_key
+    def update(
+      type: @type,
+      queue: @queue,
+      payload: @payload,
+      priority: @priority,
+      delay: @delay,
+      ready_at: @ready_at,
+      retry_limit: @retry_limit,
+      backoff: @backoff,
+      retention: @retention,
+      unique_key: @unique_key,
+      unique_while: @unique_while,
+      batch: @batch
+    )
+      @type = type
+      @queue = queue
+      @payload = payload
+      @priority = priority
+      @delay = delay
+      @ready_at = ready_at
+      @retry_limit = retry_limit
+      @backoff = backoff
+      @retention = retention
+      @unique_key = unique_key
       @unique_while = unique_while
+      @batch = batch
       self
     end
 
@@ -145,11 +158,7 @@ module Zizq
       params = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       params[:priority] = priority if priority
 
-      effective_ready_at = if delay
-        Time.now.to_f + delay.to_f
-      else
-        ready_at
-      end
+      effective_ready_at = (delay ? Time.now.to_f + delay.to_f : ready_at)
       params[:ready_at] = effective_ready_at if effective_ready_at
 
       params[:retry_limit] = retry_limit if retry_limit
@@ -164,13 +173,17 @@ module Zizq
 
       if retention
         ret = {} #: Hash[Symbol, Integer]
-        ret[:completed_ms] = (retention[:completed].to_f * 1000).to_i if retention[:completed]
+        ret[:completed_ms] = (
+          retention[:completed].to_f * 1000
+        ).to_i if retention[:completed]
         ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
         params[:retention] = ret
       end
 
       params[:unique_key] = unique_key if unique_key
       params[:unique_while] = unique_while.to_s if unique_while
+
+      params[:batch] = batch if batch
 
       params
     end

@@ -11,10 +11,9 @@ return if Rails.env.test?
 
 Rails.application.config.after_initialize do
   Zizq.define_crontab("uptime_monitor") do |cron|
-    cron.define_entry(
-      "schedule_checks",
-      "*/5 * * * * *",
-    ).enqueue(ScheduleChecksJob)
+    cron.define_entry("schedule_checks", "*/5 * * * * *").enqueue(
+      ScheduleChecksJob
+    )
   end
 rescue Zizq::ResponseError => e
   raise unless e.status == 403 # No Pro license

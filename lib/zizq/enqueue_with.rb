@@ -101,9 +101,7 @@ module Zizq
     # @rbs &block: (EnqueueWith) -> void
     # @rbs return: untyped
     def enqueue_bulk(&block)
-      @target.enqueue_bulk do |b|
-        block.call(self.class.new(b, @overrides))
-      end
+      @target.enqueue_bulk { |b| block.call(self.class.new(b, @overrides)) }
     end
   end
 end
