@@ -68,15 +68,6 @@ module Zizq
             "ActiveJob handles deserialization via ActiveJob::Base.execute"
     end
 
-    # Override unique key generation to hash only the arguments portion
-    # of the serialized payload. The full payload contains volatile fields
-    # (job_id, enqueued_at, etc.) that change per instance.
-    def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
-      arguments = new(*args, **kwargs).serialize["arguments"]
-      payload = normalize_payload(arguments)
-      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
-    end
-
     # Generate a jq expression that exactly matches payloads with the given
     # arguments.
     #
@@ -138,6 +129,16 @@ module Zizq
       end
 
       parts.join(" and ")
+    end
+
+    private
+
+    # Hash only the arguments portion of the serialized ActiveJob
+    # payload. The full envelope contains volatile fields (job_id,
+    # enqueued_at, etc.) that change per instance and would defeat
+    # both `zizq_unique_key` and `zizq_batch_key`.
+    def hashable_args(*args, **kwargs) #: (*untyped, **untyped) -> untyped
+      new(*args, **kwargs).serialize["arguments"]
     end
   end
 end

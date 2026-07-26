@@ -306,8 +306,30 @@ module Zizq
     #     super(user_id)  # unique per user, ignoring template
     #   end
     def zizq_unique_key(*args, **kwargs) #: (*untyped, **untyped) -> String
-      payload = normalize_payload(zizq_serialize(*args, **kwargs))
-      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+      hash_args(*args, **kwargs)
+    end
+
+    # Compute the batch key for a job with the given arguments.
+    #
+    # The default implementation drops the configured batch target
+    # (positional `arg:` or `kwarg:`) from the arguments and hashes
+    # everything else. Two enqueues with the same non-batch arguments
+    # therefore produce the same batch key, so they fold into the same
+    # pending job; different non-batch arguments produce different keys
+    # and end up in separate batches.
+    #
+    # Override this method to customize batching — for example, to
+    # batch by tenant regardless of what else is passed:
+    #
+    #   def self.zizq_batch_key(_notifications, tenant_id:, **_)
+    #     "#{name}:tenant-#{tenant_id}"
+    #   end
+    def zizq_batch_key(*args, **kwargs) #: (*untyped, **untyped) -> String
+      filtered_args =
+        args.dup.tap { |a| a.delete_at(zizq_batch_arg) if zizq_batch_arg }
+      filtered_kwargs = kwargs.except(zizq_batch_kwarg)
+
+      hash_args(*filtered_args, **filtered_kwargs)
     end
 
     # Build a `Zizq::EnqueueRequest` from the class-level job config.
@@ -335,6 +357,24 @@ module Zizq
     end
 
     private
+
+    # Class-name-prefixed SHA256 of the normalized hashable payload.
+    # Shared primitive powering both `zizq_unique_key` and
+    # `zizq_batch_key` — the two features hash arguments the same way,
+    # they just choose *which* arguments to hash.
+    def hash_args(*args, **kwargs) #: (*untyped, **untyped) -> String
+      payload = normalize_payload(hashable_args(*args, **kwargs))
+      "#{name}:#{Digest::SHA256.hexdigest(JSON.generate(payload))}"
+    end
+
+    # The subset of the serialized payload that participates in key
+    # hashing. Defaults to the full serialized payload; overridden by
+    # `ActiveJobConfig` to hash only the ActiveJob `arguments` array
+    # (skipping volatile envelope fields like `job_id` and
+    # `enqueued_at` that vary per enqueue).
+    def hashable_args(*args, **kwargs) #: (*untyped, **untyped) -> untyped
+      zizq_serialize(*args, **kwargs)
+    end
 
     # Deep-sort all Hash keys so that serialization is deterministic
     # regardless of insertion order or JSON library.

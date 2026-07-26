@@ -756,6 +756,90 @@ class TestJob < ZizqTestCase
     assert_equal key1, key2
   end
 
+  # --- zizq_batch_key ---
+
+  # Job class with the default arg-0 batch target.
+  class DefaultBatchArgJob
+    include Zizq::Job
+    zizq_batched true, limit: 100
+    def perform(notifications, tenant_id:) = nil
+  end
+
+  # Job class with an explicit kwarg batch target.
+  class KwargBatchJob
+    include Zizq::Job
+    zizq_batched true, kwarg: :notifications, limit: 100
+    def perform(notifications:, tenant_id:) = nil
+  end
+
+  def test_batch_key_ignores_batch_positional_arg
+    # Same non-batch args, different batch args → same key.
+    key1 = DefaultBatchArgJob.zizq_batch_key([1, 2], tenant_id: 42)
+    key2 = DefaultBatchArgJob.zizq_batch_key([99], tenant_id: 42)
+    assert_equal key1, key2
+  end
+
+  def test_batch_key_differs_for_different_non_batch_args
+    key1 = DefaultBatchArgJob.zizq_batch_key([1], tenant_id: 42)
+    key2 = DefaultBatchArgJob.zizq_batch_key([1], tenant_id: 43)
+    refute_equal key1, key2
+  end
+
+  def test_batch_key_ignores_batch_kwarg
+    # Same non-batch kwargs, different batch kwarg → same key.
+    key1 = KwargBatchJob.zizq_batch_key(notifications: [1], tenant_id: 42)
+    key2 = KwargBatchJob.zizq_batch_key(notifications: [99], tenant_id: 42)
+    assert_equal key1, key2
+  end
+
+  def test_batch_key_differs_for_different_non_batch_kwargs
+    key1 = KwargBatchJob.zizq_batch_key(notifications: [1], tenant_id: 42)
+    key2 = KwargBatchJob.zizq_batch_key(notifications: [1], tenant_id: 43)
+    refute_equal key1, key2
+  end
+
+  def test_batch_key_prefixed_with_class_name
+    key = DefaultBatchArgJob.zizq_batch_key([1], tenant_id: 42)
+    assert key.start_with?("TestJob::DefaultBatchArgJob:"),
+           "expected class-name prefix, got: #{key}"
+  end
+
+  def test_batch_key_different_classes_do_not_collide
+    key1 = DefaultBatchArgJob.zizq_batch_key([1], tenant_id: 42)
+    key2 = KwargBatchJob.zizq_batch_key(notifications: [1], tenant_id: 42)
+    refute_equal key1, key2
+  end
+
+  def test_batch_key_can_be_overridden
+    klass =
+      Class.new do
+        include Zizq::Job
+        def self.name = "OverrideBatchJob"
+        zizq_batched true, limit: 100
+        def self.zizq_batch_key(*_args, **_kwargs)
+          "OverrideBatchJob:fixed"
+        end
+        def perform(*) = nil
+      end
+
+    assert_equal "OverrideBatchJob:fixed", klass.zizq_batch_key([1], other: 1)
+    assert_equal "OverrideBatchJob:fixed", klass.zizq_batch_key([2], other: 2)
+  end
+
+  def test_batch_key_survives_out_of_range_arg
+    # arg: 2 declared but only 1 arg passed — no crash, just doesn't
+    # filter anything.
+    klass =
+      Class.new do
+        include Zizq::Job
+        def self.name = "OobBatchJob"
+        zizq_batched true, arg: 2, limit: 100
+        def perform(*) = nil
+      end
+
+    assert_kind_of String, klass.zizq_batch_key([1])
+  end
+
   # --- Zizq.enqueue with unique jobs ---
 
   def test_enqueue_sends_unique_key_and_while
