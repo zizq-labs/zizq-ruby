@@ -152,6 +152,30 @@ class TestTestClient < ZizqTestCase
     assert_equal "user-1", requests.first.unique_key
   end
 
+  def test_enqueue_raw_accepts_batch_config
+    batch = {
+      key: "push:apple",
+      when: "($existing.args[0] + $new.args[0]) | length <= 100",
+      fold: "$existing | .args[0] += $new.args[0]"
+    }
+
+    Zizq.enqueue_raw(
+      queue: "push",
+      type: "SendPushNotifications",
+      payload: {
+        "args" => [[{ device: "a" }]],
+        "kwargs" => {
+          "platform" => "apple"
+        }
+      },
+      batch: batch
+    )
+
+    requests = Zizq::Test.client.enqueued_requests
+    assert_equal 1, requests.size
+    assert_equal batch, requests.first.batch
+  end
+
   def test_enqueue_bulk_buffers_each_request
     Zizq.enqueue_bulk do |b|
       b.enqueue_raw(queue: "q", type: "A", payload: {})

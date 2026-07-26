@@ -295,6 +295,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: Resources::Job
     def enqueue_raw(queue:, type:, payload:, **opts)
       req = EnqueueRequest.new(queue:, type:, payload:, **opts)

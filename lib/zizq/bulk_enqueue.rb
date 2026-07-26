@@ -49,6 +49,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: void
     def enqueue_raw(queue:, type:, payload:, **opts)
       @requests << EnqueueRequest.new(queue:, type:, payload:, **opts)
