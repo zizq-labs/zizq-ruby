@@ -840,6 +840,136 @@ class TestJob < ZizqTestCase
     assert_kind_of String, klass.zizq_batch_key([1])
   end
 
+  # --- zizq_batch_expressions ---
+
+  def test_batch_expressions_nil_when_not_batched
+    assert_nil DefaultQueueJob.zizq_batch_expressions
+  end
+
+  def test_batch_expressions_positional_arg
+    expr = DefaultBatchArgJob.zizq_batch_expressions
+    assert_equal(
+      "($existing.args[0] + $new.args[0]) | length <= 100",
+      expr[:when]
+    )
+    assert_equal("$existing | .args[0] += $new.args[0]", expr[:fold])
+  end
+
+  def test_batch_expressions_kwarg
+    expr = KwargBatchJob.zizq_batch_expressions
+    assert_equal(
+      "($existing.kwargs.notifications + $new.kwargs.notifications) | length <= 100",
+      expr[:when]
+    )
+    assert_equal(
+      "$existing | .kwargs.notifications += $new.kwargs.notifications",
+      expr[:fold]
+    )
+  end
+
+  def test_batch_expressions_dedup
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100, dedup: true
+      end
+    expr = klass.zizq_batch_expressions
+    assert_equal(
+      "$existing | .args[0] = (.args[0] + $new.args[0] | unique)",
+      expr[:fold]
+    )
+  end
+
+  def test_batch_expressions_sorted
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100, sorted: true
+      end
+    expr = klass.zizq_batch_expressions
+    assert_equal(
+      "$existing | .args[0] = (.args[0] + $new.args[0] | sort)",
+      expr[:fold]
+    )
+  end
+
+  def test_batch_expressions_dedup_takes_precedence_over_sorted
+    # jq `unique` already sorts, so `sorted:` is a no-op when `dedup:`
+    # is set — the generated expression uses `unique` alone.
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100, dedup: true, sorted: true
+      end
+    expr = klass.zizq_batch_expressions
+    assert_equal(
+      "$existing | .args[0] = (.args[0] + $new.args[0] | unique)",
+      expr[:fold]
+    )
+  end
+
+  def test_batch_expressions_can_be_overridden
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_batched true, limit: 100
+        def self.zizq_batch_expressions
+          { when: "true", fold: "$existing + $new" }
+        end
+      end
+    assert_equal(
+      { when: "true", fold: "$existing + $new" },
+      klass.zizq_batch_expressions
+    )
+  end
+
+  # --- Zizq.enqueue with batched jobs ---
+
+  def test_enqueue_sends_batch_config
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["batch"] &&
+          body["batch"]["key"]&.start_with?("TestJob::DefaultBatchArgJob:") &&
+          body["batch"]["when"] ==
+            "($existing.args[0] + $new.args[0]) | length <= 100" &&
+          body["batch"]["fold"] == "$existing | .args[0] += $new.args[0]"
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(DefaultBatchArgJob, [1], tenant_id: 42)
+  end
+
+  def test_enqueue_batch_key_stable_for_same_non_batch_args
+    keys = [] #: Array[String]
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        keys << body["batch"]["key"] if body["batch"]
+        true
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(DefaultBatchArgJob, [1, 2], tenant_id: 42)
+    Zizq.enqueue(DefaultBatchArgJob, [99], tenant_id: 42)
+    Zizq.enqueue(DefaultBatchArgJob, [7], tenant_id: 43)
+
+    assert_equal keys[0], keys[1], "same tenant → same batch key"
+    refute_equal keys[0], keys[2], "different tenant → different batch key"
+  end
+
   # --- Zizq.enqueue with unique jobs ---
 
   def test_enqueue_sends_unique_key_and_while

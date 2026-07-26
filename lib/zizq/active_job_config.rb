@@ -131,6 +131,25 @@ module Zizq
       parts.join(" and ")
     end
 
+    # Static jq expressions for the batched-job configuration on this
+    # class. Targets `.arguments[N]` for a positional batch arg or
+    # `.arguments[-1].NAME` for a keyword batch arg — the latter
+    # assumes the class actually receives kwargs so that the last
+    # argument is the ActiveJob kwargs hash. Behaviour is unspecified
+    # if the declared `kwarg:` isn't present at enqueue time.
+    def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+      return nil unless zizq_batched
+
+      target =
+        if (idx = zizq_batch_arg)
+          ".arguments[#{idx}]"
+        else
+          ".arguments[-1].#{zizq_batch_kwarg}"
+        end
+
+      build_batch_expressions(target)
+    end
+
     private
 
     # Hash only the arguments portion of the serialized ActiveJob

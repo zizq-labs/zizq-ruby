@@ -31,6 +31,11 @@ module Zizq
   # and `$new` payloads on each subsequent enqueue.
   type batch = { key: String, when: String, fold: String }
 
+  # The static portion of a batched-job configuration — the jq
+  # expressions that don't depend on the enqueue-time arguments.
+  # Composed with a per-enqueue key to build a full `batch`.
+  type batch_expressions = { when: String, fold: String }
+
   # Filter parameters for bulk operations (delete, update) and list queries.
   type where_params = {
     ?id: (String | Array[String])?,

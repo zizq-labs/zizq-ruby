@@ -143,6 +143,23 @@ module Zizq
           "(.kwargs | contains(#{JSON.generate(serialized_kwargs)}))"
         ].join(" and ")
       end
+
+      # Static jq expressions for the batched-job configuration on this
+      # class. Targets `.args[N]` for a positional batch arg or
+      # `.kwargs.NAME` for a keyword batch arg, matching the payload
+      # shape produced by the default `zizq_serialize`.
+      def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+        return nil unless zizq_batched
+
+        target =
+          if (idx = zizq_batch_arg)
+            ".args[#{idx}]"
+          else
+            ".kwargs.#{zizq_batch_kwarg}"
+          end
+
+        build_batch_expressions(target)
+      end
     end
 
     # This is your job's main entrypoint when it is run by the worker.

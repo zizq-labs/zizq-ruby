@@ -332,6 +332,22 @@ module Zizq
       hash_args(*filtered_args, **filtered_kwargs)
     end
 
+    # Build the static jq expressions (`when` predicate, `fold`
+    # reducer) for this class's batch configuration.
+    #
+    # Implemented by the including module — `Zizq::Job` and
+    # `Zizq::ActiveJobConfig` know how to target the right JSON path
+    # for their respective payload shapes. Returns `nil` when the
+    # class is not batched.
+    #
+    # Override to supply completely custom `when`/`fold` expressions
+    # that the DSL flags don't cover.
+    def zizq_batch_expressions #: () -> Zizq::batch_expressions?
+      return nil unless zizq_batched
+
+      raise NotImplementedError, "#{self} must implement zizq_batch_expressions"
+    end
+
     # Build a `Zizq::EnqueueRequest` from the class-level job config.
     #
     # Subclasses can override this to implement dynamic logic such as
@@ -352,7 +368,8 @@ module Zizq
         backoff: zizq_backoff,
         retention: zizq_retention,
         unique_while: zizq_unique ? zizq_unique_scope : nil,
-        unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
+        unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil,
+        batch: zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil
       )
     end
 
@@ -374,6 +391,42 @@ module Zizq
     # `enqueued_at` that vary per enqueue).
     def hashable_args(*args, **kwargs) #: (*untyped, **untyped) -> untyped
       zizq_serialize(*args, **kwargs)
+    end
+
+    # Compose `zizq_batch_expressions` (static) with `zizq_batch_key`
+    # (dynamic, arg-dependent) into a full API serialized `Zizq::batch`.
+    def batch_for_enqueue(*args, **kwargs) #: (*untyped, **untyped) -> Zizq::batch?
+      expr = zizq_batch_expressions
+      return nil unless expr
+
+      {
+        key: zizq_batch_key(*args, **kwargs),
+        when: expr[:when],
+        fold: expr[:fold]
+      }
+    end
+
+    # Compile `when`/`fold` expressions targeting a jq path (e.g.
+    # `.args[0]` for `Zizq::Job` or `.arguments[-1].notifications`
+    # for `ActiveJobConfig`). Applies dedup/sorted flags. Shared
+    # across payload shapes because only the target path differs.
+    def build_batch_expressions(target) #: (String) -> Zizq::batch_expressions
+      limit = zizq_batch_limit
+      when_expr = "($existing#{target} + $new#{target}) | length <= #{limit}"
+
+      fold_expr =
+        if zizq_batch_dedup?
+          # `unique` in jq also sorts, so it subsumes `sorted:` too.
+          "$existing | #{target} = " \
+            "(#{target} + $new#{target} | unique)"
+        elsif zizq_batch_sorted?
+          "$existing | #{target} = " \
+            "(#{target} + $new#{target} | sort)"
+        else
+          "$existing | #{target} += $new#{target}"
+        end
+
+      { when: when_expr, fold: fold_expr }
     end
 
     # Deep-sort all Hash keys so that serialization is deterministic
