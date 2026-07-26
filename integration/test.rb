@@ -77,6 +77,53 @@ class ActiveJobTestJob < ActiveJob::Base
   end
 end
 
+# --- Batched job fixtures (pro-only) ---
+#
+# The `notifications` positional arg is the batch target. Enqueues
+# with the same `platform:` fold into the same job; enqueues with a
+# different `platform:` end up in separate batches.
+class BatchedIntegrationJob
+  include Zizq::Job
+
+  zizq_queue "batched-integration"
+  zizq_batched true, limit: 100
+
+  class << self
+    attr_accessor :mock_perform
+  end
+
+  def perform(notifications, platform:)
+    self.class.mock_perform&.call(notifications, platform: platform)
+  end
+end
+
+# Same shape but with `dedup: true` so overlapping payloads collapse.
+class DedupBatchedIntegrationJob
+  include Zizq::Job
+
+  zizq_queue "batched-integration"
+  zizq_batched true, limit: 100, dedup: true
+
+  def perform(_items) = nil
+end
+
+# ActiveJob variant of a batched job.
+class BatchedActiveJobIntegrationJob < ActiveJob::Base
+  extend Zizq::ActiveJobConfig
+
+  self.queue_adapter = :zizq
+  self.queue_name = "batched-activejob-integration"
+  zizq_batched true, limit: 100
+
+  class << self
+    attr_accessor :mock_perform
+  end
+
+  def perform(notifications, platform:)
+    self.class.mock_perform&.call(notifications, platform: platform)
+  end
+end
+
 class IntegrationTest < Minitest::Test
   def setup
     Zizq.configure do |c|
@@ -651,5 +698,208 @@ class IntegrationTest < Minitest::Test
     rescue StandardError
       nil
     end
+  end
+
+  # --- Batched jobs (pro-only) ---
+
+  def test_batched_first_enqueue_creates_new_job
+    r = Zizq.enqueue(BatchedIntegrationJob, [{ id: 1 }], platform: "apple")
+    refute r.folded?
+    refute_nil r.batch
+    assert r.batch[:key].start_with?("BatchedIntegrationJob:")
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_second_enqueue_folds_and_merges
+    r1 = Zizq.enqueue(BatchedIntegrationJob, [{ id: 1 }], platform: "apple")
+    r2 =
+      Zizq.enqueue(
+        BatchedIntegrationJob,
+        [{ id: 2 }, { id: 3 }],
+        platform: "apple"
+      )
+
+    refute r1.folded?
+    assert r2.folded?
+    assert_equal r1.id, r2.id
+
+    fetched = Zizq.client.get_job(r1.id)
+    assert_equal(
+      {
+        "args" => [[{ "id" => 1 }, { "id" => 2 }, { "id" => 3 }]],
+        "kwargs" => {
+          "platform" => "apple"
+        }
+      },
+      fetched.payload
+    )
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_different_non_batch_args_do_not_fold
+    r1 = Zizq.enqueue(BatchedIntegrationJob, [{ id: 1 }], platform: "apple")
+    r2 = Zizq.enqueue(BatchedIntegrationJob, [{ id: 2 }], platform: "android")
+
+    refute r1.folded?
+    refute r2.folded?
+    refute_equal r1.id, r2.id
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_bulk_intra_fold
+    results =
+      Zizq.enqueue_bulk do |b|
+        b.enqueue(BatchedIntegrationJob, [{ id: 1 }], platform: "apple")
+        b.enqueue(BatchedIntegrationJob, [{ id: 2 }], platform: "apple")
+        b.enqueue(BatchedIntegrationJob, [{ id: 3 }], platform: "apple")
+      end
+
+    refute results[0].folded?
+    assert results[1].folded?
+    assert results[2].folded?
+    assert_equal results[0].id, results[1].id
+    assert_equal results[0].id, results[2].id
+
+    fetched = Zizq.client.get_job(results[0].id)
+    assert_equal(
+      [{ "id" => 1 }, { "id" => 2 }, { "id" => 3 }],
+      fetched.payload["args"][0]
+    )
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_dedup_flag_deduplicates
+    Zizq.enqueue(DedupBatchedIntegrationJob, [{ "id" => 1 }, { "id" => 2 }])
+    r = Zizq.enqueue(DedupBatchedIntegrationJob, [{ "id" => 2 }, { "id" => 3 }])
+    assert r.folded?
+
+    fetched = Zizq.client.get_job(r.id)
+    merged = fetched.payload["args"][0]
+    assert_equal 3, merged.size, "expected duplicates collapsed, got: #{merged}"
+    assert_equal [1, 2, 3].sort, merged.map { |h| h["id"] }.sort
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_worker_receives_merged_payload
+    Zizq.enqueue(BatchedIntegrationJob, [{ id: 1 }], platform: "apple")
+    Zizq.enqueue(BatchedIntegrationJob, [{ id: 2 }], platform: "apple")
+    Zizq.enqueue(BatchedIntegrationJob, [{ id: 3 }], platform: "apple")
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 1,
+        queues: ["batched-integration"]
+      )
+
+    received = nil
+    BatchedIntegrationJob.mock_perform = ->(notifications, platform:) do
+      received = { notifications: notifications, platform: platform }
+      worker.stop
+    end
+
+    worker.run
+
+    refute_nil received, "worker did not receive the batched job"
+    assert_equal(
+      [{ "id" => 1 }, { "id" => 2 }, { "id" => 3 }],
+      received[:notifications]
+    )
+    assert_equal "apple", received[:platform]
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_activejob_batched_worker_round_trip
+    Zizq.configure do |c|
+      c.dispatcher = ActiveJob::QueueAdapters::ZizqAdapter::Dispatcher
+    end
+
+    BatchedActiveJobIntegrationJob.perform_later([{ id: 1 }], platform: "apple")
+    BatchedActiveJobIntegrationJob.perform_later(
+      [{ id: 2 }, { id: 3 }],
+      platform: "apple"
+    )
+
+    worker =
+      Zizq::Worker.new(
+        thread_count: 1,
+        fiber_count: 1,
+        queues: ["batched-activejob-integration"]
+      )
+
+    received = nil
+    BatchedActiveJobIntegrationJob.mock_perform = ->(
+      notifications,
+      platform:
+    ) do
+      received = { notifications: notifications, platform: platform }
+      worker.stop
+    end
+
+    worker.run
+
+    refute_nil received
+    # ActiveJob preserves symbol keys through its own
+    # serialize/deserialize (via `_aj_symbol_keys` markers), so the
+    # worker receives symbol-keyed hashes even though the raw
+    # payload on the wire uses string keys.
+    assert_equal([{ id: 1 }, { id: 2 }, { id: 3 }], received[:notifications])
+    assert_equal "apple", received[:platform]
+  rescue Zizq::ClientError => e
+    skip "Batched jobs require a Pro license" if e.status == 403
+  end
+
+  def test_batched_unique_combination_rejected
+    err =
+      assert_raises(Zizq::ClientError) do
+        Zizq.enqueue_raw(
+          queue: "batched-integration",
+          type: "BatchedIntegrationJob",
+          payload: {
+            "args" => [[]],
+            "kwargs" => {
+              "platform" => "apple"
+            }
+          },
+          unique_key: "some-key",
+          batch: {
+            key: "b1",
+            when: "true",
+            fold: "$existing | .args[0] += $new.args[0]"
+          }
+        )
+      end
+    skip "Batched jobs require a Pro license" if err.status == 403
+    assert_equal 400, err.status
+    assert_match(/unique_key.*batch|batch.*unique_key/i, err.message)
+  end
+
+  def test_batched_invalid_expression_rejected
+    err =
+      assert_raises(Zizq::ClientError) do
+        Zizq.enqueue_raw(
+          queue: "batched-integration",
+          type: "BatchedIntegrationJob",
+          payload: {
+            "args" => [[]],
+            "kwargs" => {
+              "platform" => "apple"
+            }
+          },
+          batch: {
+            key: "bad-expr",
+            when: ".[*]", # syntactically invalid
+            fold: "$existing | .args[0] += $new.args[0]"
+          }
+        )
+      end
+    skip "Batched jobs require a Pro license" if err.status == 403
+    assert_equal 422, err.status
   end
 end
