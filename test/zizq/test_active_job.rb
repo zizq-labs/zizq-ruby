@@ -221,6 +221,164 @@ class TestActiveJob < ZizqTestCase
     assert_equal direct_key, params.unique_key
   end
 
+  # --- Batched jobs (positional arg target) ---
+
+  # ActiveJob class batched by the first positional arg.
+  class PositionalBatchedActiveJob < ActiveJob::Base
+    extend Zizq::ActiveJobConfig
+
+    self.queue_name = "audit"
+    zizq_batched true, limit: 100
+
+    def perform(events, tenant_id:) = nil
+  end
+
+  def test_positional_batched_reader
+    assert PositionalBatchedActiveJob.zizq_batched
+    assert_equal 0, PositionalBatchedActiveJob.zizq_batch_arg
+    assert_nil PositionalBatchedActiveJob.zizq_batch_kwarg
+    assert_equal 100, PositionalBatchedActiveJob.zizq_batch_limit
+  end
+
+  def test_positional_batched_expressions
+    expr = PositionalBatchedActiveJob.zizq_batch_expressions
+    assert_equal(
+      "($existing.arguments[0] + $new.arguments[0]) | length <= 100",
+      expr[:when]
+    )
+    assert_equal("$existing | .arguments[0] += $new.arguments[0]", expr[:fold])
+  end
+
+  def test_positional_batched_key_ignores_batch_arg
+    key1 = PositionalBatchedActiveJob.zizq_batch_key([1, 2], tenant_id: 42)
+    key2 = PositionalBatchedActiveJob.zizq_batch_key([99, 100], tenant_id: 42)
+    assert_equal key1, key2
+  end
+
+  def test_positional_batched_key_differs_by_non_batch_arg
+    key1 = PositionalBatchedActiveJob.zizq_batch_key([1], tenant_id: 42)
+    key2 = PositionalBatchedActiveJob.zizq_batch_key([1], tenant_id: 43)
+    refute_equal key1, key2
+  end
+
+  def test_positional_batched_key_prefixed_with_class_name
+    key = PositionalBatchedActiveJob.zizq_batch_key([1], tenant_id: 42)
+    assert(
+      key.start_with?("TestActiveJob::PositionalBatchedActiveJob:"),
+      "expected class-name prefix, got: #{key}"
+    )
+  end
+
+  # --- Batched jobs (kwarg target) ---
+
+  # ActiveJob class batched by a specific kwarg.
+  class KwargBatchedActiveJob < ActiveJob::Base
+    extend Zizq::ActiveJobConfig
+
+    self.queue_name = "push"
+    zizq_batched true, kwarg: :device_ids, limit: 50
+
+    def perform(device_ids:, platform:) = nil
+  end
+
+  def test_kwarg_batched_expressions
+    expr = KwargBatchedActiveJob.zizq_batch_expressions
+    assert_equal(
+      "($existing.arguments[-1].device_ids + $new.arguments[-1].device_ids) | length <= 50",
+      expr[:when]
+    )
+    assert_equal(
+      "$existing | .arguments[-1].device_ids += $new.arguments[-1].device_ids",
+      expr[:fold]
+    )
+  end
+
+  def test_kwarg_batched_key_ignores_batch_kwarg
+    key1 =
+      KwargBatchedActiveJob.zizq_batch_key(device_ids: ["a"], platform: "apple")
+    key2 =
+      KwargBatchedActiveJob.zizq_batch_key(
+        device_ids: %w[b c],
+        platform: "apple"
+      )
+    assert_equal key1, key2
+  end
+
+  def test_kwarg_batched_key_differs_by_non_batch_kwarg
+    key1 =
+      KwargBatchedActiveJob.zizq_batch_key(device_ids: ["a"], platform: "apple")
+    key2 =
+      KwargBatchedActiveJob.zizq_batch_key(
+        device_ids: ["a"],
+        platform: "android"
+      )
+    refute_equal key1, key2
+  end
+
+  # --- Batched jobs: dedup / sorted ---
+
+  class DedupBatchedActiveJob < ActiveJob::Base
+    extend Zizq::ActiveJobConfig
+    self.queue_name = "q"
+    zizq_batched true, limit: 100, dedup: true
+    def perform(items) = nil
+  end
+
+  def test_dedup_batched_uses_unique_in_fold
+    expr = DedupBatchedActiveJob.zizq_batch_expressions
+    assert_equal(
+      "$existing | .arguments[0] = " \
+        "(.arguments[0] + $new.arguments[0] | unique)",
+      expr[:fold]
+    )
+  end
+
+  # --- Adapter round-trip: batch config on the wire ---
+
+  def test_adapter_populates_batch_config
+    job = PositionalBatchedActiveJob.new([1], tenant_id: 42)
+    req = adapter_request(job)
+    refute_nil req.batch
+    assert(
+      req.batch[:key].start_with?("TestActiveJob::PositionalBatchedActiveJob:")
+    )
+    assert_equal(
+      "($existing.arguments[0] + $new.arguments[0]) | length <= 100",
+      req.batch[:when]
+    )
+    assert_equal(
+      "$existing | .arguments[0] += $new.arguments[0]",
+      req.batch[:fold]
+    )
+  end
+
+  # Direct kwarg targets rely on Ruby's ruby2_keywords marker on
+  # `job.arguments` to forward the kwargs hash correctly through
+  # `*splat` — no manual reconstitution needed in the adapter.
+  def test_adapter_batch_key_stable_for_kwarg_target
+    job1 = KwargBatchedActiveJob.new(device_ids: ["a"], platform: "apple")
+    job2 = KwargBatchedActiveJob.new(device_ids: %w[b c], platform: "apple")
+    key1 = adapter_request(job1).batch[:key]
+    key2 = adapter_request(job2).batch[:key]
+    assert_equal key1, key2, "batch key should ignore the batched kwarg"
+
+    job3 = KwargBatchedActiveJob.new(device_ids: ["a"], platform: "android")
+    key3 = adapter_request(job3).batch[:key]
+    refute_equal key1, key3, "different non-batch kwargs → different key"
+  end
+
+  # --- Cross-check unique/batch mutual exclusion applies to AJ too ---
+
+  def test_activejob_rejects_batched_after_unique
+    assert_raises(ArgumentError) do
+      Class.new(ActiveJob::Base) do
+        extend Zizq::ActiveJobConfig
+        zizq_unique true
+        zizq_batched true, limit: 100
+      end
+    end
+  end
+
   # --- zizq_payload_filter ---
 
   def test_payload_filter_exact_match

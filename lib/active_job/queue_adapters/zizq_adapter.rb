@@ -104,6 +104,17 @@ module ActiveJob
           req.unique_while = klass.zizq_unique_scope
         end
 
+        if klass.respond_to?(:zizq_batched) && klass.zizq_batched
+          expr = klass.zizq_batch_expressions
+          if expr
+            req.batch = {
+              key: klass.zizq_batch_key(*job.arguments),
+              when: expr[:when],
+              fold: expr[:fold]
+            }
+          end
+        end
+
         req.retry_limit = klass.zizq_retry_limit if klass.respond_to?(
           :zizq_retry_limit
         ) && klass.zizq_retry_limit
