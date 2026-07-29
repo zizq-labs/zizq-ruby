@@ -21,7 +21,8 @@ API.
 * Configurable job retention policies
 * Recurring jobs (cron)
 * Job introspection and management APIs, with support for `jq` query filters
-* Unique jobs
+* Unique jobs (deduplicated)
+* Batched jobs (folded/merged)
 * Testing helpers
 
 ## Installation
