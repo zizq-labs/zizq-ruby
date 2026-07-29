@@ -167,7 +167,7 @@ Both arguments are optional.
 > # {:completed=>172800.0, :dead=>2592000.0}
 > ```
 
-#### Specifying Job Uniqueness
+#### Setting Up Unique Jobs
 
 > [!TIP]
 > This section of the documentation deals mostly with how to define unique jobs.
@@ -276,6 +276,154 @@ override this method in your class:
 > MyApp::MyJob.zizq_unique_key("Bill", "Ben", example: 99)
 > # "MyApp::MyJob:bcd08012e829243d82e953a8140ffb58aeeb839e545ee1547a894bb2c9ba1b8f"
 > ```
+
+#### Setting Up Batched Jobs
+
+> [!TIP]
+> This section of the documentation deals mostly with how to define batched
+> jobs. See [Batched Jobs](./batched-jobs.md) for more detailed documentation
+> on using this feature.
+
+This requires a pro license on the server. Zizq is able to fold successive
+enqueues of the same job into a single pending job's payload, so downstream
+services that accept batched calls (push notification providers, bulk email
+APIs) receive one call per batch instead of one per enqueue. Use
+`zizq_batched` to enable batching for a job.
+
+At minimum you must supply a `limit:` — the maximum combined length of the
+batched value before the current batch is sealed and a new one starts.
+
+> Ruby:
+>
+> ``` ruby
+> class SendPushNotifications
+>   include Zizq::Job
+>
+>   zizq_batched true, limit: 100
+>
+>   def perform(notifications, platform:)
+>     # notifications is an Array, batched across multiple enqueue calls
+>   end
+> end
+> ```
+
+By default the first positional argument is the _batch target_ — the value
+that gets accumulated across enqueues. The remaining arguments participate in
+the batch key, so enqueues with the same `platform:` fold together while
+enqueues with a different `platform:` end up in separate batches.
+
+You can target a specific positional arg or a specific keyword arg:
+
+> Ruby:
+>
+> ``` ruby
+> # Target the third positional arg (index 2).
+> zizq_batched true, arg: 2, limit: 100
+>
+> # Target the :notifications keyword arg.
+> zizq_batched true, kwarg: :notifications, limit: 100
+> ```
+
+Options available on `zizq_batched`:
+
+<table>
+    <thead>
+        <tr>
+            <th>Option</th>
+            <th>Description</th>
+        </tr>
+    </thead>
+    <tbody>
+        <tr>
+            <td><code>limit:</code></td>
+            <td>
+                Required. Maximum combined length of the batched value before
+                the batch is sealed and a new one starts.
+            </td>
+        </tr>
+        <tr>
+            <td><code>arg:</code></td>
+            <td>
+                Positional argument index to batch on. Defaults to
+                <code>0</code>.
+            </td>
+        </tr>
+        <tr>
+            <td><code>kwarg:</code></td>
+            <td>
+                Keyword argument name to batch on. Mutually exclusive with
+                <code>arg:</code>.
+            </td>
+        </tr>
+        <tr>
+            <td><code>dedup:</code></td>
+            <td>
+                When <code>true</code>, deduplicates entries within the batch
+                (via jq's <code>unique</code>, which also sorts).
+            </td>
+        </tr>
+        <tr>
+            <td><code>sorted:</code></td>
+            <td>
+                When <code>true</code>, sorts entries within the batch.
+                Ignored when <code>dedup:</code> is also set.
+            </td>
+        </tr>
+    </tbody>
+</table>
+
+Calling `zizq_batched false` disables batching for that class (useful in a
+subclass).
+
+Batched jobs cannot be combined with `zizq_unique` — declaring both on the
+same class raises `ArgumentError`, and the server independently rejects the
+combination with `400 Bad Request` at enqueue time.
+
+##### Batch Keys
+
+The batch key is computed by hashing all job arguments _except_ the batch
+target, via `zizq_batch_key`. It's the same primitive as `zizq_unique_key`
+with the batch target excluded.
+
+> Ruby:
+>
+> ``` ruby
+> SendPushNotifications.zizq_batch_key([n1], platform: 'apple')
+> # "SendPushNotifications:8f0c...b3"
+> ```
+
+Override the class method to customize — for example, to batch by tenant
+regardless of the other arguments:
+
+> Ruby:
+>
+> ``` ruby
+> class SendPushNotifications
+>   include Zizq::Job
+>   zizq_batched true, limit: 100
+>
+>   def self.zizq_batch_key(notifications, tenant_id:, platform:)
+>     "#{name}:tenant-#{tenant_id}"
+>   end
+>
+>   def perform(notifications, tenant_id:, platform:)
+>     # ...
+>   end
+> end
+> ```
+
+##### Fold Expressions
+
+Zizq applies your batch configuration server-side using two `jq` expressions
+— a `when` predicate deciding whether to fold and a `fold` reducer producing
+the merged payload. The Ruby client generates these automatically from your
+`zizq_batched` declaration, targeting `.args[N]` or `.kwargs.NAME` based on
+which target you selected.
+
+For advanced cases you can override `zizq_batch_expressions` to return a
+`{when:, fold:}` hash of raw `jq` expressions. The expressions run with
+`$existing` bound to the current pending payload and `$new` bound to the
+incoming payload. See [Batched Jobs](./batched-jobs.md) for the full details.
 
 ### Dynamic Job Configuration { #dynamic-config }
 

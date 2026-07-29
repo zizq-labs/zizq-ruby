@@ -10,7 +10,7 @@ through RubyGems. Add it to your application's `Gemfile`.
 > Gemfile:
 >
 > ```ruby
-> gem 'zizq', '~> 0.5.0'
+> gem 'zizq', '~> 0.6.0'
 > ```
 
 Or install it manually:
@@ -18,7 +18,7 @@ Or install it manually:
 > Command:
 >
 > ```bash
-> $ gem install zizq -v 0.5.0
+> $ gem install zizq -v 0.6.0
 > ```
 
 ## Versioning
