@@ -1,29 +1,32 @@
 source "https://rubygems.org"
 
 # Sinatra modular app + middleware bundle.
-gem "sinatra",          "~> 4.0"
-gem "rackup",           "~> 2.2"
-gem "puma",             "~> 7.2"
+gem "sinatra", "~> 4.0"
+gem "rackup", "~> 2.2"
+gem "puma", "~> 7.2"
 
 # Sequel + sqlite for storage / migrations.
-gem "sequel",           "~> 5.85"
-gem "sqlite3",          ">= 2.1"
+gem "sequel", "~> 5.85"
+gem "sqlite3", ">= 2.1"
+
+# Payload generation and parsing.
+gem "json", "~> 2.19.9"
 
 # Zizq client from local source for the examples directory.
-gem "zizq",             path: "../../.."
+gem "zizq", path: "../../.."
 
 # Outbound HTTP for the URL prober + webhook delivery.
-gem "faraday",          ">= 2.14.3", "< 3.0"
+gem "faraday", ">= 2.14.3", "< 3.0"
 gem "faraday-follow_redirects", "~> 0.3"
 
 # Sitemap parsing.
-gem "nokogiri",         ">= 1.19.4", "< 2.0"
+gem "nokogiri", ">= 1.19.4", "< 2.0"
 
 # `rake db:migrate` etc.
-gem "rake",             "~> 13.0"
+gem "rake", "~> 13.0"
 
 # Env files for ZIZQ_URL / PORT / WEBHOOK_URL overrides.
-gem "dotenv",           "~> 3.1"
+gem "dotenv", "~> 3.1"
 
 group :development do
   # Boots web + (optionally) zizq via `bin/dev`.
@@ -31,8 +34,8 @@ group :development do
 end
 
 group :test do
-  gem "minitest",       "~> 5.25"
-  gem "rack-test",      "~> 2.1"
-  gem "webmock",        "~> 3.26"
-  gem "timecop",        "~> 0.9"
+  gem "minitest", "~> 5.25"
+  gem "rack-test", "~> 2.1"
+  gem "webmock", "~> 3.26"
+  gem "timecop", "~> 0.9"
 end
