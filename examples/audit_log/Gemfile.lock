@@ -1,7 +1,7 @@
 PATH
   remote: ../../..
   specs:
-    zizq (0.5.0)
+    zizq (0.6.0)
       async-http (~> 0.82)
       msgpack (~> 1.7)
 
@@ -69,7 +69,7 @@ GEM
     io-endpoint (0.17.2)
     io-event (1.16.1)
     io-stream (0.13.0)
-    json (2.19.5)
+    json (2.19.9)
     localhost (1.8.0)
       bake
     logger (1.7.0)
@@ -148,6 +148,7 @@ DEPENDENCIES
   dotenv (~> 3.1)
   falcon (~> 0.51)
   foreman
+  json (~> 2.19.9)
   minitest (~> 5.25)
   rack-test (~> 2.1)
   rackup (~> 2.2)
