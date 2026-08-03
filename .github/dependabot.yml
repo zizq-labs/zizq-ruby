@@ -17,7 +17,11 @@
 version: 2
 updates:
   - package-ecosystem: "bundler"
-    directory: "/"
+    directories:
+      - "/"
+      - "/examples/audit_log"
+      - "/examples/uptime_monitor_sinatra"
+      - "/examples/uptime_monitor_rails"
     schedule:
       interval: "weekly"
       day: "monday"
