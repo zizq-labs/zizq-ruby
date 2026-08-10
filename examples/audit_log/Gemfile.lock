@@ -107,7 +107,7 @@ GEM
     samovar (2.4.1)
       console (~> 1.0)
       mapping (~> 1.0)
-    sequel (5.106.0)
+    sequel (5.107.0)
       bigdecimal
     sinatra (4.2.1)
       logger (>= 1.6.0)
