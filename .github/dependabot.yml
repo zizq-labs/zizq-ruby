@@ -14,14 +14,21 @@
 # ecosystem + directory must be unique — so we accept that Gemfile
 # manifest constraints don't auto-widen. Security advisories override
 # this and PR regardless via Dependabot security updates.
+#
+# The example apps under `examples/` have their own lockfiles and
+# are NOT covered by the root entry, so `/examples/*` matches them
+# all. This is a glob deliberately: a directory missing from the
+# list is invisible to version updates *and* to the automatic PRs
+# that fix a security advisory, so an alert gets raised and then
+# never patched. Adding an example should not require remembering
+# to edit this file.
 version: 2
 updates:
   - package-ecosystem: "bundler"
     directories:
       - "/"
-      - "/examples/audit_log"
-      - "/examples/uptime_monitor_sinatra"
-      - "/examples/uptime_monitor_rails"
+      # Every example app with its own manifest.
+      - "/examples/*"
     schedule:
       interval: "weekly"
       day: "monday"
