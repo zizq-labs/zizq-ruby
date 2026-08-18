@@ -1,7 +1,7 @@
 PATH
   remote: ../../..
   specs:
-    zizq (0.6.0)
+    zizq (0.7.0)
       async-http (~> 0.82)
       msgpack (~> 1.7)
 
@@ -90,15 +90,17 @@ GEM
       io-event (~> 1.11)
     async-container (0.38.0)
       async (~> 2.44)
-    async-http (0.99.0)
-      async (>= 2.35.1)
+    async-http (0.95.1)
+      async (>= 2.10.2)
       async-pool (~> 0.11)
       io-endpoint (~> 0.14)
-      io-stream (~> 0.14)
-      protocol-http (~> 0.66)
+      io-stream (~> 0.6)
+      metrics (~> 0.12)
+      protocol-http (~> 0.62)
       protocol-http1 (~> 0.39)
       protocol-http2 (~> 0.26)
       protocol-url (~> 0.2)
+      traces (~> 0.10)
     async-http-cache (0.4.6)
       async-http (~> 0.56)
     async-pool (0.11.2)
@@ -136,10 +138,10 @@ GEM
     drb (2.2.3)
     erb (6.0.4)
     erubi (1.13.1)
-    falcon (0.57.0)
+    falcon (0.55.6)
       async
       async-container (~> 0.20)
-      async-http (~> 0.97)
+      async-http (~> 0.75)
       async-http-cache (~> 0.4)
       async-service (~> 0.19)
       async-utilization (~> 0.3)
@@ -184,6 +186,7 @@ GEM
       net-pop
       net-smtp
     marcel (1.2.1)
+    metrics (0.15.0)
     mini_mime (1.1.5)
     minitest (6.0.6)
       drb (~> 2.0)
@@ -302,6 +305,7 @@ GEM
     stringio (3.2.0)
     thor (1.5.0)
     timeout (0.6.1)
+    traces (0.18.2)
     tsort (0.2.0)
     tzinfo (2.0.6)
       concurrent-ruby (~> 1.0)

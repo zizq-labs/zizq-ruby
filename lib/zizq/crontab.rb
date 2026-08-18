@@ -22,7 +22,11 @@ module Zizq
   #
   # By default schedules operate in the system time zone of the Zizq server
   # but an explicit IANA timezone name can be specified when defining the
-  # Crontab.
+  # Crontab. It applies to every entry that does not specify one of its own,
+  # and is stored on the server as the schedule's own timezone, so it is still
+  # there when the schedule is read back.
+  #
+  # A schedule timezone requires Zizq 0.7.0 or newer on the server.
   class Crontab
     # The name of the cron group that this schedule is backed by.
     attr_reader :name #: String
@@ -33,6 +37,9 @@ module Zizq
     # and only advances the timer.
     attr_writer :paused #: bool?
 
+    # The timezone in which entries without one of their own are processed.
+    attr_writer :timezone #: String?
+
     # Initialize the Crontab with the given group name.
     #
     # @rbs name: String
@@ -42,6 +49,7 @@ module Zizq
       @name = name #: String
       @entries = {} #: Hash[String, Zizq::CrontabEntry]
       @paused = false #: bool?
+      @timezone = nil #: String?
       @paused_at = nil #: Float?
       @resumed_at = nil #: Float?
     end
@@ -64,6 +72,7 @@ module Zizq
     def clear #: () -> self
       @entries = {}
       @paused = nil
+      @timezone = nil
       @paused_at = nil
       @resumed_at = nil
       @materialized = false
@@ -102,6 +111,14 @@ module Zizq
     # Alias of #paused.
     def paused? = paused #: () -> bool?
 
+    # Return the timezone applied to entries that do not specify their own.
+    #
+    # Nil means entries fall back to the system timezone of the Zizq server.
+    def timezone #: () -> String?
+      materialize
+      @timezone
+    end
+
     # Return the timestamp at which this Crontab schedule was last paused.
     def paused_at #: () -> Float?
       materialize
@@ -129,6 +146,10 @@ module Zizq
     # This is equivalent to calling `Zizq.define_crontab` and is idempotent
     # when given the same schedule more than once.
     #
+    # The timezone is sent as the schedule's own, rather than being copied
+    # onto each entry, so it survives a later read of the schedule. Entries
+    # that specify their own timezone keep it.
+    #
     # @rbs ?timezone: String?
     # @rbs ?paused: bool?
     # @rbs &block: (Zizq::CrontabBuilder) -> void
@@ -136,12 +157,16 @@ module Zizq
     def redefine(timezone: nil, paused: nil, &block)
       @building = true
 
-      yield CrontabBuilder.new(self, timezone:, paused:)
+      builder = CrontabBuilder.new(self, timezone:, paused:)
+      yield builder
 
       materialize_with(
         Zizq.client.replace_cron_group(
           name,
           paused:,
+          # Read back off the builder, so assigning `cron.timezone =` inside
+          # the block works the same as passing it in.
+          timezone: builder.timezone,
           entries: entries.values.map(&:to_params)
         )
       )
@@ -221,6 +246,7 @@ module Zizq
     # @rbs return: self
     def materialize_with(result)
       @paused = result.paused?
+      @timezone = result.timezone
       @paused_at = result.paused_at
       @resumed_at = result.resumed_at
 
@@ -242,6 +268,7 @@ module Zizq
         self,
         result.name,
         result.expression,
+        timezone: result.timezone,
         job:
           EnqueueRequest.new(
             type: result.job.type,

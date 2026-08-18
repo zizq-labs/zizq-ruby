@@ -11,6 +11,10 @@ module Zizq
       def name = @data["name"] #: () -> String
       def paused = @data["paused"] #: () -> bool
       def paused? = paused #: () -> bool
+
+      # IANA timezone applied to entries that do not specify their own.
+      def timezone = @data["timezone"] #: () -> String?
+
       def paused_at = ms_to_seconds(@data["paused_at"]) #: () -> Float?
       def resumed_at = ms_to_seconds(@data["resumed_at"]) #: () -> Float?
 

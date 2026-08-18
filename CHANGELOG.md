@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.7.0 (Unreleased)
+
+- **Schedule-level cron timezones are now stored on the server.** The
+  `timezone:` passed to `Zizq.define_crontab` is sent as the schedule's
+  own timezone instead of being copied onto every entry as it was
+  before. The server applies it to each entry that does not specify one
+  of its own, so what actually runs is unchanged — but the timezone now
+  survives a read of the schedule:
+
+      Zizq.define_crontab("my_cron", timezone: "Europe/London") do |cron|
+        cron.define_entry("digest", "0 9 * * *").enqueue(DigestJob)
+      end
+
+      Zizq.crontab("my_cron").timezone #=> "Europe/London"
+
+  An entry passing its own `timezone:` still overrides the schedule's.
+  `Zizq::Crontab#timezone` is new, and can also be assigned inside the
+  `define_crontab` block as `cron.timezone = "Europe/London"`.
+
+  This requires **Zizq 0.7.0 or newer** on the server, which a 0.7.0
+  client already does. Note that installing a schedule from a 0.7.0
+  client over one written by an older client clears the per-entry
+  timezone copies that the older client wrote — the effective timezone
+  is unchanged, but an *older* client reading that schedule back will
+  no longer see a timezone anywhere, since it does not know about the
+  schedule-level field.
+
+- Fixed `Zizq.crontab("...").entries` dropping each entry's `timezone`.
+  Reading a schedule built the entries without it, so
+  `entry.timezone` was always `nil` however the entry had been
+  defined — and a read-then-redefine would have silently dropped it.
+  Fetching a single entry with `Zizq.crontab("...").entry("...")` was
+  unaffected.
+
+
 ## 0.6.0
 
 - **Batched jobs** (Pro) — enable server-side folding of successive

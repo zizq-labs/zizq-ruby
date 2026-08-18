@@ -601,6 +601,86 @@ class IntegrationTest < Minitest::Test
     end
   end
 
+  # The schedule's timezone is the schedule's, not a copy smeared over every
+  # entry, so a refetch still reports it and entries that chose their own
+  # keep it.
+  def test_crontab_timezone_round_trips
+    Zizq.define_crontab(
+      "integration-test",
+      timezone: "Australia/Melbourne"
+    ) do |cron|
+      cron.define_entry("inherits", "0 9 * * *").enqueue_raw(
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
+      )
+      cron.define_entry("scoped", "0 9 * * *", timezone: "UTC").enqueue_raw(
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
+      )
+    end
+
+    refetched = Zizq.crontab("integration-test")
+
+    assert_equal "Australia/Melbourne", refetched.timezone
+    assert_nil refetched.entry("inherits").timezone
+    assert_equal "UTC", refetched.entry("scoped").timezone
+
+    # And the schedule's timezone is what the inheriting entry actually runs
+    # in: 9am in Melbourne is not 9am in UTC.
+    assert_operator refetched.entry("inherits").next_enqueue_at,
+                    :!=,
+                    refetched.entry("scoped").next_enqueue_at
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
+  ensure
+    begin
+      Zizq.crontab("integration-test").delete!
+    rescue StandardError
+      nil
+    end
+  end
+
+  # A redefine replaces the schedule whole, so a timezone left out goes.
+  def test_crontab_redefine_without_timezone_clears_it
+    Zizq.define_crontab(
+      "integration-test",
+      timezone: "Australia/Melbourne"
+    ) do |cron|
+      cron.define_entry("a", "0 9 * * *").enqueue_raw(
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
+      )
+    end
+
+    assert_equal "Australia/Melbourne",
+                 Zizq.crontab("integration-test").timezone
+
+    Zizq.define_crontab("integration-test") do |cron|
+      cron.define_entry("a", "0 9 * * *").enqueue_raw(
+        type: "cron_test",
+        queue: "cron-integration",
+        payload: {
+        }
+      )
+    end
+
+    assert_nil Zizq.crontab("integration-test").timezone
+  rescue Zizq::ClientError => e
+    skip "Cron scheduling requires a Pro license" if e.status == 403
+  ensure
+    begin
+      Zizq.crontab("integration-test").delete!
+    rescue StandardError
+      nil
+    end
+  end
+
   def test_crontab_redefine_removes_absent_entries
     # Define with three entries.
     Zizq.define_crontab("integration-test") do |cron|

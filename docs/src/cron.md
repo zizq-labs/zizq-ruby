@@ -59,6 +59,31 @@ Both 6-field (with seconds) and standard 5-field cron expressions are accepted.
 > end
 > ```
 
+### Timezones
+
+The `timezone:` given to `Zizq.define_crontab` applies to every entry that does
+not specify one of its own, so a schedule that runs in a single timezone says
+so once. An entry passing its own `timezone:` overrides it, which is how one
+schedule can hold entries in several zones.
+
+With neither set, expressions are evaluated in the system timezone of the Zizq
+server.
+
+The schedule's timezone is stored on the server as the schedule's own rather
+than being copied onto each entry, so it is still there when the schedule is
+read back:
+
+> Ruby:
+>
+> ``` ruby
+> Zizq.crontab("my_cron").timezone #=> "Europe/London"
+> ```
+
+> [!NOTE]
+> A schedule-level timezone requires Zizq 0.7.0 or newer on the server. Against
+> an older server it is ignored, and entries relying on it fall back to the
+> server's system timezone.
+
 The Zizq server will push jobs to the queue and advance the schedule
 atomically. There is no risk that a job will be enqueued twice for the same
 schedule tick. However, because Zizq simply enqueues the job without waiting

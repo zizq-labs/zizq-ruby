@@ -66,6 +66,35 @@ class TestCrontab < ZizqTestCase
     assert_equal "e1", tab.entries["e1"].name
   end
 
+  def test_crontab_reads_the_schedule_timezone
+    stub_request(:get, "#{URL}/crons/default").to_return(
+      json_response(CRON_GROUP.merge("timezone" => "Australia/Melbourne"))
+    )
+
+    assert_equal "Australia/Melbourne", Zizq.crontab("default").timezone
+  end
+
+  def test_crontab_timezone_is_nil_when_the_schedule_has_none
+    stub_request(:get, "#{URL}/crons/default").to_return(
+      json_response(CRON_GROUP)
+    )
+
+    assert_nil Zizq.crontab("default").timezone
+  end
+
+  # An entry's own timezone is part of what it is, so reading a schedule has
+  # to bring it back — otherwise a read-and-rewrite silently drops it.
+  def test_crontab_entries_keep_their_own_timezone
+    group =
+      CRON_GROUP.merge(
+        "entries" => [CRON_ENTRY.merge("timezone" => "Europe/Rome")]
+      )
+
+    stub_request(:get, "#{URL}/crons/default").to_return(json_response(group))
+
+    assert_equal "Europe/Rome", Zizq.crontab("default").entries["e1"].timezone
+  end
+
   def test_crontab_materializes_only_once
     stub_request(:get, "#{URL}/crons/default").to_return(
       json_response(CRON_GROUP)
@@ -142,15 +171,61 @@ class TestCrontab < ZizqTestCase
     assert_equal 1, tab.entries.size
   end
 
+  # Sent as the schedule's own timezone, not copied onto each entry, so a
+  # schedule read back later still reports which timezone it runs in.
   def test_define_crontab_with_timezone
     stub_request(:put, "#{URL}/crons/default")
       .with do |req|
         body = JSON.parse(req.body)
-        body["entries"][0]["timezone"] == "Australia/Melbourne"
+        body["timezone"] == "Australia/Melbourne" &&
+          !body["entries"][0].key?("timezone")
+      end
+      .to_return(
+        json_response(CRON_GROUP.merge("timezone" => "Australia/Melbourne"))
+      )
+
+    tab =
+      Zizq.define_crontab("default", timezone: "Australia/Melbourne") do |cron|
+        cron.define_entry("e1", "* * * * *").enqueue(CronTestJob, 1)
+      end
+
+    assert_equal "Australia/Melbourne", tab.timezone
+  end
+
+  def test_define_crontab_entry_timezone_overrides_the_schedule
+    stub_request(:put, "#{URL}/crons/default")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["timezone"] == "Australia/Melbourne" &&
+          body["entries"][0]["timezone"] == "Europe/Rome"
       end
       .to_return(json_response(CRON_GROUP))
 
     Zizq.define_crontab("default", timezone: "Australia/Melbourne") do |cron|
+      cron.define_entry("e1", "* * * * *", timezone: "Europe/Rome").enqueue(
+        CronTestJob,
+        1
+      )
+    end
+  end
+
+  def test_define_crontab_timezone_can_be_assigned_in_the_block
+    stub_request(:put, "#{URL}/crons/default")
+      .with { |req| JSON.parse(req.body)["timezone"] == "Europe/Rome" }
+      .to_return(json_response(CRON_GROUP))
+
+    Zizq.define_crontab("default") do |cron|
+      cron.timezone = "Europe/Rome"
+      cron.define_entry("e1", "* * * * *").enqueue(CronTestJob, 1)
+    end
+  end
+
+  def test_define_crontab_without_timezone_sends_none
+    stub_request(:put, "#{URL}/crons/default")
+      .with { |req| !JSON.parse(req.body).key?("timezone") }
+      .to_return(json_response(CRON_GROUP))
+
+    Zizq.define_crontab("default") do |cron|
       cron.define_entry("e1", "* * * * *").enqueue(CronTestJob, 1)
     end
   end

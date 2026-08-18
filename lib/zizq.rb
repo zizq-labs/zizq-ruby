@@ -163,7 +163,24 @@ module Zizq
     #
     # By default schedules operate in the system time zone of the Zizq server
     # but an explicit IANA timezone name can be specified when defining the
-    # Crontab.
+    # Crontab. It applies to every entry that does not specify one of its own,
+    # so a schedule that runs in one timezone says so once:
+    #
+    #   Zizq.define_crontab("example", timezone: "Europe/Rome") do |cron|
+    #     # ...
+    #   end
+    #
+    # An individual entry can still override it:
+    #
+    #   cron.define_entry(
+    #     "melbourne_digest",
+    #     "0 9 * * *",
+    #     timezone: "Australia/Melbourne"
+    #   ).enqueue(DigestJob)
+    #
+    # The schedule's timezone is stored on the Zizq server as the schedule's
+    # own, so `Zizq.crontab("example").timezone` still reports it later. This
+    # requires Zizq 0.7.0 or newer on the server.
     #
     # This method sends exactly *one* request to the Zizq server upon
     # completion of the block. Any existing entries are retained. Any new
