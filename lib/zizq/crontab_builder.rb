@@ -14,6 +14,10 @@ module Zizq
     attr_reader :target #: Zizq::Crontab
 
     # Optional timezone to be applied to all entries by default.
+    #
+    # This is sent to the server as the schedule's own timezone rather than
+    # being copied onto each entry, so reading the schedule back still says
+    # which timezone it runs in. Entries that specify their own override it.
     attr_accessor :timezone #: String?
 
     # Initialize the builder with the given Crontab instance.
@@ -34,12 +38,17 @@ module Zizq
     # entry with the same name exist, this entry replaces that entry. If the
     # entry is the same as the original, the result is idempotent.
     #
+    # An entry without a timezone of its own runs in the schedule's, which the
+    # server applies. It is deliberately not copied onto the entry here — an
+    # entry that carried a copy would look like it had chosen that timezone
+    # for itself, and would not follow the schedule if it later changed.
+    #
     # @rbs name: String
     # @rbs expression: String
     # @rbs timezone: String?
     # @rbs paused: bool?
     # @rbs return: Zizq::CrontabEntryBuilder
-    def define_entry(name, expression, timezone: self.timezone, paused: nil)
+    def define_entry(name, expression, timezone: nil, paused: nil)
       CrontabEntryBuilder.new(target, name, expression, timezone:, paused:)
     end
   end

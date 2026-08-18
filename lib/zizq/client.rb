@@ -541,13 +541,19 @@ module Zizq
     # Entries not present in the request are removed. Entries with unchanged
     # expressions preserve their scheduling state.
     #
+    # The timezone applies to every entry that does not specify one of its
+    # own. Since this replaces the group in full, omitting it clears whatever
+    # the group had.
+    #
     # @rbs name: String
     # @rbs paused: bool?
+    # @rbs timezone: String?
     # @rbs entries: Array[Zizq::cron_entry_params]
     # @rbs return: Resources::CronGroup
-    def replace_cron_group(name, paused: nil, entries: [])
+    def replace_cron_group(name, paused: nil, timezone: nil, entries: [])
       body = {
         paused:,
+        timezone:,
         entries: entries.map { |entry| build_cron_entry(**entry) }
       }.compact
       response = put("/crons/#{enc(name)}", body)
