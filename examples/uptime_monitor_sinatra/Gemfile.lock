@@ -136,7 +136,7 @@ GEM
     timecop (0.9.11)
     traces (0.18.2)
     uri (1.1.1)
-    webmock (3.26.2)
+    webmock (3.26.3)
       addressable (>= 2.8.0)
       crack (>= 0.3.2)
       hashdiff (>= 0.4.0, < 2.0.0)
