@@ -13,6 +13,7 @@ module Zizq
     autoload :JobPage, "zizq/resources/job_page"
     autoload :ErrorPage, "zizq/resources/error_page"
     autoload :ErrorEnumerator, "zizq/resources/error_enumerator"
+    autoload :Budget, "zizq/resources/budget"
     autoload :CronGroup, "zizq/resources/cron_group"
     autoload :CronEntry, "zizq/resources/cron_entry"
   end

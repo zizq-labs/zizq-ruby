@@ -60,6 +60,146 @@ class TestClient < ZizqTestCase
     assert_equal "SendEmail", result.type
   end
 
+  # Durations are fractional seconds at every public entry point; the
+  # conversion to the integer milliseconds the server wants happens
+  # here, at the wire boundary.
+  def test_enqueue_converts_backoff_and_retention_to_ms
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        # exponent stays a float — it's a ratio, not a duration.
+        body["backoff"] ==
+          { "exponent" => 2.0, "base_ms" => 1500, "jitter_ms" => 250 } &&
+          body["retention"] ==
+            { "completed_ms" => 60_000, "dead_ms" => 3_600_000 }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      backoff: {
+        exponent: 2.0,
+        base: 1.5,
+        jitter: 0.25
+      },
+      retention: {
+        completed: 60.0,
+        dead: 3600.0
+      }
+    )
+  end
+
+  # An absent retention field stays absent rather than being sent as
+  # zero, which would tell the server to discard immediately.
+  def test_enqueue_omits_unset_retention_fields
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        JSON.parse(req.body)["retention"] == { "dead_ms" => 90_000 }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      retention: {
+        dead: 90.0
+      }
+    )
+  end
+
+  # The bulk path builds each job's body separately, so it converts
+  # separately too.
+  def test_enqueue_bulk_converts_backoff_and_retention_to_ms
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with do |req|
+        job = JSON.parse(req.body)["jobs"].first
+        job["backoff"] ==
+          { "exponent" => 2.0, "base_ms" => 1500, "jitter_ms" => 250 } &&
+          job["retention"] == { "completed_ms" => 60_000 }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "jobs" => [{ "id" => "abc123" }] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue_bulk(
+      jobs: [
+        {
+          queue: "emails",
+          type: "SendEmail",
+          payload: {
+          },
+          backoff: {
+            exponent: 2.0,
+            base: 1.5,
+            jitter: 0.25
+          },
+          retention: {
+            completed: 60.0
+          }
+        }
+      ]
+    )
+  end
+
+  # A cron entry's job template goes through the same boundary.
+  def test_put_cron_group_converts_backoff_in_the_job_template
+    stub_request(:put, "#{URL}/crons/nightly")
+      .with do |req|
+        job = JSON.parse(req.body)["entries"].first["job"]
+        job["backoff"] ==
+          { "exponent" => 2.0, "base_ms" => 1500, "jitter_ms" => 250 }
+      end
+      .to_return(
+        status: 200,
+        body: JSON.generate({ "name" => "nightly", "entries" => [] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.replace_cron_group(
+      "nightly",
+      entries: [
+        {
+          name: "digest",
+          expression: "0 9 * * *",
+          job: {
+            queue: "emails",
+            type: "Digest",
+            payload: {
+            },
+            backoff: {
+              exponent: 2.0,
+              base: 1.5,
+              jitter: 0.25
+            }
+          }
+        }
+      ]
+    )
+  end
+
   def test_enqueue_msgpack
     job_response = {
       "id" => "abc123",
@@ -1539,6 +1679,454 @@ class TestClient < ZizqTestCase
   }.freeze
 
   CRON_ENTRY_RESPONSE = CRON_GROUP_RESPONSE["entries"][0].freeze
+
+  BUDGET_RESPONSE = {
+    "key" => "emails",
+    "allocation" => 100,
+    "strategy" => {
+      "type" => "time_based",
+      "duration_ms" => 60_000,
+      "burst" => 5
+    },
+    "created_at" => 1_700_000_000_000,
+    "updated_at" => 1_700_000_060_000
+  }.freeze
+
+  def test_list_budgets
+    stub_request(:get, "#{URL}/budgets").to_return(
+      status: 200,
+      body: JSON.generate({ "budgets" => [BUDGET_RESPONSE] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.list_budgets
+    assert_equal 1, result.size
+    assert_instance_of Zizq::Resources::Budget, result[0]
+    assert_equal "emails", result[0].key
+  end
+
+  def test_list_budgets_when_empty
+    stub_request(:get, "#{URL}/budgets").to_return(
+      status: 200,
+      body: JSON.generate({ "budgets" => [] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_empty @json_client.list_budgets
+  end
+
+  def test_get_budget
+    stub_request(:get, "#{URL}/budgets/emails").to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.get_budget("emails")
+    assert_instance_of Zizq::Resources::Budget, result
+    assert_equal "emails", result.key
+    assert_equal 100, result.allocation
+    assert result.time_based?
+    assert_equal :time_based, result.strategy_type
+    assert_in_delta 60.0, result.duration
+    assert_equal 5, result.burst
+    # The burst is the ceiling a cost has to fit inside, not the
+    # allocation.
+    assert_equal 5, result.capacity
+  end
+
+  # A budget that has been read composes straight back into the shape
+  # `put_budget` takes, which is the point of `strategy_type` and
+  # `duration` reading back in the form they were written.
+  def test_get_budget_strategy_round_trips_into_put_budget
+    stub_request(:get, "#{URL}/budgets/emails").to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+    stub_request(:put, "#{URL}/budgets/emails").with(
+      body:
+        JSON.generate(
+          {
+            allocation: 200,
+            strategy: {
+              type: "time_based",
+              duration_ms: 60_000,
+              burst: 5
+            }
+          }
+        )
+    ).to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    budget = @json_client.get_budget("emails")
+    assert_equal(
+      { type: :time_based, duration: 60.0, burst: 5 },
+      budget.strategy
+    )
+
+    @json_client.put_budget(
+      "emails",
+      allocation: budget.allocation * 2,
+      strategy: budget.strategy
+    )
+  end
+
+  # An unset burst is left out rather than sent as nil, since absent and
+  # explicitly cleared mean the same thing on the way in.
+  def test_budget_strategy_omits_an_unset_burst
+    budget =
+      Zizq::Resources::Budget.new(
+        @json_client,
+        {
+          "key" => "emails",
+          "allocation" => 100,
+          "strategy" => {
+            "type" => "time_based",
+            "duration_ms" => 60_000
+          }
+        }
+      )
+
+    assert_equal({ type: :time_based, duration: 60.0 }, budget.strategy)
+  end
+
+  # `while_in_flight` has no clock, so its strategy carries the kind
+  # alone.
+  def test_budget_strategy_for_while_in_flight
+    budget =
+      Zizq::Resources::Budget.new(
+        @json_client,
+        {
+          "key" => "mutex",
+          "allocation" => 1,
+          "strategy" => {
+            "type" => "while_in_flight"
+          }
+        }
+      )
+
+    assert_equal({ type: :while_in_flight }, budget.strategy)
+  end
+
+  def test_get_budget_raises_when_missing
+    stub_request(:get, "#{URL}/budgets/nope").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "budget not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_raises(Zizq::NotFoundError) { @json_client.get_budget("nope") }
+  end
+
+  def test_create_budget
+    stub_request(:post, "#{URL}/budgets/emails").with(
+      body:
+        JSON.generate(
+          {
+            allocation: 100,
+            strategy: {
+              type: "time_based",
+              duration_ms: 60_000
+            }
+          }
+        )
+    ).to_return(
+      status: 201,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result =
+      @json_client.create_budget(
+        "emails",
+        allocation: 100,
+        strategy: {
+          type: :time_based,
+          duration: 60
+        }
+      )
+    assert_instance_of Zizq::Resources::Budget, result
+  end
+
+  # A fractional period is fine — it converts to whole milliseconds,
+  # and a burst rides alongside it.
+  def test_create_budget_converts_a_fractional_duration
+    stub_request(:post, "#{URL}/budgets/emails")
+      .with do |req|
+        JSON.parse(req.body)["strategy"] ==
+          { "type" => "time_based", "duration_ms" => 1500, "burst" => 5 }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate(BUDGET_RESPONSE),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.create_budget(
+      "emails",
+      allocation: 100,
+      strategy: {
+        type: :time_based,
+        duration: 1.5,
+        burst: 5
+      }
+    )
+  end
+
+  # `while_in_flight` has no clock, so it sends neither field.
+  def test_create_budget_omits_duration_for_while_in_flight
+    stub_request(:post, "#{URL}/budgets/mutex")
+      .with do |req|
+        JSON.parse(req.body)["strategy"] == { "type" => "while_in_flight" }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate(BUDGET_RESPONSE),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.create_budget(
+      "mutex",
+      allocation: 1,
+      strategy: {
+        type: :while_in_flight
+      }
+    )
+  end
+
+  # `POST` refuses rather than overwriting, so an application declaring
+  # its budgets on boot cannot clobber an operator's adjustment.
+  def test_create_budget_conflicts_when_it_exists
+    stub_request(:post, "#{URL}/budgets/emails").to_return(
+      status: 409,
+      body: JSON.generate({ "error" => "budget 'emails' already exists" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error =
+      assert_raises(Zizq::ConflictError) do
+        @json_client.create_budget(
+          "emails",
+          allocation: 100,
+          strategy: {
+            type: :while_in_flight
+          }
+        )
+      end
+    assert_equal 409, error.status
+    assert_match(/already exists/, error.message)
+  end
+
+  # A conflict stays rescuable as the general 4xx class, so existing
+  # `rescue Zizq::ClientError` keeps catching it.
+  def test_conflict_error_is_a_client_error
+    assert_operator Zizq::ConflictError, :<, Zizq::ClientError
+  end
+
+  def test_put_budget
+    stub_request(:put, "#{URL}/budgets/emails").with(
+      body:
+        JSON.generate(
+          { allocation: 100, strategy: { type: "while_in_flight" } }
+        )
+    ).to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result =
+      @json_client.put_budget(
+        "emails",
+        allocation: 100,
+        strategy: {
+          type: :while_in_flight
+        }
+      )
+    assert_instance_of Zizq::Resources::Budget, result
+  end
+
+  # Merge patch recurses into the strategy, so the burst is changeable
+  # without restating the kind and period.
+  def test_update_budget_sends_only_what_was_named
+    stub_request(:patch, "#{URL}/budgets/emails").with(
+      body: JSON.generate({ strategy: { burst: 5 } })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.update_budget("emails", strategy: { burst: 5 })
+    assert_instance_of Zizq::Resources::Budget, result
+  end
+
+  # A patch has nothing to merge into when the budget is absent, so it
+  # raises rather than creating one the way `put_budget` would.
+  # `burst` is the one field with a meaningful unset, so an explicit
+  # `nil` has to survive as JSON null rather than being dropped the way
+  # an absent key is.
+  def test_update_budget_sends_an_explicit_nil_burst_as_null
+    stub_request(:patch, "#{URL}/budgets/emails").with(
+      body: JSON.generate({ strategy: { burst: nil } })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    @json_client.update_budget("emails", strategy: { burst: nil })
+  end
+
+  # The period converts on a patch too.
+  def test_update_budget_converts_duration_to_ms
+    stub_request(:patch, "#{URL}/budgets/emails").with(
+      body: JSON.generate({ strategy: { duration_ms: 30_000 } })
+    ).to_return(
+      status: 200,
+      body: JSON.generate(BUDGET_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    @json_client.update_budget("emails", strategy: { duration: 30 })
+  end
+
+  def test_update_budget_raises_when_missing
+    stub_request(:patch, "#{URL}/budgets/nope").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "budget not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_raises(Zizq::NotFoundError) do
+      @json_client.update_budget("nope", allocation: 5)
+    end
+  end
+
+  def test_delete_budget
+    stub_request(:delete, "#{URL}/budgets/emails").to_return(status: 204)
+
+    assert_nil @json_client.delete_budget("emails")
+  end
+
+  def test_delete_budget_raises_when_missing
+    stub_request(:delete, "#{URL}/budgets/nope").to_return(
+      status: 404,
+      body: JSON.generate({ "error" => "budget not found" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_raises(Zizq::NotFoundError) { @json_client.delete_budget("nope") }
+  end
+
+  # Refused while anything still draws on it, so the caller learns which
+  # of the two remedies applies.
+  def test_delete_budget_conflicts_while_referenced
+    stub_request(:delete, "#{URL}/budgets/emails").to_return(
+      status: 409,
+      body:
+        JSON.generate(
+          {
+            "error" =>
+              "budget 'emails' is referenced by 3 unfinished jobs. " \
+                "Delete them or wait for them to finish before deleting it."
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error =
+      assert_raises(Zizq::ConflictError) do
+        @json_client.delete_budget("emails")
+      end
+    assert_equal 409, error.status
+    assert_match(/unfinished jobs/, error.message)
+  end
+
+  # Budgets are Pro-gated, so a licence failure is a routine outcome and
+  # the server's message is what tells the caller why.
+  def test_budget_calls_surface_the_licence_message
+    stub_request(:get, "#{URL}/budgets").to_return(
+      status: 403,
+      body: JSON.generate({ "error" => "budgets require a Pro license" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error = assert_raises(Zizq::ClientError) { @json_client.list_budgets }
+    assert_equal 403, error.status
+    assert_match(/Pro license/, error.message)
+  end
+
+  # A `while_in_flight` budget has no clock, so there is no period to
+  # report and the allocation is the ceiling.
+  def test_budget_resource_for_a_concurrency_limit
+    stub_request(:get, "#{URL}/budgets/mutex").to_return(
+      status: 200,
+      body:
+        JSON.generate(
+          {
+            "key" => "mutex",
+            "allocation" => 1,
+            "strategy" => {
+              "type" => "while_in_flight"
+            },
+            "created_at" => 1_700_000_000_000,
+            "updated_at" => 1_700_000_000_000
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    result = @json_client.get_budget("mutex")
+    assert result.while_in_flight?
+    refute result.time_based?
+    assert_equal :while_in_flight, result.strategy_type
+    assert_nil result.duration
+    assert_nil result.burst
+    assert_equal 1, result.capacity
+  end
 
   def test_list_cron_groups
     stub_request(:get, "#{URL}/crons").to_return(

@@ -176,6 +176,41 @@ class TestTestClient < ZizqTestCase
     assert_equal batch, requests.first.batch
   end
 
+  # `enqueue` is the low-level primitive and so receives the wire form
+  # (`base_ms`, `completed_ms`, ...), but `enqueued_requests` hands back
+  # an `EnqueueRequest`, which holds the fractional seconds the caller
+  # wrote. Recording the wire form there would make a test assert on
+  # keys the application never used.
+  def test_enqueue_records_backoff_and_retention_in_seconds
+    backoff = { exponent: 2.0, base: 1.5, jitter: 0.25 }
+    retention = { completed: 60.0, dead: 3600.0 }
+
+    Zizq.enqueue_raw(
+      queue: "q",
+      type: "Email",
+      payload: {
+      },
+      backoff: backoff,
+      retention: retention
+    )
+
+    request = Zizq::Test.client.enqueued_requests.first
+    assert_equal backoff, request.backoff
+    assert_equal retention, request.retention
+  end
+
+  # The bulk path builds its requests separately, so it converts
+  # separately too.
+  def test_enqueue_bulk_records_backoff_and_retention_in_seconds
+    backoff = { exponent: 2.0, base: 1.5, jitter: 0.25 }
+
+    Zizq.enqueue_bulk do |b|
+      b.enqueue_raw(queue: "q", type: "A", payload: {}, backoff: backoff)
+    end
+
+    assert_equal backoff, Zizq::Test.client.enqueued_requests.first.backoff
+  end
+
   def test_enqueue_bulk_buffers_each_request
     Zizq.enqueue_bulk do |b|
       b.enqueue_raw(queue: "q", type: "A", payload: {})

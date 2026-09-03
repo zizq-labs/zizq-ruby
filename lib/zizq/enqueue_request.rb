@@ -152,8 +152,9 @@ module Zizq
 
     # Convert to the params expected by `Client#enqueue`.
     #
-    # Handles seconds -> milliseconds conversion for time-based fields,
-    # delay -> ready_at resolution, and nil omission.
+    # Handles delay -> ready_at resolution and nil omission. Durations
+    # stay in the fractional seconds they were written in; `Client`
+    # converts them on the way out.
     def to_enqueue_params #: () -> Hash[Symbol, untyped]
       params = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       params[:priority] = priority if priority
@@ -163,22 +164,11 @@ module Zizq
 
       params[:retry_limit] = retry_limit if retry_limit
 
-      if backoff
-        params[:backoff] = {
-          exponent: backoff[:exponent].to_f,
-          base_ms: (backoff[:base].to_f * 1000).to_i,
-          jitter_ms: (backoff[:jitter].to_f * 1000).to_i
-        }
-      end
-
-      if retention
-        ret = {} #: Hash[Symbol, Integer]
-        ret[:completed_ms] = (
-          retention[:completed].to_f * 1000
-        ).to_i if retention[:completed]
-        ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
-        params[:retention] = ret
-      end
+      # Durations stay in fractional seconds here. `Client` converts to
+      # milliseconds at the boundary, so converting again would multiply
+      # them a second time.
+      params[:backoff] = backoff if backoff
+      params[:retention] = retention if retention
 
       params[:unique_key] = unique_key if unique_key
       params[:unique_while] = unique_while.to_s if unique_while

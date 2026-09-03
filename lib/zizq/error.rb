@@ -39,6 +39,16 @@ module Zizq
   class NotFoundError < ClientError
   end
 
+  # 409 specifically — the resource is in a state that refuses the
+  # operation, and repeating the request where nothing else has changed
+  # will not help.
+  #
+  # Raised where something already exists and cannot be overwritten, and
+  # where something is still referenced that would conflict with the
+  # operation.
+  class ConflictError < ClientError
+  end
+
   # 5xx server error.
   class ServerError < ResponseError
   end

@@ -152,6 +152,9 @@ module Zizq
     # using the Zizq API's expected inputs. Callers should generally use
     # [`Zizq::enqueue`] instead.
     #
+    # Durations and timestamps are fractional seconds throughout to align with
+    # Ruby, as opposed to the server's integer milliseconds representation.
+    #
     # Returns a resource instance of the new job wrapping the API response.
     #
     # @rbs queue: String
@@ -184,8 +187,8 @@ module Zizq
       # ready_at is fractional seconds in Ruby; the server expects ms.
       body[:ready_at] = (ready_at.to_f * 1000).to_i if ready_at
       body[:retry_limit] = retry_limit if retry_limit
-      body[:backoff] = backoff if backoff
-      body[:retention] = retention if retention
+      body[:backoff] = wire_backoff(backoff) if backoff
+      body[:retention] = wire_retention(retention) if retention
       body[:unique_key] = unique_key if unique_key
       body[:unique_while] = unique_while.to_s if unique_while
       body[:batch] = batch if batch
@@ -220,8 +223,10 @@ module Zizq
               :ready_at
             ]
             wire[:retry_limit] = job[:retry_limit] if job[:retry_limit]
-            wire[:backoff] = job[:backoff] if job[:backoff]
-            wire[:retention] = job[:retention] if job[:retention]
+            wire[:backoff] = wire_backoff(job[:backoff]) if job[:backoff]
+            wire[:retention] = wire_retention(job[:retention]) if job[
+              :retention
+            ]
             wire[:unique_key] = job[:unique_key] if job[:unique_key]
             wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
             wire[:batch] = job[:batch] if job[:batch]
@@ -517,6 +522,143 @@ module Zizq
       data["queues"]
     end
 
+    # List every defined budget, with its policy.
+    #
+    # Requires a Pro license on the server, else a `Zizq::ClientError`
+    # is raised.
+    #
+    # @rbs return: Array[Zizq::Resources::Budget]
+    def list_budgets
+      response = get("/budgets")
+      data = handle_response!(response, expected: 200)
+      (data["budgets"] || []).map { |b| Resources::Budget.new(self, b) }
+    end
+
+    # Fetch one budget's policy.
+    #
+    # Raises `Zizq::NotFoundError` if no budget exists under this key.
+    #
+    # @rbs key: String
+    # @rbs return: Zizq::Resources::Budget
+    def get_budget(key)
+      response = get("/budgets/#{enc(key)}")
+      data = handle_response!(response, expected: 200)
+      Resources::Budget.new(self, data)
+    end
+
+    # Create a budget, raising if the key would be overwritten.
+    #
+    # Raises a `Zizq::ConflictError` (409) if a budget already
+    # exists under this key, leaving the stored policy untouched.
+    #
+    # See `#put_budget` for the version that would overwrite the existing
+    # key.
+    #
+    # `strategy` is one of:
+    #
+    #     { type: :time_based, duration: 60 }
+    #     { type: :time_based, duration: 60, burst: 5 }
+    #     { type: :while_in_flight }
+    #
+    # `duration` is fractional seconds and is also read back as fractional
+    # seconds.
+    #
+    # A newly created bucket starts full, so a budget with no burst set
+    # hands out an entire allocation the moment work arrives and only
+    # then settles to its continuous drip rate — `10` per minute really
+    # does permit twenty in the first minute. Setting a burst caps that
+    # spike without changing the long-run rate; a burst of `1` paces
+    # dispatches evenly at all times. The burst rule also applies to
+    # budgets that have not been consumed for an entire duration's worth
+    # of time.
+    #
+    # It is valid for `burst` to be set higher than the `allocation`. In
+    # this case the meaning is to continue filling the bucket after the
+    # duration has elapsed, so a `burst` of 200 on a 100 token allocation
+    # would continue accruing across two consecutive periods, but no more
+    # than that.
+    #
+    # This is designed to allow applications to absorb short-lived
+    # spikes.
+    #
+    # @rbs key: String
+    # @rbs allocation: Integer
+    # @rbs strategy: Zizq::budget_strategy
+    # @rbs return: Zizq::Resources::Budget
+    def create_budget(key, allocation:, strategy:)
+      body = { allocation:, strategy: wire_strategy(strategy) }
+      response = post("/budgets/#{enc(key)}", body)
+      data = handle_response!(response, expected: 201)
+      Resources::Budget.new(self, data)
+    end
+
+    # Create a budget, or replace an existing budgets policy outright.
+    #
+    # Unlike `create_budget` this never conflicts. `created_at` is
+    # preserved when the budget already exists — a replace changes the
+    # policy, not the budget's identity.
+    #
+    # Raises a `Zizq::ClientError` (422) if the new allocation is below
+    # a cost already committed to the budget by a queued job or a cron
+    # entry, since those could then never be afforded.
+    #
+    # `strategy` takes the same shape as `create_budget`.
+    #
+    # @rbs key: String
+    # @rbs allocation: Integer
+    # @rbs strategy: Zizq::budget_strategy
+    # @rbs return: Zizq::Resources::Budget
+    def put_budget(key, allocation:, strategy:)
+      body = { allocation:, strategy: wire_strategy(strategy) }
+      response = put("/budgets/#{enc(key)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Budget.new(self, data)
+    end
+
+    # Update specified fields of a budget's policy, leaving the rest
+    # unchanged.
+    #
+    # Follows JSON merge patch semantics, and recurses into `strategy`, so
+    # e.g. the burst can be changed without restating the type and period:
+    #
+    #     update_budget("emails", strategy: {burst: 5})
+    #
+    # Within `strategy`, an absent field is left alone and `burst: nil`
+    # clears it back to the default value of the allocation. `burst` is
+    # the only field with a meaningful "unset": a strategy with no type, or
+    # a `time_based` strategy with no period, is not a valid strategy.
+    #
+    # Raises `Zizq::NotFoundError` if no budget exists under this key.
+    #
+    # @rbs key: String
+    # @rbs allocation: Integer?
+    # @rbs strategy: Zizq::budget_strategy_patch?
+    # @rbs return: Zizq::Resources::Budget
+    def update_budget(key, allocation: nil, strategy: nil)
+      body = {
+        allocation:,
+        strategy: strategy && wire_strategy(strategy)
+      }.compact
+      response = patch("/budgets/#{enc(key)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Budget.new(self, data)
+    end
+
+    # Delete a budget.
+    #
+    # Raises `Zizq::NotFoundError` if no budget exists under this key.
+    #
+    # Raises a `Zizq::ConflictError` (409) while anything still
+    # references it.
+    #
+    # @rbs key: String
+    # @rbs return: void
+    def delete_budget(key)
+      response = delete("/budgets/#{enc(key)}")
+      handle_response!(response, expected: 204)
+      nil
+    end
+
     # List all cron group names.
     #
     # @rbs return: Array[String]
@@ -612,7 +754,7 @@ module Zizq
 
     # Add a single entry to a cron group (creates the group if needed).
     #
-    # Raises a ClientError (409 Conflict) if an entry with the same name
+    # Raises a `Zizq::ConflictError` (409) if an entry with the same name
     # already exists.
     #
     # @rbs group: String
@@ -1018,8 +1160,8 @@ module Zizq
       job = { type:, queue:, payload: } #: Hash[Symbol, untyped]
       job[:priority] = priority if priority
       job[:retry_limit] = retry_limit if retry_limit
-      job[:backoff] = backoff if backoff
-      job[:retention] = retention if retention
+      job[:backoff] = wire_backoff(backoff) if backoff
+      job[:retention] = wire_retention(retention) if retention
       job[:unique_key] = unique_key if unique_key
       job[:unique_while] = unique_while.to_s if unique_while
       job
@@ -1171,33 +1313,69 @@ module Zizq
       end
 
       unless backoff.equal?(UNCHANGED)
-        body[:backoff] = if backoff.equal?(RESET)
-          nil
-        else
-          {
-            exponent: backoff[:exponent].to_f,
-            base_ms: (backoff[:base].to_f * 1000).to_i,
-            jitter_ms: (backoff[:jitter].to_f * 1000).to_i
-          }
-        end
+        body[:backoff] = backoff.equal?(RESET) ? nil : wire_backoff(backoff)
       end
 
       unless retention.equal?(UNCHANGED)
         body[:retention] = if retention.equal?(RESET)
           nil
         else
-          ret = {} #: Hash[Symbol, Integer]
-          ret[:completed_ms] = (
-            retention[:completed].to_f * 1000
-          ).to_i if retention[:completed]
-          ret[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[
-            :dead
-          ]
-          ret
+          wire_retention(retention)
         end
       end
 
       body
+    end
+
+    # Convert a `Zizq::backoff` (fractional seconds) into the server's form
+    # (integer milliseconds under keys suffixed `_ms`).
+    #
+    # @rbs backoff: Zizq::backoff
+    # @rbs return: Hash[Symbol, untyped]
+    def wire_backoff(backoff)
+      {
+        exponent: backoff[:exponent].to_f,
+        base_ms: (backoff[:base].to_f * 1000).to_i,
+        jitter_ms: (backoff[:jitter].to_f * 1000).to_i
+      }
+    end
+
+    # Convert a `Zizq::retention` (fractional seconds) into the server's form
+    # (integer milliseconds under keys suffixed `_ms`). Both fields are
+    # optional.
+    #
+    # @rbs retention: Zizq::retention
+    # @rbs return: Hash[Symbol, Integer]
+    def wire_retention(retention)
+      wire = {} #: Hash[Symbol, Integer]
+      wire[:completed_ms] = (
+        retention[:completed].to_f * 1000
+      ).to_i if retention[:completed]
+      wire[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
+      wire
+    end
+
+    # Convert a budget strategy into the wire form — the period as
+    # integer milliseconds under `duration_ms`, and the kind as a
+    # string. A `while_in_flight` strategy carries neither field.
+    #
+    # Takes the merge-patch shape, which a whole `Zizq::budget_strategy`
+    # also satisfies, so `create_budget` and `update_budget` share this.
+    # Key presence is what the server reads either way: a field absent
+    # from a patch is absent from the body and left alone, while an
+    # explicit `burst: nil` is sent as JSON null and clears the burst.
+    # That is why `burst` is tested with `key?` rather than for truth.
+    #
+    # @rbs strategy: Zizq::budget_strategy_patch
+    # @rbs return: Hash[Symbol, untyped]
+    def wire_strategy(strategy)
+      wire = {} #: Hash[Symbol, untyped]
+      wire[:type] = strategy[:type].to_s if strategy[:type]
+      if (duration = strategy[:duration])
+        wire[:duration_ms] = (duration.to_f * 1000).to_i
+      end
+      wire[:burst] = strategy[:burst] if strategy.key?(:burst)
+      wire
     end
 
     # Build query params for list endpoints, joining multi-value keys with ",".
@@ -1444,6 +1622,8 @@ module Zizq
           case status
           when 404
             NotFoundError
+          when 409
+            ConflictError
           when 400..499
             ClientError
           when 500..599

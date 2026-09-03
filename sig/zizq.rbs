@@ -26,6 +26,48 @@ module Zizq
   # Uniqueness scope for deduplication at enqueue time.
   type unique_scope = :queued | :active | :exists
 
+  # How a budget's tokens are managed.
+  type budget_strategy_type = :time_based | :while_in_flight
+
+  # A budget's token replenishment strategy.
+  #
+  # `duration` is the period over which the whole allocation
+  # replenishes, in fractional seconds. `burst` caps how many tokens the
+  # bucket may hold at once and defaults to the budget's allocation.
+  #
+  # A newly created budget starts full, so a budget with no burst set
+  # hands out an entire allocation the moment work arrives and only
+  # then settles to its continuous drip rate — `10` per minute really
+  # does permit twenty in the first minute. Setting a burst caps that
+  # spike without changing the long-run rate; a burst of `1` paces
+  # dispatches evenly at all times. The burst rule also applies to
+  # budgets that have not been consumed for an entire duration's worth
+  # of time.
+  #
+  # It is valid for `burst` to be set higher than the `allocation`. In
+  # this case the meaning is to continue filling the bucket after the
+  # duration has elapsed, so a `burst` of 200 on a 100 token allocation
+  # would continue accruing across two consecutive periods, but no more
+  # than that.
+  #
+  # This is designed to allow applications to absorb short-lived
+  # spikes.
+  #
+  # `while_in_flight` is event-based: its tokens are released when jobs
+  # finish rather than as time passes, so it takes no other fields.
+  type budget_strategy =
+    { type: :time_based, duration: to_f, ?burst: Integer? }
+    | { type: :while_in_flight }
+
+  # A `budget_strategy` as a merge patch: every field is optional, so
+  # one can be changed without restating the others. `burst: nil` clears
+  # the burst back to the allocation.
+  type budget_strategy_patch = {
+    ?type: budget_strategy_type?,
+    ?duration: to_f?,
+    ?burst: Integer?
+  }
+
   # Batching configuration for folded jobs — a batch key plus the jq
   # `when` predicate and `fold` reducer that run against `$existing`
   # and `$new` payloads on each subsequent enqueue.

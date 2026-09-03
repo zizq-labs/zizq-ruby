@@ -27,6 +27,34 @@
   no longer see a timezone anywhere, since it does not know about the
   schedule-level field.
 
+- **`Zizq::ConflictError`** is raised for a 409 instead of a plain
+  `Zizq::ClientError`. The new error class is inherits from
+  `Zizq::ClientError` so is backwards compatible.
+
+- **Breaking: `Client#enqueue`, `Client#enqueue_bulk` and cron job
+  templates now take `backoff` and `retention` in fractional seconds**,
+  and convert to milliseconds themselves. They previously required the
+  server's milliseconds form — `{exponent:, base_ms:, jitter_ms:}` and
+  `{completed_ms:, dead_ms:}` — while `ready_at` on the same call was
+  already seconds, and while every read path (`Resources::Job#ready_at`,
+  `JobTemplate#backoff`, `JobTemplate#retention`) provides seconds:
+
+      # before
+      client.enqueue(..., backoff: {exponent: 2.0, base_ms: 1500, jitter_ms: 250})
+
+      # now
+      client.enqueue(..., backoff: {exponent: 2.0, base: 1.5, jitter: 0.25})
+
+  This affects only the low-level `Zizq::Client` methods and matches
+  what `Zizq.enqueue`, `Zizq.enqueue_raw` and `Zizq.define_crontab`
+  have always accepted. Those are unchanged and applications using
+  them continue to work without changes.
+
+  This also fixes `Zizq::Test.client.enqueued_requests` reporting
+  `backoff` and `retention` in the millisecond form. A recorded request
+  came back with `base_ms` / `jitter_ms` / `completed_ms` / `dead_ms`
+  keys rather than the seconds the application had enqueued with.
+
 - Fixed `Zizq.crontab("...").entries` dropping each entry's `timezone`.
   Reading a schedule built the entries without it, so
   `entry.timezone` was always `nil` however the entry had been
