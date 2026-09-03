@@ -98,6 +98,43 @@ class TestClient < ZizqTestCase
     )
   end
 
+  # Whole numbers say the same thing as fractions for a duration, and
+  # `zizq_backoff`'s own documented example uses them, so they convert
+  # the same way.
+  def test_enqueue_accepts_whole_number_durations
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["backoff"] ==
+          { "exponent" => 2.0, "base_ms" => 15_000, "jitter_ms" => 30_000 } &&
+          body["retention"] ==
+            { "completed_ms" => 60_000, "dead_ms" => 3_600_000 }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      backoff: {
+        exponent: 2.0,
+        base: 15,
+        jitter: 30
+      },
+      retention: {
+        completed: 60,
+        dead: 3600
+      }
+    )
+  end
+
   # An absent retention field stays absent rather than being sent as
   # zero, which would tell the server to discard immediately.
   def test_enqueue_omits_unset_retention_fields
