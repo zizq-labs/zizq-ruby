@@ -118,7 +118,9 @@ module Zizq
     ?filter: String?,
     ?priority: (Integer | Range[Integer?])?,
     ?ready_at: (to_f | Range[to_f?])?,
-    ?attempts: (Integer | Range[Integer?])?
+    ?attempts: (Integer | Range[Integer?])?,
+    # Matches a job bound to any of the named budgets.
+    ?budgets_key: (String | Array[String])?
   }
 
   # Update parameters for single and bulk update operations.
