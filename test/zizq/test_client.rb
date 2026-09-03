@@ -2118,6 +2118,292 @@ class TestClient < ZizqTestCase
     assert_match(/unfinished jobs/, error.message)
   end
 
+  # --- job budget bindings ---
+
+  BOUND_JOB_RESPONSE = {
+    "id" => "j1",
+    "type" => "SendEmail",
+    "queue" => "emails",
+    "status" => "ready",
+    "attempts" => 0
+  }.freeze
+
+  def bound_job_response
+    {
+      status: 200,
+      body: JSON.generate(BOUND_JOB_RESPONSE),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    }
+  end
+
+  def bulk_budget_response(changed:, blocked: [])
+    {
+      status: 200,
+      body: JSON.generate({ "changed" => changed, "blocked" => blocked }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    }
+  end
+
+  # The whole-set call, so a budget left out of `budgets` is unbound.
+  def test_replace_job_budgets
+    stub_request(:put, "#{URL}/jobs/j1/budgets").with(
+      body: JSON.generate({ budgets: [{ key: "emails", cost: 2 }] })
+    ).to_return(bound_job_response)
+
+    result =
+      @json_client.replace_job_budgets(
+        "j1",
+        budgets: [{ key: "emails", cost: 2 }]
+      )
+    assert_instance_of Zizq::Resources::Job, result
+    assert_equal "j1", result.id
+  end
+
+  # `create_with` carries a whole policy, so its strategy converts to the
+  # wire form the same way `create_budget` does.
+  def test_replace_job_budgets_converts_a_create_with_policy
+    stub_request(:put, "#{URL}/jobs/j1/budgets")
+      .with do |req|
+        JSON.parse(req.body)["budgets"][0]["create_with"] ==
+          {
+            "allocation" => 100,
+            "strategy" => {
+              "type" => "time_based",
+              "duration_ms" => 60_000
+            }
+          }
+      end
+      .to_return(bound_job_response)
+
+    @json_client.replace_job_budgets(
+      "j1",
+      budgets: [
+        {
+          key: "emails",
+          create_with: {
+            allocation: 100,
+            strategy: {
+              type: :time_based,
+              duration: 60
+            }
+          }
+        }
+      ]
+    )
+  end
+
+  def test_clear_job_budgets
+    stub_request(:delete, "#{URL}/jobs/j1/budgets").to_return(
+      bound_job_response
+    )
+
+    assert_instance_of Zizq::Resources::Job,
+                       @json_client.clear_job_budgets("j1")
+  end
+
+  def test_add_job_budget
+    stub_request(:post, "#{URL}/jobs/j1/budgets/emails").with(
+      body: JSON.generate({ cost: 2 })
+    ).to_return(bound_job_response)
+
+    assert_instance_of Zizq::Resources::Job,
+                       @json_client.add_job_budget("j1", "emails", cost: 2)
+  end
+
+  # `POST` refuses rather than replacing, so the existing binding and its
+  # cost survive a careless re-bind.
+  def test_add_job_budget_conflicts_when_already_bound
+    stub_request(:post, "#{URL}/jobs/j1/budgets/emails").to_return(
+      status: 409,
+      body:
+        JSON.generate(
+          { "error" => "job 'j1' already draws on budget 'emails'." }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error =
+      assert_raises(Zizq::ConflictError) do
+        @json_client.add_job_budget("j1", "emails")
+      end
+    assert_equal 409, error.status
+  end
+
+  def test_put_job_budget
+    stub_request(:put, "#{URL}/jobs/j1/budgets/emails").with(
+      body: JSON.generate({ cost: 3 })
+    ).to_return(bound_job_response)
+
+    assert_instance_of Zizq::Resources::Job,
+                       @json_client.put_job_budget("j1", "emails", cost: 3)
+  end
+
+  def test_update_job_budget
+    stub_request(:patch, "#{URL}/jobs/j1/budgets/emails").with(
+      body: JSON.generate({ cost: 5 })
+    ).to_return(bound_job_response)
+
+    assert_instance_of Zizq::Resources::Job,
+                       @json_client.update_job_budget("j1", "emails", cost: 5)
+  end
+
+  # A cost change has nothing to apply to when the job is not bound, so
+  # unlike `put_job_budget` it does not create the binding.
+  def test_update_job_budget_raises_when_not_bound
+    stub_request(:patch, "#{URL}/jobs/j1/budgets/emails").to_return(
+      status: 404,
+      body:
+        JSON.generate(
+          { "error" => "job 'j1' does not draw on budget 'emails'" }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_raises(Zizq::NotFoundError) do
+      @json_client.update_job_budget("j1", "emails", cost: 5)
+    end
+  end
+
+  def test_delete_job_budget
+    stub_request(:delete, "#{URL}/jobs/j1/budgets/emails").to_return(
+      bound_job_response
+    )
+
+    assert_instance_of Zizq::Resources::Job,
+                       @json_client.delete_job_budget("j1", "emails")
+  end
+
+  # Only queued jobs can be rebound — an in-flight job already holds
+  # tokens against its budgets, and a finished one will never run again.
+  def test_job_budget_change_refuses_a_job_that_is_not_queued
+    stub_request(:post, "#{URL}/jobs/j1/budgets/emails").to_return(
+      status: 422,
+      body:
+        JSON.generate(
+          {
+            "error" =>
+              "job 'j1' is InFlight — only queued jobs may have " \
+                "their budgets changed"
+          }
+        ),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error =
+      assert_raises(Zizq::ClientError) do
+        @json_client.add_job_budget("j1", "emails")
+      end
+    assert_equal 422, error.status
+    assert_match(/only queued jobs/, error.message)
+  end
+
+  # --- bulk job budget bindings ---
+
+  # The filter travels in the query string, as it does for every other
+  # bulk operation.
+  def test_add_all_jobs_budget
+    stub_request(:post, "#{URL}/jobs/budgets/emails").with(
+      query: {
+        "queue" => "emails"
+      },
+      body: JSON.generate({ cost: 2 })
+    ).to_return(bulk_budget_response(changed: 3))
+
+    assert_equal(
+      { changed: 3, blocked: [] },
+      @json_client.add_all_jobs_budget(
+        "emails",
+        where: {
+          queue: "emails"
+        },
+        cost: 2
+      )
+    )
+  end
+
+  # In-flight jobs are named rather than silently skipped, so a caller
+  # knows which ones to revisit.
+  def test_bulk_budget_change_reports_blocked_jobs
+    stub_request(:put, "#{URL}/jobs/budgets/emails").to_return(
+      bulk_budget_response(changed: 2, blocked: %w[j7 j9])
+    )
+
+    assert_equal(
+      { changed: 2, blocked: %w[j7 j9] },
+      @json_client.put_all_jobs_budget("emails")
+    )
+  end
+
+  def test_update_all_jobs_budget
+    stub_request(:patch, "#{URL}/jobs/budgets/emails").with(
+      query: {
+        "status" => "ready"
+      },
+      body: JSON.generate({ cost: 4 })
+    ).to_return(bulk_budget_response(changed: 1))
+
+    assert_equal(
+      { changed: 1, blocked: [] },
+      @json_client.update_all_jobs_budget(
+        "emails",
+        cost: 4,
+        where: {
+          status: "ready"
+        }
+      )
+    )
+  end
+
+  # The way to drain a budget before deleting it, since `delete_budget`
+  # refuses while anything still draws on it.
+  def test_delete_all_jobs_budget
+    stub_request(:delete, "#{URL}/jobs/budgets/emails").to_return(
+      bulk_budget_response(changed: 5)
+    )
+
+    assert_equal(
+      { changed: 5, blocked: [] },
+      @json_client.delete_all_jobs_budget("emails")
+    )
+  end
+
+  # The unkeyed form, which unbinds every budget rather than one.
+  def test_clear_all_jobs_budgets
+    stub_request(:delete, "#{URL}/jobs/budgets").with(
+      query: {
+        "queue" => "emails"
+      }
+    ).to_return(bulk_budget_response(changed: 2))
+
+    assert_equal(
+      { changed: 2, blocked: [] },
+      @json_client.clear_all_jobs_budgets(where: { queue: "emails" })
+    )
+  end
+
+  # An empty multi-value filter matches nothing, so no request is made —
+  # sending one would have matched everything instead.
+  def test_bulk_job_budgets_short_circuit_on_an_empty_filter
+    assert_equal(
+      { changed: 0, blocked: [] },
+      @json_client.add_all_jobs_budget("emails", where: { queue: [] })
+    )
+    assert_equal(
+      { changed: 0, blocked: [] },
+      @json_client.clear_all_jobs_budgets(where: { id: [] })
+    )
+  end
+
   # Budgets are Pro-gated, so a licence failure is a routine outcome and
   # the server's message is what tells the caller why.
   def test_budget_calls_surface_the_licence_message
