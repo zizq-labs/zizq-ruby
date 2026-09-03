@@ -55,6 +55,15 @@
   came back with `base_ms` / `jitter_ms` / `completed_ms` / `dead_ms`
   keys rather than the seconds the application had enqueued with.
 
+- Fixed scheduling a **batched job via cron** raising
+  `ArgumentError: unknown keyword: :batch`. The cron job template
+  dropped `batch` on the way to the server, so any entry carrying one
+  failed before a request was made — both
+  `cron.define_entry(...).enqueue(SomeBatchedJob, ...)` for a class
+  declaring `zizq_batched`, and `enqueue_raw(..., batch: {...})` with
+  explicit expressions. The server has always accepted `batch` on a
+  cron entry's job template; only the client refused to send it.
+
 - Fixed `Zizq.crontab("...").entries` dropping each entry's `timezone`.
   Reading a schedule built the entries without it, so
   `entry.timezone` was always `nil` however the entry had been

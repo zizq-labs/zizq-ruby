@@ -1145,6 +1145,7 @@ module Zizq
     # @rbs retention: Zizq::retention?
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
+    # @rbs batch: Zizq::batch?
     # @rbs return: Hash[Symbol, untyped]
     def build_cron_job(
       type: nil,
@@ -1155,7 +1156,8 @@ module Zizq
       backoff: nil,
       retention: nil,
       unique_key: nil,
-      unique_while: nil
+      unique_while: nil,
+      batch: nil
     )
       job = { type:, queue:, payload: } #: Hash[Symbol, untyped]
       job[:priority] = priority if priority
@@ -1164,6 +1166,7 @@ module Zizq
       job[:retention] = wire_retention(retention) if retention
       job[:unique_key] = unique_key if unique_key
       job[:unique_while] = unique_while.to_s if unique_while
+      job[:batch] = batch if batch
       job
     end
 

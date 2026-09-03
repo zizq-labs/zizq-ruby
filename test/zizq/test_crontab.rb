@@ -11,6 +11,13 @@ class CronTestJob
   def perform(x) = nil
 end
 
+class BatchedCronTestJob
+  include Zizq::Job
+  zizq_queue "cron-q"
+  zizq_batched true, limit: 100
+  def perform(items) = nil
+end
+
 class TestCrontab < ZizqTestCase
   CRON_GROUP = {
     "name" => "default",
@@ -173,6 +180,57 @@ class TestCrontab < ZizqTestCase
 
   # Sent as the schedule's own timezone, not copied onto each entry, so a
   # schedule read back later still reports which timezone it runs in.
+  # A batched job class carries a `batch` on its enqueue request, so the
+  # cron job template has to accept one — scheduling a batched job used
+  # to raise `ArgumentError: unknown keyword: :batch` before any request
+  # was made.
+  def test_define_crontab_with_a_batched_job_class
+    stub_request(:put, "#{URL}/crons/default")
+      .with do |req|
+        batch = JSON.parse(req.body)["entries"][0]["job"]["batch"]
+        !batch.nil? && batch.key?("key") && batch.key?("when") &&
+          batch.key?("fold")
+      end
+      .to_return(json_response(CRON_GROUP))
+
+    Zizq.define_crontab("default") do |cron|
+      cron.define_entry("e1", "*/5 * * * *").enqueue(BatchedCronTestJob, [1])
+    end
+  end
+
+  # The same via the raw form, where the caller supplies the expressions.
+  def test_define_crontab_with_an_explicit_batch
+    batch = {
+      key: "push:apple",
+      when: "($existing.args[0] + $new.args[0]) | length <= 100",
+      fold: "$existing | .args[0] += $new.args[0]"
+    }
+
+    stub_request(:put, "#{URL}/crons/default")
+      .with do |req|
+        JSON.parse(req.body)["entries"][0]["job"]["batch"] ==
+          {
+            "key" => batch[:key],
+            "when" => batch[:when],
+            "fold" => batch[:fold]
+          }
+      end
+      .to_return(json_response(CRON_GROUP))
+
+    Zizq.define_crontab("default") do |cron|
+      cron.define_entry("e1", "*/5 * * * *").enqueue_raw(
+        queue: "push",
+        type: "SendPushNotifications",
+        payload: {
+          "args" => [[]],
+          "kwargs" => {
+          }
+        },
+        batch: batch
+      )
+    end
+  end
+
   def test_define_crontab_with_timezone
     stub_request(:put, "#{URL}/crons/default")
       .with do |req|

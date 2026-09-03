@@ -17,11 +17,11 @@ module Zizq
   # Sort direction for paginated list endpoints.
   type sort_direction = :asc | :desc
 
-  # Backoff configuration expressed in fractional seconds.
-  type backoff = { exponent: Float, base: Float, jitter: Float }
+  # Backoff configuration expressed in whole or fractional seconds.
+  type backoff = { exponent: to_f, base: to_f, jitter: to_f }
 
-  # Retention configuration expressed in fractional seconds.
-  type retention = { ?completed: Float, ?dead: Float }
+  # Retention configuration expressed in whole or fractional seconds.
+  type retention = { ?completed: to_f, ?dead: to_f }
 
   # Uniqueness scope for deduplication at enqueue time.
   type unique_scope = :queued | :active | :exists

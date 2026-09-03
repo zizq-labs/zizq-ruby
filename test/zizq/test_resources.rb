@@ -104,6 +104,49 @@ class TestResources < ZizqTestCase
     assert_equal({ exponent: 4.0, base: 15.0, jitter: 30.0 }, job.backoff)
   end
 
+  def test_job_retention_converts_from_wire_format
+    data = {
+      "id" => "j1",
+      "type" => "Foo",
+      "queue" => "default",
+      "retention" => {
+        "completed_ms" => 60_000,
+        "dead_ms" => 3_600_000
+      }
+    }
+    job = Zizq::Resources::Job.new(@client, data)
+
+    assert_equal({ completed: 60.0, dead: 3600.0 }, job.retention)
+  end
+
+  # Both fields are independently optional, so a retention carrying only
+  # one of them reads back with only that one rather than a nil pair.
+  def test_job_retention_omits_the_field_the_server_did_not_send
+    data = {
+      "id" => "j1",
+      "type" => "Foo",
+      "queue" => "default",
+      "retention" => {
+        "dead_ms" => 90_000
+      }
+    }
+    job = Zizq::Resources::Job.new(@client, data)
+
+    assert_equal({ dead: 90.0 }, job.retention)
+  end
+
+  # Absent entirely, rather than an empty hash — the server sends no
+  # retention when the job takes the default.
+  def test_job_retention_is_nil_when_unset
+    job =
+      Zizq::Resources::Job.new(
+        @client,
+        { "id" => "j1", "type" => "Foo", "queue" => "default" }
+      )
+
+    assert_nil job.retention
+  end
+
   def test_job_to_h
     data = { "id" => "j1", "type" => "Foo", "queue" => "default" }
     job = Zizq::Resources::Job.new(@client, data)
