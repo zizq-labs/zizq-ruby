@@ -32,6 +32,7 @@ class ExtendedActiveJob < ActiveJob::Base
   zizq_retry_limit 5
   zizq_backoff exponent: 3.0, base: 10, jitter: 5
   zizq_retention completed: 0, dead: 86_400
+  zizq_budget "emails", cost: 2
 
   @executions = []
   class << self
@@ -149,6 +150,12 @@ class TestActiveJob < ZizqTestCase
     assert_nil req.retry_limit
   end
 
+  def test_plain_request_omit_budgets
+    req = adapter_request(PlainActiveJob.new(42, template: "welcome"))
+
+    assert_nil req.budgets
+  end
+
   # --- Extended adapter request (with Zizq extensions) ---
 
   def test_extended_request_include_unique_key_and_scope
@@ -168,6 +175,15 @@ class TestActiveJob < ZizqTestCase
     req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
     assert_equal({ completed: 0.0, dead: 86_400.0 }, req.retention)
+  end
+
+  # The adapter builds its request field by field rather than through
+  # `zizq_enqueue_request`, so anything the DSL gains has to be copied
+  # here too or it is silently dropped for ActiveJob callers.
+  def test_extended_request_include_budgets
+    req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
+
+    assert_equal [{ key: "emails", cost: 2 }], req.budgets
   end
 
   def test_extended_request_include_retry_limit

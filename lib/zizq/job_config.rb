@@ -153,6 +153,64 @@ module Zizq
       end
     end
 
+    # Declare a budget this job is bound to.
+    #
+    # Budgets are used for concurrency control and rate limiting, and
+    # require a Pro license on the server.
+    #
+    # This method is additive, called once per budget:
+    #
+    #   zizq_budget "emails", cost: 2
+    #   zizq_budget "stripe"
+    #
+    # The `cost` is how many tokens one job of this class consumes when
+    # it dispatches, defaulting to 1. `create_with` declares the
+    # budget's policy should it not exist yet, so jobs can be enqueued
+    # without first creating the budget in a separate step:
+    #
+    #   zizq_budget "emails",
+    #               create_with: {
+    #                 allocation: 100,
+    #                 strategy: { type: :time_based, duration: 60 }
+    #               }
+    #
+    # It is ignored when the budget already exists, so this cannot
+    # accidentally overwrite an already configured budget.
+    #
+    # Declaring the same key twice raises `ArgumentError' — the server
+    # would reject a duplicate key outright.
+    #
+    # A per-enqueue `budgets` replaces these rather than adding to
+    # them, the same way a block-assigned `queue` or `priority` does:
+    #
+    #   Zizq.enqueue(SendEmailJob) { |req| req.budgets = [...] }
+    #   Zizq.enqueue(SendEmailJob) { |req| req.budgets << {key: "x"} }
+    #
+    # @rbs key: String
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Zizq::budget_binding_params
+    def zizq_budget(key, cost: nil, create_with: nil)
+      if zizq_budgets.any? { |b| b[:key] == key }
+        raise ArgumentError, "#{self}: budget '#{key}' is already declared"
+      end
+
+      binding = { key: } #: Zizq::budget_binding_params
+      binding[:cost] = cost if cost
+      binding[:create_with] = create_with if create_with
+
+      @zizq_budgets = zizq_budgets << binding.freeze
+      binding
+    end
+
+    # Budgets declared on this class, in declaration order.
+    #
+    # A fresh array each call, so mutating it cannot corrupt the
+    # class-level declaration. The bindings themselves are frozen.
+    def zizq_budgets #: () -> Array[Zizq::budget_binding_params]
+      (@zizq_budgets || []).dup
+    end
+
     # Declare uniqueness for this job class.
     #
     # Requires a pro license.
@@ -369,7 +427,8 @@ module Zizq
         retention: zizq_retention,
         unique_while: zizq_unique ? zizq_unique_scope : nil,
         unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil,
-        batch: zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil
+        batch: zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil,
+        budgets: zizq_budgets
       )
     end
 

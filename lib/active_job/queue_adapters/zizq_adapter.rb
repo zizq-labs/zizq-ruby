@@ -124,6 +124,13 @@ module ActiveJob
           :zizq_retention
         ) && klass.zizq_retention
 
+        # Built field by field rather than from `zizq_enqueue_request`,
+        # so anything declared on the class has to be copied explicitly
+        # or it is silently dropped for ActiveJob callers.
+        if klass.respond_to?(:zizq_budgets) && klass.zizq_budgets.any?
+          req.budgets = klass.zizq_budgets
+        end
+
         req
       end
     end

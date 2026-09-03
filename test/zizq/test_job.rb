@@ -43,6 +43,15 @@ class RetryConfiguredJob
   def perform(*) = nil
 end
 
+class BudgetedJob
+  include Zizq::Job
+
+  zizq_queue "emails"
+  zizq_budget "emails", cost: 2
+
+  def perform(*) = nil
+end
+
 # Test job class that doesn't implement perform.
 class UnimplementedJob
   include Zizq::Job
@@ -380,6 +389,61 @@ class TestJob < ZizqTestCase
     Zizq.enqueue(RetryConfiguredJob)
   end
 
+  # A class-declared budget reaches the wire without the caller naming
+  # it at the enqueue site.
+  def test_enqueue_sends_class_budgets
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        JSON.parse(req.body)["budgets"] == [{ "key" => "emails", "cost" => 2 }]
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(BudgetedJob)
+  end
+
+  # A block assignment replaces the class declaration, the same way it
+  # does for queue or priority.
+  def test_enqueue_block_replaces_class_budgets
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["budgets"] == [{ "key" => "other" }] }
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(BudgetedJob) { |req| req.budgets = [{ key: "other" }] }
+  end
+
+  # Appending composes with the declaration rather than discarding it,
+  # which is why the request gets a fresh array rather than the
+  # class's own.
+  def test_enqueue_block_can_append_to_class_budgets
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        JSON.parse(req.body)["budgets"] ==
+          [{ "key" => "emails", "cost" => 2 }, { "key" => "extra" }]
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(BudgetedJob) { |req| req.budgets << { key: "extra" } }
+    assert_equal [{ key: "emails", cost: 2 }], BudgetedJob.zizq_budgets
+  end
+
   def test_enqueue_uses_class_backoff_converted_to_ms
     stub_request(:post, "#{URL}/jobs")
       .with do |req|
@@ -594,6 +658,68 @@ class TestJob < ZizqTestCase
       end
     assert_equal 2, klass.zizq_batch_arg
     assert_nil klass.zizq_batch_kwarg
+  end
+
+  # --- zizq_budget ---
+
+  def test_budget_declaration_is_additive
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_budget "emails", cost: 2
+        zizq_budget "stripe"
+      end
+
+    assert_equal(
+      [{ key: "emails", cost: 2 }, { key: "stripe" }],
+      klass.zizq_budgets
+    )
+  end
+
+  def test_budgets_is_empty_by_default
+    klass = Class.new { include Zizq::Job }
+
+    assert_empty klass.zizq_budgets
+  end
+
+  # The server rejects a duplicate key outright; catching it at
+  # declaration names the class rather than failing at enqueue.
+  def test_budget_rejects_a_duplicate_key
+    error =
+      assert_raises(ArgumentError) do
+        Class.new do
+          include Zizq::Job
+          zizq_budget "emails"
+          zizq_budget "emails", cost: 2
+        end
+      end
+    assert_match(/already declared/, error.message)
+  end
+
+  # The declaration is the class's, so a caller reading it back cannot
+  # reach in and change what every later enqueue will send.
+  def test_budgets_cannot_be_corrupted_through_the_reader
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_budget "emails", cost: 2
+      end
+
+    klass.zizq_budgets << { key: "sneaky" }
+    assert_equal [{ key: "emails", cost: 2 }], klass.zizq_budgets
+
+    assert_raises(FrozenError) { klass.zizq_budgets.first[:cost] = 99 }
+  end
+
+  def test_budget_carries_a_create_with_policy
+    policy = { allocation: 100, strategy: { type: :time_based, duration: 60 } }
+    klass =
+      Class.new do
+        include Zizq::Job
+        zizq_budget "emails", create_with: policy
+      end
+
+    assert_equal policy, klass.zizq_budgets.first[:create_with]
   end
 
   def test_batched_with_kwarg
