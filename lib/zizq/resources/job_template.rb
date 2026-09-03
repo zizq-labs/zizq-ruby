@@ -38,6 +38,21 @@ module Zizq
         }
       end
 
+      # Budgets this job must satisfy on when it dispatches, each with the cost
+      # it consumes.
+      #
+      # Not present for a normal job that dispatches as soon as it reaches the
+      # front of the queue.
+      #
+      # `cost` is the number of tokens the job takes from the budget. Any
+      # `create_with` the enqueue specified is not stored on the job and is
+      # only used during the enqueue operation.
+      def budgets #: () -> Array[Zizq::budget_binding]
+        (@data["budgets"] || []).map do |b|
+          { key: b["key"], cost: b["cost"] } #: Zizq::budget_binding
+        end
+      end
+
       # Retention configuration converted from the API format (ms) to the
       # Ruby-idiomatic format (seconds), matching the Zizq::retention type.
       def retention #: () -> Zizq::retention?

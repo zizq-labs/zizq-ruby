@@ -51,6 +51,10 @@ module Zizq
     # Batch configuration for folded jobs.
     attr_accessor :batch #: Zizq::batch?
 
+    # Budgets this job must satisfy on when it dispatches. `nil` or empty
+    # array dispatches normally as soon as it reaches the front of the queue.
+    attr_accessor :budgets #: Array[Zizq::budget_binding_params]?
+
     # @rbs type: String
     # @rbs queue: String
     # @rbs payload: untyped
@@ -63,6 +67,7 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs batch: Zizq::batch?
+    # @rbs budgets: Array[Zizq::budget_binding_params]?
     # @rbs return: void
     def initialize(
       type:,
@@ -76,7 +81,8 @@ module Zizq
       retention: nil,
       unique_key: nil,
       unique_while: nil,
-      batch: nil
+      batch: nil,
+      budgets: nil
     )
       update(
         type:,
@@ -90,7 +96,8 @@ module Zizq
         retention:,
         unique_key:,
         unique_while:,
-        batch:
+        batch:,
+        budgets:
       )
     end
 
@@ -120,6 +127,7 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs batch: Zizq::batch?
+    # @rbs budgets: Array[Zizq::budget_binding_params]?
     # @rbs return: self
     def update(
       type: @type,
@@ -133,7 +141,8 @@ module Zizq
       retention: @retention,
       unique_key: @unique_key,
       unique_while: @unique_while,
-      batch: @batch
+      batch: @batch,
+      budgets: @budgets
     )
       @type = type
       @queue = queue
@@ -147,6 +156,7 @@ module Zizq
       @unique_key = unique_key
       @unique_while = unique_while
       @batch = batch
+      @budgets = budgets
       self
     end
 
@@ -174,6 +184,7 @@ module Zizq
       params[:unique_while] = unique_while.to_s if unique_while
 
       params[:batch] = batch if batch
+      params[:budgets] = budgets if budgets && !budgets.empty?
 
       params
     end

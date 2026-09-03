@@ -2236,6 +2236,156 @@ class TestClient < ZizqTestCase
     assert_match(/unfinished jobs/, error.message)
   end
 
+  # --- budgets at enqueue ---
+
+  # Binding at enqueue is the common case: the job arrives already
+  # throttled rather than being bound in a second call.
+  def test_enqueue_with_budgets
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        JSON.parse(req.body)["budgets"] == [{ "key" => "emails", "cost" => 2 }]
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      budgets: [{ key: "emails", cost: 2 }]
+    )
+  end
+
+  # `create_with` declares the budget if it is missing, so binding and
+  # creating happen in one request rather than two.
+  def test_enqueue_with_a_create_with_budget
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        JSON.parse(req.body)["budgets"][0]["create_with"] ==
+          {
+            "allocation" => 100,
+            "strategy" => {
+              "type" => "time_based",
+              "duration_ms" => 60_000
+            }
+          }
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      budgets: [
+        {
+          key: "emails",
+          create_with: {
+            allocation: 100,
+            strategy: {
+              type: :time_based,
+              duration: 60
+            }
+          }
+        }
+      ]
+    )
+  end
+
+  # An unthrottled job pays nothing for the feature on the wire.
+  def test_enqueue_omits_empty_budgets
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| !JSON.parse(req.body).key?("budgets") }
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "abc123" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue(
+      queue: "emails",
+      type: "SendEmail",
+      payload: {
+      },
+      budgets: []
+    )
+  end
+
+  def test_enqueue_bulk_with_budgets
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with do |req|
+        JSON.parse(req.body)["jobs"][0]["budgets"] ==
+          [{ "key" => "emails", "cost" => 3 }]
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "jobs" => [{ "id" => "abc123" }] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.enqueue_bulk(
+      jobs: [
+        {
+          queue: "emails",
+          type: "SendEmail",
+          payload: {
+          },
+          budgets: [{ key: "emails", cost: 3 }]
+        }
+      ]
+    )
+  end
+
+  # A cron entry's job template carries budgets too, so a scheduled job
+  # can be throttled the same way an enqueued one is.
+  def test_cron_job_template_carries_budgets
+    stub_request(:put, "#{URL}/crons/nightly")
+      .with do |req|
+        JSON.parse(req.body)["entries"][0]["job"]["budgets"] ==
+          [{ "key" => "emails", "cost" => 5 }]
+      end
+      .to_return(
+        status: 200,
+        body: JSON.generate({ "name" => "nightly", "entries" => [] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    @json_client.replace_cron_group(
+      "nightly",
+      entries: [
+        {
+          name: "digest",
+          expression: "0 9 * * *",
+          job: {
+            queue: "emails",
+            type: "Digest",
+            payload: {
+            },
+            budgets: [{ key: "emails", cost: 5 }]
+          }
+        }
+      ]
+    )
+  end
+
   # --- job budget bindings ---
 
   BOUND_JOB_RESPONSE = {
