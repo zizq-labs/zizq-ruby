@@ -30,10 +30,35 @@ module Zizq
     # the async reactor that produced it.
     RawResponse = Data.define(:status, :body, :content_type)
 
-    CONTENT_TYPES = { #: Hash[Zizq::format, String]
+    CONTENT_TYPES = {
       msgpack: "application/msgpack",
       json: "application/json"
-    }.freeze
+    }.freeze #: Hash[Zizq::format, String]
+
+    # Filter keys the server accepts as comma-delimited lists, matching
+    # any of the named values. An empty value matches nothing, which every
+    # filtered call short-circuits on rather than sending a request that
+    # would have matched everything. Callers should omit the key entirely
+    # if what they really mean is "match everything".
+    #
+    # These are the Ruby keyword argument names; see `API_FILTER_NAMES` for
+    # alternative names used in the API.
+    MULTI_FILTER_KEYS = %i[id status queue type budgets_key].freeze #: Array[Symbol]
+
+    # Filter arguments whose query parameter is spelled differently in
+    # the API.
+    #
+    # `budgets.key` is dotted in the API to mirror the path into the
+    # `budgets` array on a job, which is not a valid Ruby keyword, so
+    # `validate_where` takes it as `budgets_key:`.
+    #
+    # The rename happens here, in value position, rather than as a key
+    # in `validate_where`'s hash: syntax_tree rewrites a quoted symbol
+    # *key* into a string key when the same hash uses Ruby 3.1 omitted
+    # values, and a string key silently stops matching
+    # `MULTI_FILTER_KEYS` — so an empty filter would be sent as no
+    # filter, matching everything.
+    API_FILTER_NAMES = { budgets_key: :"budgets.key" }.freeze #: Hash[Symbol, Symbol]
 
     STREAM_ACCEPT = { #: Hash[Zizq::format, String]
       msgpack: "application/vnd.zizq.msgpack-stream",
@@ -278,33 +303,29 @@ module Zizq
       priority: nil,
       ready_at: nil,
       attempts: nil,
+      budgets_key: nil,
       from: nil,
       order: nil,
       limit: nil
     )
-      options = {
+      where = {
         id:,
         status:,
         queue:,
         type:,
         filter:,
-        priority: encode_range(priority),
-        ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
-        attempts: encode_range(attempts),
-        from:,
-        order:,
-        limit:
-      }.compact #: Hash[Symbol, untyped]
+        priority:,
+        ready_at:,
+        attempts:,
+        budgets_key:
+      }.compact #: Zizq::where_params
+      params = filter_params(where)
 
-      multi_keys = %i[id status queue type]
-      params = build_where_params(options, multi_keys:)
-
-      # An empty filter ([] or "") matches nothing — short-circuit.
-      multi_keys.each do |key|
-        if params[key] == ""
-          return Resources::JobPage.new(self, { "jobs" => [], "pages" => {} })
-        end
+      if params.nil?
+        return Resources::JobPage.new(self, { "jobs" => [], "pages" => {} })
       end
+
+      params = params.merge({ from:, order:, limit: }.compact)
 
       response = get("/jobs", params:)
       data = handle_response!(response, expected: 200)
@@ -333,24 +354,22 @@ module Zizq
       filter: nil,
       priority: nil,
       ready_at: nil,
-      attempts: nil
+      attempts: nil,
+      budgets_key: nil
     )
-      options = {
+      where = {
         id:,
         status:,
         queue:,
         type:,
         filter:,
-        priority: encode_range(priority),
-        ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
-        attempts: encode_range(attempts)
-      }.compact #: Hash[Symbol, untyped]
-
-      multi_keys = %i[id status queue type]
-      params = build_where_params(options, multi_keys:)
-
-      # An empty filter ([] or "") matches nothing — short-circuit.
-      multi_keys.each { |key| return 0 if params[key] == "" }
+        priority:,
+        ready_at:,
+        attempts:,
+        budgets_key:
+      }.compact #: Zizq::where_params
+      params = filter_params(where)
+      return 0 if params.nil?
 
       response = get("/jobs/count", params:)
       data = handle_response!(response, expected: 200)
@@ -1365,6 +1384,7 @@ module Zizq
     # @rbs priority: (Integer | Range[Integer?])?
     # @rbs ready_at: (Zizq::to_f | Range[Zizq::to_f?])?
     # @rbs attempts: (Integer | Range[Integer?])?
+    # @rbs budgets_key: (String | Array[String])?
     # @rbs return: Hash[Symbol, untyped]
     def validate_where(
       id: nil,
@@ -1374,7 +1394,8 @@ module Zizq
       filter: nil,
       priority: nil,
       ready_at: nil,
-      attempts: nil
+      attempts: nil,
+      budgets_key: nil
     )
       {
         id:,
@@ -1384,7 +1405,8 @@ module Zizq
         filter:,
         priority: encode_range(priority),
         ready_at: encode_range(ready_at) { |v| (v.to_f * 1000).to_i },
-        attempts: encode_range(attempts)
+        attempts: encode_range(attempts),
+        budgets_key:
       }.compact
     end
 
@@ -1616,9 +1638,17 @@ module Zizq
     # @rbs where: Zizq::where_params
     # @rbs return: Hash[Symbol, untyped]?
     def filter_params(where)
-      multi_keys = %i[id status queue type]
-      params = build_where_params(validate_where(**where), multi_keys:)
-      return nil if multi_keys.any? { |key| params[key] == "" }
+      params =
+        build_where_params(
+          validate_where(**where),
+          multi_keys: MULTI_FILTER_KEYS
+        )
+
+      # Both `[]` and `""` mean "match nothing"; an empty array has
+      # already been joined into an empty string by this point.
+      if MULTI_FILTER_KEYS.any? { |key| params[wire_name(key)] == "" }
+        return nil
+      end
 
       params
     end
@@ -1647,13 +1677,23 @@ module Zizq
     end
 
     # Build query params for list endpoints, joining multi-value keys with ",".
+    # The query parameter name for a filter argument, which differs from
+    # the Ruby name only where `API_FILTER_NAMES` says so.
+    #
+    # @rbs key: Symbol
+    # @rbs return: Symbol
+    def wire_name(key)
+      API_FILTER_NAMES.fetch(key, key)
+    end
+
     def build_where_params(options, multi_keys: []) #: (Hash[Symbol, untyped], ?multi_keys: Array[Symbol]) -> Hash[Symbol, untyped]
       params = {} #: Hash[Symbol, untyped]
       options.each do |key, value|
-        if multi_keys.include?(key) && value.is_a?(Array)
-          params[key] = value.join(",")
+        params[wire_name(key)] = if multi_keys.include?(key) &&
+             value.is_a?(Array)
+          value.join(",")
         else
-          params[key] = value
+          value
         end
       end
       params

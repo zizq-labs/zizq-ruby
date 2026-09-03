@@ -686,6 +686,124 @@ class TestClient < ZizqTestCase
     assert_equal 1, result.jobs.size
   end
 
+  # Dotted on the wire to mirror the `budgets` array on a job. The Ruby
+  # argument is `budgets_key:`, a dotted name not being a valid keyword.
+  def test_list_jobs_by_budget
+    stub_request(:get, "#{URL}/jobs?budgets.key=emails").to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [{ "id" => "j1" }], "pages" => {} }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_equal 1, @json_client.list_jobs(budgets_key: "emails").jobs.size
+  end
+
+  # Multi-value like the other list filters, matching a job drawing on
+  # any of the named budgets.
+  def test_list_jobs_by_several_budgets
+    stub_request(:get, "#{URL}/jobs?budgets.key=emails,stripe").to_return(
+      status: 200,
+      body: JSON.generate({ "jobs" => [], "pages" => {} }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    @json_client.list_jobs(budgets_key: %w[emails stripe])
+  end
+
+  # An empty budget filter matches nothing, so no request is made — the
+  # alternative would be sending no filter at all, which matches
+  # everything. Both spellings of empty count.
+  def test_list_jobs_by_no_budgets_short_circuits
+    assert_empty @json_client.list_jobs(budgets_key: []).jobs
+    assert_empty @json_client.list_jobs(budgets_key: "").jobs
+  end
+
+  # Same on the destructive path, where getting it wrong would delete
+  # every job rather than none.
+  def test_delete_all_jobs_by_no_budgets_short_circuits
+    assert_equal 0, @json_client.delete_all_jobs(where: { budgets_key: [] })
+    assert_equal 0, @json_client.delete_all_jobs(where: { budgets_key: "" })
+  end
+
+  def test_count_jobs_by_budget
+    stub_request(:get, "#{URL}/jobs/count?budgets.key=emails").to_return(
+      status: 200,
+      body: JSON.generate({ "count" => 7 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_equal 7, @json_client.count_jobs(budgets_key: "emails")
+  end
+
+  def test_delete_all_jobs_by_budget
+    stub_request(:delete, "#{URL}/jobs?budgets.key=emails").to_return(
+      status: 200,
+      body: JSON.generate({ "deleted" => 4 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_equal 4,
+                 @json_client.delete_all_jobs(where: { budgets_key: "emails" })
+  end
+
+  def test_update_all_jobs_by_budget
+    stub_request(:patch, "#{URL}/jobs?budgets.key=emails").with(
+      body: JSON.generate({ priority: 100 })
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "patched" => 2 }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    assert_equal 2,
+                 @json_client.update_all_jobs(
+                   where: {
+                     budgets_key: "emails"
+                   },
+                   apply: {
+                     priority: 100
+                   }
+                 )
+  end
+
+  # The pairing this filter exists for: `delete_budget` refuses while
+  # anything still draws on a budget, and the jobs that do are exactly
+  # the ones this selects.
+  def test_drain_a_budget_before_deleting_it
+    stub_request(
+      :delete,
+      "#{URL}/jobs/budgets/emails?budgets.key=emails"
+    ).to_return(
+      status: 200,
+      body: JSON.generate({ "changed" => 12, "blocked" => [] }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+    stub_request(:delete, "#{URL}/budgets/emails").to_return(status: 204)
+
+    assert_equal(
+      { changed: 12, blocked: [] },
+      @json_client.delete_all_jobs_budget(
+        "emails",
+        where: {
+          budgets_key: "emails"
+        }
+      )
+    )
+    assert_nil @json_client.delete_budget("emails")
+  end
+
   def test_list_jobs_with_id_filter
     response = {
       "jobs" => [{ "id" => "j1" }],
