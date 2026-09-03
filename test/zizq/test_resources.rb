@@ -147,6 +147,36 @@ class TestResources < ZizqTestCase
     assert_nil job.retention
   end
 
+  def test_job_budgets
+    data = {
+      "id" => "j1",
+      "type" => "Foo",
+      "queue" => "default",
+      "budgets" => [
+        { "key" => "emails", "cost" => 2 },
+        { "key" => "stripe", "cost" => 1 }
+      ]
+    }
+    job = Zizq::Resources::Job.new(@client, data)
+
+    assert_equal(
+      [{ key: "emails", cost: 2 }, { key: "stripe", cost: 1 }],
+      job.budgets
+    )
+  end
+
+  # The server omits the field for an unthrottled job rather than
+  # sending an empty array, so there is no "absent" to distinguish.
+  def test_job_budgets_is_empty_when_unthrottled
+    job =
+      Zizq::Resources::Job.new(
+        @client,
+        { "id" => "j1", "type" => "Foo", "queue" => "default" }
+      )
+
+    assert_empty job.budgets
+  end
+
   def test_job_to_h
     data = { "id" => "j1", "type" => "Foo", "queue" => "default" }
     job = Zizq::Resources::Job.new(@client, data)

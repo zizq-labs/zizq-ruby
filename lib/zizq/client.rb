@@ -193,6 +193,7 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs batch: Zizq::batch?
+    # @rbs budgets: Array[Zizq::budget_binding_params]?
     # @rbs return: Resources::Job
     def enqueue(
       queue:,
@@ -205,7 +206,8 @@ module Zizq
       retention: nil,
       unique_key: nil,
       unique_while: nil,
-      batch: nil
+      batch: nil,
+      budgets: nil
     )
       body = { queue:, type:, payload: } #: Hash[Symbol, untyped]
       body[:priority] = priority if priority
@@ -217,6 +219,7 @@ module Zizq
       body[:unique_key] = unique_key if unique_key
       body[:unique_while] = unique_while.to_s if unique_while
       body[:batch] = batch if batch
+      body[:budgets] = budgets.map { |b| wire_binding(b) } if budgets&.any?
 
       response = post("/jobs", body)
       data = handle_response!(response, expected: [200, 201])
@@ -255,6 +258,9 @@ module Zizq
             wire[:unique_key] = job[:unique_key] if job[:unique_key]
             wire[:unique_while] = job[:unique_while].to_s if job[:unique_while]
             wire[:batch] = job[:batch] if job[:batch]
+            if (budgets = job[:budgets])&.any?
+              wire[:budgets] = budgets.map { |b| wire_binding(b) }
+            end
             wire
           end
       }
@@ -682,7 +688,7 @@ module Zizq
     # (403) is raised.
     #
     # @rbs id: String
-    # @rbs budgets: Array[Zizq::budget_binding]
+    # @rbs budgets: Array[Zizq::budget_binding_params]
     # @rbs return: Resources::Job
     def replace_job_budgets(id, budgets:)
       body = { budgets: budgets.map { |b| wire_binding(b) } }
@@ -1348,6 +1354,7 @@ module Zizq
     # @rbs unique_key: String?
     # @rbs unique_while: Zizq::unique_scope?
     # @rbs batch: Zizq::batch?
+    # @rbs budgets: Array[Zizq::budget_binding_params]?
     # @rbs return: Hash[Symbol, untyped]
     def build_cron_job(
       type: nil,
@@ -1359,7 +1366,8 @@ module Zizq
       retention: nil,
       unique_key: nil,
       unique_while: nil,
-      batch: nil
+      batch: nil,
+      budgets: nil
     )
       job = { type:, queue:, payload: } #: Hash[Symbol, untyped]
       job[:priority] = priority if priority
@@ -1369,6 +1377,7 @@ module Zizq
       job[:unique_key] = unique_key if unique_key
       job[:unique_while] = unique_while.to_s if unique_while
       job[:batch] = batch if batch
+      job[:budgets] = budgets.map { |b| wire_binding(b) } if budgets&.any?
       job
     end
 
@@ -1576,9 +1585,9 @@ module Zizq
       body
     end
 
-    # Convert a `Zizq::budget_binding` into the wire form, key included.
+    # Convert a `Zizq::budget_binding_params` into the wire form, key included.
     #
-    # @rbs binding: Zizq::budget_binding
+    # @rbs binding: Zizq::budget_binding_params
     # @rbs return: Hash[Symbol, untyped]
     def wire_binding(binding)
       { key: binding[:key] }.merge(

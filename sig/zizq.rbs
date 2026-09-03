@@ -62,8 +62,11 @@ module Zizq
   # A budget's policy — what `create_budget` and `put_budget` take.
   type budget_policy = { allocation: Integer, strategy: budget_strategy }
 
-  # A job's binding to a budget: which budget, and what it costs the
-  # job to dispatch.
+  # A job's binding to a budget as sent by the client: which budget, and
+  # what it costs the job to dispatch.
+  #
+  # This is the input form of `budget_binding`, which is what the server
+  # returns when read back.
   #
   # `cost` defaults to 1. `create_with` declares the budget's policy if
   # it does not exist yet, so a job can be bound atomically in a single
@@ -73,11 +76,19 @@ module Zizq
   #
   # Without `create_with`, the budget must exist before the job can be
   # bound to it.
-  type budget_binding = {
+  type budget_binding_params = {
     key: String,
     ?cost: Integer?,
     ?create_with: budget_policy?
   }
+
+  # A job's binding to a budget, as returned by the server.
+  #
+  # Distinct from `budget_binding_params`, which is the input type:
+  # `cost` is always present here, and `create_with` is always omitted
+  # as it is consumed during the enqueue operation rather than stored
+  # on the job.
+  type budget_binding = { key: String, cost: Integer }
 
   # The outcome of a bulk job budget binding change.
   #
@@ -144,7 +155,8 @@ module Zizq
     ?retention: retention?,
     ?unique_key: String?,
     ?unique_while: unique_scope?,
-    ?batch: batch?
+    ?batch: batch?,
+    ?budgets: Array[budget_binding_params]?
   }
 
   # Parameters for a single cron entry.
