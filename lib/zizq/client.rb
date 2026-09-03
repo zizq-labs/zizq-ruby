@@ -377,13 +377,8 @@ module Zizq
     # @rbs where: Zizq::where_params
     # @rbs return: Integer
     def delete_all_jobs(where: {})
-      filter_params = validate_where(**where)
-
-      multi_keys = %i[id status queue type]
-      params = build_where_params(filter_params, multi_keys:)
-
-      # An empty multi-value filter matches nothing — short-circuit.
-      multi_keys.each { |key| return 0 if params[key] == "" }
+      params = filter_params(where)
+      return 0 if params.nil?
 
       response = delete("/jobs", params:)
       data = handle_response!(response, expected: 200)
@@ -463,13 +458,8 @@ module Zizq
     # @rbs apply: Zizq::apply_params
     # @rbs return: Integer
     def update_all_jobs(where: {}, apply: {})
-      filter_params = validate_where(**where)
-
-      multi_keys = %i[id status queue type]
-      params = build_where_params(filter_params, multi_keys:)
-
-      # An empty multi-value filter matches nothing — short-circuit.
-      multi_keys.each { |key| return 0 if params[key] == "" }
+      params = filter_params(where)
+      return 0 if params.nil?
 
       body = validate_and_build_set(**apply)
       response = patch("/jobs", body, params:)
@@ -657,6 +647,199 @@ module Zizq
       response = delete("/budgets/#{enc(key)}")
       handle_response!(response, expected: 204)
       nil
+    end
+
+    # Replace the whole set of budgets a job is bound to.
+    #
+    # Budgets omitted from `budgets` will be unbound. Passing `[]` is
+    # the same as `clear_job_budgets`.
+    #
+    # Only queued (scheduled, ready) jobs may have their budgets changed —
+    # an in-flight job already debited tokens against its budgets, and
+    # jobs in a terminal state are immutable to all further changes.
+    # Either raises a `Zizq::ClientError` (422).
+    #
+    # Requires a Pro license on the server, else a `Zizq::ClientError`
+    # (403) is raised.
+    #
+    # @rbs id: String
+    # @rbs budgets: Array[Zizq::budget_binding]
+    # @rbs return: Resources::Job
+    def replace_job_budgets(id, budgets:)
+      body = { budgets: budgets.map { |b| wire_binding(b) } }
+      response = put("/jobs/#{enc(id)}/budgets", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Unbind every budget from a job, leaving it unthrottled.
+    #
+    # @rbs id: String
+    # @rbs return: Resources::Job
+    def clear_job_budgets(id)
+      response = delete("/jobs/#{enc(id)}/budgets")
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Bind a job to a budget it is not already bound to.
+    #
+    # Raises a `Zizq::ConflictError` (409) if the job is already bound
+    # to this budget, leaving the existing binding untouched — use
+    # `put_job_budget` to replace it, or `update_job_budget` to change
+    # only its cost.
+    #
+    # `create_with` declares the budget's policy should it not exist
+    # yet, binding and creating in one atomic call. It is ignored when
+    # the budget already exists.
+    #
+    # @rbs id: String
+    # @rbs key: String
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Resources::Job
+    def add_job_budget(id, key, cost: nil, create_with: nil)
+      body = binding_body(cost:, create_with:)
+      response = post("/jobs/#{enc(id)}/budgets/#{enc(key)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Bind a job to a budget, replacing any existing binding to it.
+    #
+    # Unlike `add_job_budget` this never conflicts. The binding is
+    # replaced whole, so a `cost` left unset returns to the default of 1
+    # rather than keeping what was there.
+    #
+    # @rbs id: String
+    # @rbs key: String
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Resources::Job
+    def put_job_budget(id, key, cost: nil, create_with: nil)
+      body = binding_body(cost:, create_with:)
+      response = put("/jobs/#{enc(id)}/budgets/#{enc(key)}", body)
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Change what an existing binding costs, leaving the rest alone.
+    #
+    # Raises `Zizq::NotFoundError` if the job is not bound to this
+    # budget. Unlike `put_job_budget`, a change of cost has nothing to
+    # apply to and does not create the binding if missing.
+    #
+    # Raises a `Zizq::ClientError` (422) if the new cost exceeds the
+    # budget's capacity.
+    #
+    # @rbs id: String
+    # @rbs key: String
+    # @rbs cost: Integer
+    # @rbs return: Resources::Job
+    def update_job_budget(id, key, cost:)
+      response = patch("/jobs/#{enc(id)}/budgets/#{enc(key)}", { cost: })
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Unbind one budget from a job, leaving its other budgets alone.
+    #
+    # Raises `Zizq::NotFoundError` if the job is not bound to it.
+    #
+    # @rbs id: String
+    # @rbs key: String
+    # @rbs return: Resources::Job
+    def delete_job_budget(id, key)
+      response = delete("/jobs/#{enc(id)}/budgets/#{enc(key)}")
+      data = handle_response!(response, expected: 200)
+      Resources::Job.new(self, data)
+    end
+
+    # Bind every job matching the filter to a budget, skipping over the
+    # ones that are already bound to it.
+    #
+    # The bulk form of `add_job_budget`; each of these takes the same
+    # name with `job` widened to `all_jobs`.
+    #
+    # Filters in the `where:` argument use the same keys as `list_jobs`.
+    # An unfiltered call binds every queued job on the server.
+    #
+    # Unlike the single-job form this does not conflict but simply
+    # skips.
+    #
+    # @rbs key: String
+    # @rbs where: Zizq::where_params
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Zizq::bulk_budget_change
+    def add_all_jobs_budget(key, where: {}, cost: nil, create_with: nil)
+      bulk_budget_request(
+        :post,
+        "/jobs/budgets/#{enc(key)}",
+        where,
+        binding_body(cost:, create_with:)
+      )
+    end
+
+    # Bind every job matching the filter to a budget, replacing any
+    # existing binding to it.
+    #
+    # See `add_all_jobs_budget` for the filter semantics, and
+    # `put_job_budget` for how a binding is replaced.
+    #
+    # @rbs key: String
+    # @rbs where: Zizq::where_params
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Zizq::bulk_budget_change
+    def put_all_jobs_budget(key, where: {}, cost: nil, create_with: nil)
+      bulk_budget_request(
+        :put,
+        "/jobs/budgets/#{enc(key)}",
+        where,
+        binding_body(cost:, create_with:)
+      )
+    end
+
+    # Change what an existing binding costs, across every job matching
+    # the filter. Jobs not bound to this budget are skipped.
+    #
+    # The bulk form of `update_job_budget`.
+    #
+    # Raises a `Zizq::ClientError` (422) if the new cost exceeds the
+    # budget's capacity.
+    #
+    # @rbs key: String
+    # @rbs cost: Integer
+    # @rbs where: Zizq::where_params
+    # @rbs return: Zizq::bulk_budget_change
+    def update_all_jobs_budget(key, cost:, where: {})
+      bulk_budget_request(:patch, "/jobs/budgets/#{enc(key)}", where, { cost: })
+    end
+
+    # Unbind one budget from every job matching the filter, leaving
+    # their other budgets alone. The bulk form of `delete_job_budget`.
+    #
+    # This is the way to drain a budget before deleting it, since
+    # `delete_budget` refuses while anything is still bound to it.
+    #
+    # @rbs key: String
+    # @rbs where: Zizq::where_params
+    # @rbs return: Zizq::bulk_budget_change
+    def delete_all_jobs_budget(key, where: {})
+      bulk_budget_request(:delete, "/jobs/budgets/#{enc(key)}", where, nil)
+    end
+
+    # Unbind *every* budget from every job matching the filter. The
+    # bulk form of `clear_job_budgets`.
+    #
+    # Beware: An unfiltered call leaves every queued job on the server
+    # unthrottled — include a filter unless that is the intent.
+    #
+    # @rbs where: Zizq::where_params
+    # @rbs return: Zizq::bulk_budget_change
+    def clear_all_jobs_budgets(where: {})
+      bulk_budget_request(:delete, "/jobs/budgets", where, nil)
     end
 
     # List all cron group names.
@@ -1356,6 +1539,88 @@ module Zizq
       ).to_i if retention[:completed]
       wire[:dead_ms] = (retention[:dead].to_f * 1000).to_i if retention[:dead]
       wire
+    end
+
+    # Build the body for a single binding, where the budget key travels
+    # in the path rather than the body.
+    #
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Hash[Symbol, untyped]
+    def binding_body(cost:, create_with:)
+      body = {} #: Hash[Symbol, untyped]
+      body[:cost] = cost if cost
+      body[:create_with] = wire_policy(create_with) if create_with
+      body
+    end
+
+    # Convert a `Zizq::budget_binding` into the wire form, key included.
+    #
+    # @rbs binding: Zizq::budget_binding
+    # @rbs return: Hash[Symbol, untyped]
+    def wire_binding(binding)
+      { key: binding[:key] }.merge(
+        binding_body(cost: binding[:cost], create_with: binding[:create_with])
+      )
+    end
+
+    # Convert a `Zizq::budget_policy` into the wire form.
+    #
+    # @rbs policy: Zizq::budget_policy
+    # @rbs return: Hash[Symbol, untyped]
+    def wire_policy(policy)
+      {
+        allocation: policy[:allocation],
+        strategy: wire_strategy(policy[:strategy])
+      }
+    end
+
+    # Send one of the bulk job-budget requests and read its result.
+    #
+    # `body` is `nil` for the two that carry none, which are sent as
+    # `DELETE` with the filter in the query string.
+    #
+    # @rbs method: Symbol
+    # @rbs path: String
+    # @rbs where: Zizq::where_params
+    # @rbs body: Hash[Symbol, untyped]?
+    # @rbs return: Zizq::bulk_budget_change
+    def bulk_budget_request(method, path, where, body)
+      params = filter_params(where)
+
+      # An empty multi-value filter matches nothing — short-circuit
+      # rather than send a request that would match everything.
+      return { changed: 0, blocked: [] } if params.nil?
+
+      response =
+        case method
+        when :post
+          post(build_path(path, params:), body || {})
+        when :put
+          put(build_path(path, params:), body || {})
+        when :patch
+          patch(path, body || {}, params:)
+        else
+          delete(path, params:)
+        end
+      data = handle_response!(response, expected: 200)
+      { changed: data.fetch("changed"), blocked: data.fetch("blocked") }
+    end
+
+    # Validate a `where:` filter and build its query params.
+    #
+    # Returns `nil` when a multi-value filter is present but empty,
+    # which matches nothing — callers short-circuit rather than send a
+    # request that would match everything instead.
+    #
+    # @rbs where: Zizq::where_params
+    # @rbs return: Hash[Symbol, untyped]?
+    def filter_params(where)
+      multi_keys = %i[id status queue type]
+      params = build_where_params(validate_where(**where), multi_keys:)
+      return nil if multi_keys.any? { |key| params[key] == "" }
+
+      params
     end
 
     # Convert a budget strategy into the wire form — the period as

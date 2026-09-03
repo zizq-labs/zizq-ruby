@@ -59,6 +59,37 @@ module Zizq
     { type: :time_based, duration: to_f, ?burst: Integer? }
     | { type: :while_in_flight }
 
+  # A budget's policy — what `create_budget` and `put_budget` take.
+  type budget_policy = { allocation: Integer, strategy: budget_strategy }
+
+  # A job's binding to a budget: which budget, and what it costs the
+  # job to dispatch.
+  #
+  # `cost` defaults to 1. `create_with` declares the budget's policy if
+  # it does not exist yet, so a job can be bound atomically in a single
+  # call rather than two; it is ignored when the budget already exists,
+  # since the server stays authoritative and a binding must not be able
+  # to restate a throttle an operator has configured.
+  #
+  # Without `create_with`, the budget must exist before the job can be
+  # bound to it.
+  type budget_binding = {
+    key: String,
+    ?cost: Integer?,
+    ?create_with: budget_policy?
+  }
+
+  # The outcome of a bulk job budget binding change.
+  #
+  # `blocked` lists the job IDs that matched the filter and would have
+  # changed, but could not because they were in flight and already hold
+  # tokens against their budgets. Jobs that matched and needed no
+  # change are counted in neither.
+  #
+  # When `blocked` is returned non-empty, the caller can retry the
+  # operation on just those job IDs.
+  type bulk_budget_change = { changed: Integer, blocked: Array[String] }
+
   # A `budget_strategy` as a merge patch: every field is optional, so
   # one can be changed without restating the others. `burst: nil` clears
   # the burst back to the allocation.
