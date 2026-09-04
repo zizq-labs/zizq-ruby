@@ -143,8 +143,8 @@ Zizq.enqueue_with(ready_at: Time.new(2027, 3, 15, 14, 30)).enqueue(SendEmailJob,
 ```
 
 To enqueue many jobs efficiently, `Zizq.enqueue_bulk` sends them in a single
-atomic request — across queues and job types, and `enqueue_raw` enqueues can
-be mixed in too:
+atomic request — across queues and job types, and job classes vs raw enqueues
+can be mixed in too:
 
 ```ruby
 Zizq.enqueue_bulk do |b|
@@ -152,12 +152,12 @@ Zizq.enqueue_bulk do |b|
 end
 ```
 
-Jobs can also be enqueued without `Zizq::Job` via `Zizq.enqueue_raw` —
+Jobs can also be enqueued without `Zizq::Job` by providing the named fields —
 designed for lower-level code style, and for cross-language workflows where,
 for example, a Ruby app enqueues jobs consumed by a Go service.
 
 ```ruby
-Zizq.enqueue_raw(
+Zizq.enqueue(
   type: "send_email",
   queue: "comms",
   payload: { user_id: 42, template: "welcome" }
@@ -236,7 +236,7 @@ end
 ### Cross-language and low-level dispatch
 
 When a Ruby app needs to *process* jobs enqueued by another language
-(or by `Zizq.enqueue_raw`), `Zizq::Router` maps `type` strings to
+(or itself using raw enqueue form), `Zizq::Router` maps `type` strings to
 handler blocks operating on plain JSON payloads:
 
 ```ruby

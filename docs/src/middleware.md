@@ -9,12 +9,12 @@ error handling, transformation or metrics/instrumentation.
 
 ## Enqueue Middleware
 
-Enqueue middleware runs for each job enqueued with `Zizq.enqueue`,
-`Zizq.enqueue_raw` or `Zizq.enqueue_bulk`. Each middleware in the chain
-receives the `Zizq::EnqueueRequest` instance, which it may modify, and then
-calls the next link in the chain. The required signature is `#call(req, chain)`
-where `req` is the `Zizq::EnqueueRequest`, and `chain` implements `#call(req)`
-to continue the middleware chain.
+Enqueue middleware runs for each job enqueued with `Zizq.enqueue` or
+`Zizq.enqueue_bulk`. Each middleware in the chain receives the
+`Zizq::EnqueueRequest` instance, which it may modify, and then calls the next
+link in the chain. The required signature is `#call(req, chain)` where `req`
+is the `Zizq::EnqueueRequest`, and `chain` implements `#call(req)` to continue
+the middleware chain.
 
 To register an enqueue middleware, call `enqueue_middleware.use` within
 `Zizq.configure { ... }`.

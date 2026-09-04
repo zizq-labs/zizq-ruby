@@ -1,11 +1,14 @@
 # Enqueuing Jobs
 
-Job classes that use `Zizq::Job` are enqueued via `Zizq.enqueue`.
+Job classes that use `Zizq::Job` are enqueued via `Zizq.enqueue` passing
+the class as the first argument and all arguments and keyword argument in
+the remainder.
 
-More generic jobs can be enqueued via `Zizq.enqueue_raw`, which is a much more
-bare bones method intended for advanced use cases, such as cross-language
-support where e.g. a Ruby application enqueues a job that is ultimately
-processed by a Go application.
+More generic jobs can be enqueued via `Zizq.enqueue` by passing each of the
+job's fields (`type`, `queue`, `payload`, ...) directly. This is a shorthand
+form of `Zizq.enqueue_raw` which is a much more bare bones method intended
+for advanced use cases, such as cross-language support where e.g. a Ruby
+application enqueues a job that is ultimately processed by a Go application.
 
 > [!TIP]
 > Active Job classes can also be enqueued via `Zizq.enqueue` provided they
@@ -105,13 +108,14 @@ either the `ready_at` timestamp (seconds since the Unix epoch), or a `delay`
 
 For more advanced use cases, for example in an environment where services in
 multiple different programming languages interact with one another, jobs can
-be enqueued more directly by using `Zizq.enqueue_raw`. In this case, the
-`queue`, `type`, `payload` and other options must be provided by the caller.
+be enqueued more directly by passing all job fields explicitly. In this case,
+the `queue`, `type`, `payload` and other options must be provided by the
+caller.
 
 > Ruby:
 >
 > ``` ruby
-> Zizq.enqueue_raw(
+> Zizq.enqueue(
 >   queue: "emails",
 >   type: "send_email",
 >   payload: {user_id: 42, template: "welcome"},
@@ -151,7 +155,7 @@ same `enqueue` and `enqueue_raw` signatures as `Zizq` itself.
 >     b.enqueue(SendEmailJob, user_id, template:)
 >   end
 > 
->   b.enqueue_raw(
+>   b.enqueue(
 >     queue: "metrics",
 >     type: "increment_metric",
 >     payload: {key: "emails_enqueued", value: emails.size},

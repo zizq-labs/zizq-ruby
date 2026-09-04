@@ -50,7 +50,7 @@ Both 6-field (with seconds) and standard 5-field cron expressions are accepted.
 >   cron.define_entry("send_daily_digest", "0 9 * * *").enqueue(SendDailyDigestJob)
 > 
 >   # Run the log rotation process at midnight UTC.
->   cron.define_entry("rotate_logs", "0 0 * * *", timezone: "UTC").enqueue_raw(
+>   cron.define_entry("rotate_logs", "0 0 * * *", timezone: "UTC").enqueue(
 >     queue: "system/maintenance",
 >     type: "rotate_logs",
 >     priority: 100,

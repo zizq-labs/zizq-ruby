@@ -2,8 +2,8 @@
 
 Zizq ships with a test mode that swaps the real client out for an
 in-memory `Zizq::Test::Client`. Calls to `Zizq.enqueue`,
-`Zizq.enqueue_raw`, and `Zizq.enqueue_bulk` buffer jobs in memory
-instead of sending to the server, so tests run without needing a
+`Zizq.enqueue_job_class`, `Zizq.enqueued_raw` and `Zizq.enqueue_bulk` buffer
+jobs in memory instead of sending to the server, so tests run without needing a
 running Zizq instance.
 
 The intended scope is purely **enqueue paths**: assertions like
