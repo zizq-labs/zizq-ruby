@@ -123,6 +123,109 @@ module Zizq
       client.get_queues
     end
 
+    # List every defined budget, with its policy.
+    #
+    # Requires a Pro license on the server, else raise `Zizq::ClientError`
+    # for the server's 403 response.
+    #
+    # @rbs return: Array[Zizq::Resources::Budget]
+    def budgets
+      client.list_budgets
+    end
+
+    # Fetch one budget's policy.
+    #
+    # Requires a Pro license on the server, else raise `Zizq::ClientError`
+    # for the server's 403 response.
+    #
+    # Raises `Zizq::NotFoundError` if no budget exists under this key.
+    #
+    # @rbs key: String
+    # @rbs return: Zizq::Resources::Budget
+    def budget(key)
+      client.get_budget(key)
+    end
+
+    # Define a budget.
+    #
+    # Requires a Pro license on the server, else raise `Zizq::ClientError`
+    # for the server's 403 response.
+    #
+    #   Zizq.define_budget(
+    #     "emails",
+    #     allocation: 100,
+    #     strategy: { type: :time_based, duration: 60 }
+    #   )
+    #
+    # Refuses by default when one already exists under this key,
+    # raising `Zizq::ConflictError` and leaving the stored policy
+    # untouched — so an application declaring its budgets on boot
+    # cannot clobber a change that was explicitly applied since the
+    # budget was first created. Horizontally scaled processes can all
+    # call this safely, rescuing the conflict as success:
+    #
+    #   begin
+    #     Zizq.define_budget("emails", allocation: 100, strategy: ...)
+    #   rescue Zizq::ConflictError
+    #     # already declared
+    #   end
+    #
+    # Pass `replace: true` to overwrite instead, which never conflicts.
+    # A replace changes the policy, not the budget's identity, so its
+    # `created_at` survives. Refused with a `Zizq::ClientError` (422)
+    # if the new allocation is below a cost already required by a
+    # queued job or a cron entry.
+    #
+    # @rbs key: String
+    # @rbs allocation: Integer
+    # @rbs strategy: Zizq::budget_strategy
+    # @rbs replace: bool
+    # @rbs return: Zizq::Resources::Budget
+    def define_budget(key, allocation:, strategy:, replace: false)
+      if replace
+        client.put_budget(key, allocation:, strategy:)
+      else
+        client.create_budget(key, allocation:, strategy:)
+      end
+    end
+
+    # Amend named fields of a budget's policy, leaving the rest alone.
+    #
+    # Requires a Pro license on the server, else raise `Zizq::ClientError`
+    # for the server's 403 response.
+    #
+    # Deep merge-patches, so `burst` can be changed without repeating
+    # the `type` and `duration`:
+    #
+    #   Zizq.update_budget("emails", strategy: { burst: 5 })
+    #
+    # Raises `Zizq::NotFoundError` if no budget exists under this key.
+    #
+    # @rbs key: String
+    # @rbs allocation: Integer?
+    # @rbs strategy: Zizq::budget_strategy_patch?
+    # @rbs return: Zizq::Resources::Budget
+    def update_budget(key, allocation: nil, strategy: nil)
+      client.update_budget(key, allocation:, strategy:)
+    end
+
+    # Delete a budget.
+    #
+    # Requires a Pro license on the server, else raise `Zizq::ClientError`
+    # for the server's 403 response.
+    #
+    # Raises `Zizq::NotFoundError` if it does not exist, and
+    # `Zizq::ConflictError` while anything is still bound to it. To clear
+    # those bindings first:
+    #
+    #   Zizq.query.by_budgets_key("emails").unbind_budget("emails")
+    #
+    # @rbs key: String
+    # @rbs return: void
+    def delete_budget(key)
+      client.delete_budget(key)
+    end
+
     # Start a query to retrieve or modify job data.
     #
     # @rbs id: (String | Array[String])?

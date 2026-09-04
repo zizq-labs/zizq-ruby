@@ -55,6 +55,9 @@
   came back with `base_ms` / `jitter_ms` / `completed_ms` / `dead_ms`
   keys rather than the seconds the application had enqueued with.
 
+- Fixed `Resources::Job#update` leaving a cleared field on the object
+  it was called on.
+
 - Fixed scheduling a **batched job via cron** raising
   `ArgumentError: unknown keyword: :batch`. The cron job template
   dropped `batch` on the way to the server, so any entry carrying one
