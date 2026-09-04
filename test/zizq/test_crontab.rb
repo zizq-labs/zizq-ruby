@@ -308,6 +308,49 @@ class TestCrontab < ZizqTestCase
     end
   end
 
+  # The raw form works inside a cron entry too, which is the whole point
+  # of the dispatch — cross-language scheduling without `enqueue_raw`.
+  def test_define_crontab_accepts_both_enqueue_forms
+    stub_request(:put, "#{URL}/crons/default")
+      .with do |req|
+        JSON.parse(req.body)["entries"].map { |e| e["job"]["type"] } ==
+          %w[CronTestJob digest]
+      end
+      .to_return(json_response(CRON_GROUP))
+
+    Zizq.define_crontab("default") do |cron|
+      cron.define_entry("e1", "*/5 * * * *").enqueue(CronTestJob, 1)
+      cron.define_entry("e2", "0 9 * * *").enqueue(
+        queue: "emails",
+        type: "digest",
+        payload: {
+        }
+      )
+    end
+  end
+
+  # A cron entry fires on its schedule and cannot also be scheduled.
+  # `enqueue`'s raw form omits these keywords so they do not typecheck;
+  # `enqueue_raw` is a `**opts` catch-all and can only refuse at
+  # runtime, which is what this pins.
+  def test_cron_enqueue_raw_refuses_a_scheduled_job
+    %i[ready_at delay].each do |key|
+      error =
+        assert_raises(ArgumentError) do
+          Zizq.define_crontab("default") do |cron|
+            cron.define_entry("e1", "* * * * *").enqueue_raw(
+              :queue => "q",
+              :type => "T",
+              :payload => {
+              },
+              key => 60
+            )
+          end
+        end
+      assert_match(/not permitted via cron/, error.message)
+    end
+  end
+
   def test_define_crontab_with_timezone
     stub_request(:put, "#{URL}/crons/default")
       .with do |req|

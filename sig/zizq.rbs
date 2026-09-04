@@ -205,12 +205,18 @@ module Zizq
       **untyped
     ) ?{ (EnqueueRequest) -> void } -> untyped
 
+    def enqueue_job_class: (
+      Class & JobConfig,
+      *untyped,
+      **untyped
+    ) ?{ (EnqueueRequest) -> void } -> untyped
+
     def enqueue_raw: (
       queue: String,
       type: String,
       payload: untyped,
       **untyped
-    ) -> untyped
+    ) ?{ (EnqueueRequest) -> void } -> untyped
 
     def enqueue_bulk: () { (_EnqueueTarget) -> void } -> untyped
   end

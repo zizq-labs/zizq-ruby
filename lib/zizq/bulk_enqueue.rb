@@ -27,7 +27,7 @@ module Zizq
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
     # @rbs return: void
-    def enqueue(job_class, *args, **kwargs, &block)
+    def enqueue_job_class(job_class, *args, **kwargs, &block)
       @requests << Zizq.build_enqueue_request(
         job_class,
         *args,
@@ -36,24 +36,70 @@ module Zizq
       )
     end
 
+    # Collect an enqueue, by class or by raw inputs.
+    #
+    # Both forms of `Zizq.enqueue` work here too:
+    #
+    #   b.enqueue(SendEmailJob, 42, template: "welcome")
+    #   b.enqueue(queue: "emails", type: "send_email", payload: {...})
+    #
+    # @rbs skip
+    # @rbs!
+    #   def enqueue: (
+    #     Class & Zizq::JobConfig job_class,
+    #     *untyped args,
+    #     **untyped kwargs
+    #   ) ?{ (EnqueueRequest) -> void } -> void
+    #   | (
+    #     queue: String,
+    #     type: String,
+    #     payload: untyped,
+    #     ?priority: Integer?,
+    #     ?delay: Zizq::to_f?,
+    #     ?ready_at: Zizq::to_f?,
+    #     ?retry_limit: Integer?,
+    #     ?backoff: Zizq::backoff?,
+    #     ?retention: Zizq::retention?,
+    #     ?unique_key: String?,
+    #     ?unique_while: Zizq::unique_scope?,
+    #     ?batch: Zizq::batch?,
+    #     ?budgets: Array[Zizq::budget_binding_params]?
+    #   ) ?{ (EnqueueRequest) -> void } -> void
+    def enqueue(*args, **kwargs, &block)
+      return enqueue_job_class(*args, **kwargs, &block) unless args.empty?
+
+      begin
+        # See `Zizq.enqueue` for why only this branch is wrapped.
+        enqueue_raw(**kwargs, &block) # steep:ignore InsufficientKeywordArguments
+      rescue ArgumentError => e
+        raise ArgumentError, e.message, caller(1)
+      end
+    end
+
     # Collect a raw enqueue. Accepts the same arguments as
     # `Zizq.enqueue_raw`.
     #
-    # @rbs queue: String
-    # @rbs type: String
-    # @rbs payload: untyped
-    # @rbs priority: Integer?
-    # @rbs ready_at: Zizq::to_f?
-    # @rbs retry_limit: Integer?
-    # @rbs backoff: Zizq::backoff?
-    # @rbs retention: Zizq::retention?
-    # @rbs unique_key: String?
-    # @rbs unique_while: Zizq::unique_scope?
-    # @rbs batch: Zizq::batch?
-    # @rbs budgets: Array[Zizq::budget_binding_params]?
-    # @rbs return: void
+    # @rbs skip
+    # @rbs!
+    #   def enqueue_raw: (
+    #     queue: String,
+    #     type: String,
+    #     payload: untyped,
+    #     ?priority: Integer?,
+    #     ?delay: Zizq::to_f?,
+    #     ?ready_at: Zizq::to_f?,
+    #     ?retry_limit: Integer?,
+    #     ?backoff: Zizq::backoff?,
+    #     ?retention: Zizq::retention?,
+    #     ?unique_key: String?,
+    #     ?unique_while: Zizq::unique_scope?,
+    #     ?batch: Zizq::batch?,
+    #     ?budgets: Array[Zizq::budget_binding_params]?
+    #   ) ?{ (EnqueueRequest) -> void } -> void
     def enqueue_raw(queue:, type:, payload:, **opts)
-      @requests << EnqueueRequest.new(queue:, type:, payload:, **opts)
+      req = EnqueueRequest.new(queue:, type:, payload:, **opts)
+      yield req if block_given?
+      @requests << req
     end
 
     # Build a scoped enqueue helper that applies the given overrides to a

@@ -389,6 +389,144 @@ class TestJob < ZizqTestCase
     Zizq.enqueue(RetryConfiguredJob)
   end
 
+  # --- enqueue dispatch (class form vs raw form) ---
+
+  # Matches a backtrace frame for `enqueue` itself, under either
+  # spelling: Ruby 3.3 and earlier render `` `enqueue' `` while 3.4
+  # onwards fully qualifies it as `'Zizq.enqueue'`. Deliberately anchored
+  # so `enqueue_job_class` and `EnqueueRequest#update` do not match.
+  ENQUEUE_FRAME = /in ['`](?:[\w:]+[.#])?enqueue'\z/
+
+  # Both forms are first-class; which one you get is decided by whether
+  # a positional argument was given.
+  def test_enqueue_dispatches_the_class_form
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["type"] == "RetryConfiguredJob" }
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(RetryConfiguredJob)
+  end
+
+  def test_enqueue_dispatches_the_raw_form
+    stub_request(:post, "#{URL}/jobs")
+      .with do |req|
+        body = JSON.parse(req.body)
+        body["type"] == "send_email" && body["queue"] == "emails"
+      end
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(queue: "emails", type: "send_email", payload: { "id" => 1 })
+  end
+
+  # The raw form takes a block too, so the two forms behave alike.
+  def test_enqueue_raw_form_yields_the_request
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["priority"] == 7 }
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue(queue: "emails", type: "send_email", payload: {}) do |req|
+      req.priority = 7
+    end
+  end
+
+  # A stray keyword still raises, and is reported against the `enqueue`
+  # call rather than against `enqueue_raw`, which the caller never named.
+  def test_enqueue_raw_form_reports_a_bad_keyword_against_itself
+    error =
+      assert_raises(ArgumentError) do
+        Zizq.enqueue(queue: "q", type: "t", payload: {}, paylod: 1)
+      end
+
+    assert_match(/unknown keyword: :paylod/, error.message)
+    assert_match(ENQUEUE_FRAME, error.backtrace.first)
+    # The original is kept for debugging.
+    assert_instance_of ArgumentError, error.cause
+  end
+
+  # An error raised inside the caller's own block must not be rewritten
+  # to look like a bad argument to `enqueue` — only the raw branch is
+  # wrapped, and `enqueue_raw` runs nothing of the caller's.
+  def test_enqueue_does_not_rewrite_errors_from_the_block
+    stub_request(:post, "#{URL}/jobs").to_return(
+      status: 201,
+      body: JSON.generate({ "id" => "x" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    error =
+      assert_raises(ArgumentError) do
+        Zizq.enqueue(RetryConfiguredJob) { |req| req.update(typo: 1) }
+      end
+
+    assert_match(/unknown keyword: :typo/, error.message)
+    refute_match(ENQUEUE_FRAME, error.backtrace.first)
+  end
+
+  def test_enqueue_rejects_a_class_that_is_not_a_job
+    error = assert_raises(ArgumentError) { Zizq.enqueue(String, 1) }
+    assert_match(/must include Zizq::Job/, error.message)
+  end
+
+  def test_enqueue_bulk_accepts_both_forms
+    stub_request(:post, "#{URL}/jobs/bulk")
+      .with do |req|
+        JSON.parse(req.body)["jobs"].map { |j| j["type"] } ==
+          %w[RetryConfiguredJob send_email]
+      end
+      .to_return(
+        status: 200,
+        body: JSON.generate({ "jobs" => [{ "id" => "1" }, { "id" => "2" }] }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue_bulk do |b|
+      b.enqueue(RetryConfiguredJob)
+      b.enqueue(queue: "emails", type: "send_email", payload: {})
+    end
+  end
+
+  # The scoped overrides apply to the raw form as well as the class one.
+  def test_enqueue_with_accepts_both_forms
+    stub_request(:post, "#{URL}/jobs")
+      .with { |req| JSON.parse(req.body)["priority"] == 3 }
+      .to_return(
+        status: 201,
+        body: JSON.generate({ "id" => "x" }),
+        headers: {
+          "Content-Type" => "application/json"
+        }
+      )
+
+    Zizq.enqueue_with(priority: 3).enqueue(
+      queue: "emails",
+      type: "send_email",
+      payload: {
+      }
+    )
+  end
+
   # A class-declared budget reaches the wire without the caller naming
   # it at the enqueue site.
   def test_enqueue_sends_class_budgets

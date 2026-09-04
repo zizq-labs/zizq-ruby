@@ -101,6 +101,50 @@
   no longer see a timezone anywhere, since it does not know about the
   schedule-level field.
 
+- **`enqueue` now accepts raw inputs as well as a job class**, so
+  enqueueing for a worker in another language no longer means using
+  a differently-named method:
+
+      Zizq.enqueue(SendEmailJob, 42, template: "welcome")
+      Zizq.enqueue(queue: "emails", type: "send_email", payload: {...})
+
+  Which form you get is decided by whether a positional argument was
+  given. The same applies to `b.enqueue` inside `enqueue_bulk`, to
+  `enqueue_with(...).enqueue`, and to a cron entry's `enqueue` — every
+  place that defined both `enqueue` and `enqueue_raw`.
+
+  Both methods remain, and are what `enqueue` delegates to. The
+  class-only form is now `enqueue_job_class`, so an explicit call has
+  an explicit name; `enqueue_raw` is unchanged in meaning. Existing
+  code needs no edit.
+
+- **The raw form's keywords are now type-checked.** `enqueue_raw` takes
+  `**opts`, so its signature had always been
+  `(queue:, type:, payload:, **untyped)` — every other keyword was
+  accepted by the type checker and only failed at runtime. Both it and
+  the new `enqueue` now enumerate what they accept:
+
+      Zizq.enqueue_raw(queue: "q", type: "t", payload: {}, paylod: 1)
+      # Steep: Unexpected keyword argument
+
+  This covers `Zizq.enqueue_raw`, `b.enqueue_raw` inside a bulk block,
+  `enqueue_with(...).enqueue_raw`, and a cron entry's `enqueue_raw`.
+  Nothing changes at runtime; a typo raised then and raises now.
+
+  `delay:` is among them, having previously been absent even from the
+  documented keywords despite always working.
+
+  A cron entry is the exception: it fires on its schedule, so its raw
+  form omits `ready_at` and `delay`, and passing either no longer
+  typechecks. Both still bind at runtime and raise an `ArgumentError`,
+  which is what an untyped caller gets.
+
+  `enqueue_raw` also yields the request now, matching the class form:
+
+      Zizq.enqueue(queue: "emails", type: "send_email", payload: {}) do |req|
+        req.priority = 0
+      end
+
 - **`Zizq::ConflictError`** is raised for a 409 instead of a plain
   `Zizq::ClientError`. The new error class is inherits from
   `Zizq::ClientError` so is backwards compatible.

@@ -254,15 +254,14 @@ together.
 
 ### Raw enqueue
 
-For the low-level `Zizq.enqueue_raw` API (typically used for cross-language
-enqueue or when you want to bypass the DSL), pass `batch:` explicitly as a
-hash. You're responsible for the `when`/`fold` expressions and the batch
-key.
+For the low-level raw enqueue API (typically used for cross-language enqueue
+or when you want to bypass the DSL), pass `batch:` explicitly as a hash.
+You're responsible for the `when`/`fold` expressions and the batch key.
 
 > Ruby:
 >
 > ``` ruby
-> Zizq.enqueue_raw(
+> Zizq.enqueue(
 >   queue: "push",
 >   type:  "SendPushNotifications",
 >   payload: { "notifications" => [n1], "platform" => "apple" },

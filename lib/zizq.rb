@@ -380,10 +380,61 @@ module Zizq
     # @rbs kwargs: Hash[Symbol, untyped]
     # @rbs &block: ?(EnqueueRequest) -> void
     # @rbs return: Resources::Job
-    def enqueue(job_class, *args, **kwargs, &block)
+    def enqueue_job_class(job_class, *args, **kwargs, &block)
       req = build_enqueue_request(job_class, *args, **kwargs, &block)
       req = configuration.enqueue_middleware.call(req)
       client.enqueue(**req.to_enqueue_params)
+    end
+
+    # Enqueue a job, by class and arguments, or by raw inputs.
+    #
+    # Both forms are first-class. A job named by a Ruby class including
+    # Zizq::Job, or ActiveJob, and one named by the type string a worker
+    # in Ruby or any other language agrees on:
+    #
+    #   Zizq.enqueue(SendEmailJob, 42, template: "welcome")
+    #   Zizq.enqueue(queue: "emails", type: "send_email", payload: {...})
+    #
+    # Internally this delegates to `enqueue_job_class` or `enqueue_raw`
+    # based on whether a positional argument was given.
+    #
+    # @rbs skip
+    # @rbs!
+    #   def self.enqueue: (
+    #     Class & Zizq::JobConfig job_class,
+    #     *untyped args,
+    #     **untyped kwargs
+    #   ) ?{ (EnqueueRequest) -> void } -> Resources::Job
+    #   | (
+    #     queue: String,
+    #     type: String,
+    #     payload: untyped,
+    #     ?priority: Integer?,
+    #     ?delay: Zizq::to_f?,
+    #     ?ready_at: Zizq::to_f?,
+    #     ?retry_limit: Integer?,
+    #     ?backoff: Zizq::backoff?,
+    #     ?retention: Zizq::retention?,
+    #     ?unique_key: String?,
+    #     ?unique_while: Zizq::unique_scope?,
+    #     ?batch: Zizq::batch?,
+    #     ?budgets: Array[Zizq::budget_binding_params]?
+    #   ) ?{ (EnqueueRequest) -> void } -> Resources::Job
+    def enqueue(*args, **kwargs, &block)
+      return enqueue_job_class(*args, **kwargs, &block) unless args.empty?
+
+      begin
+        # Steep cannot prove a splatted hash supplies the required
+        # keywords; that check belongs to `enqueue_raw`'s own binding at
+        # runtime, which is exactly what the rescue below reports on.
+        # A *caller* of this method is checked by the overload above.
+        enqueue_raw(**kwargs, &block) # steep:ignore InsufficientKeywordArguments
+      rescue ArgumentError => e
+        # Reported against this call rather than against `enqueue_raw`,
+        # which the caller never referenced and would read more like an
+        # internal bug.
+        raise ArgumentError, e.message, caller(1)
+      end
     end
 
     # Enqueue a job by providing raw inputs to the Zizq server.
@@ -405,21 +456,26 @@ module Zizq
     #     c.dispatcher = MyDispatcher.new
     #   end
     #
-    # @rbs queue: String
-    # @rbs type: String
-    # @rbs payload: untyped
-    # @rbs priority: Integer?
-    # @rbs ready_at: Zizq::to_f?
-    # @rbs retry_limit: Integer?
-    # @rbs backoff: Zizq::backoff?
-    # @rbs retention: Zizq::retention?
-    # @rbs unique_key: String?
-    # @rbs unique_while: Zizq::unique_scope?
-    # @rbs batch: Zizq::batch?
-    # @rbs budgets: Array[Zizq::budget_binding_params]?
-    # @rbs return: Resources::Job
+    # @rbs skip
+    # @rbs!
+    #   def self.enqueue_raw: (
+    #     queue: String,
+    #     type: String,
+    #     payload: untyped,
+    #     ?priority: Integer?,
+    #     ?delay: Zizq::to_f?,
+    #     ?ready_at: Zizq::to_f?,
+    #     ?retry_limit: Integer?,
+    #     ?backoff: Zizq::backoff?,
+    #     ?retention: Zizq::retention?,
+    #     ?unique_key: String?,
+    #     ?unique_while: Zizq::unique_scope?,
+    #     ?batch: Zizq::batch?,
+    #     ?budgets: Array[Zizq::budget_binding_params]?
+    #   ) ?{ (EnqueueRequest) -> void } -> Resources::Job
     def enqueue_raw(queue:, type:, payload:, **opts)
       req = EnqueueRequest.new(queue:, type:, payload:, **opts)
+      yield req if block_given?
       req = configuration.enqueue_middleware.call(req)
       client.enqueue(**req.to_enqueue_params)
     end
