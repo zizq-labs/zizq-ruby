@@ -77,6 +77,55 @@ class ActiveJobTestJob < ActiveJob::Base
   end
 end
 
+# --- Budget fixtures (pro-only) ---
+
+# Records how many of these ran at once, so a `while_in_flight` budget
+# can be checked without measuring time: an allocation of 1 means the
+# server must never have two in flight together.
+class ConcurrencyProbeJob
+  include Zizq::Job
+
+  zizq_queue "budget-concurrency"
+
+  class << self
+    attr_accessor :tracker
+  end
+
+  def perform = self.class.tracker&.call
+end
+
+# Counts dispatches for the rate-limit tests.
+class ThrottledProbeJob
+  include Zizq::Job
+
+  zizq_queue "budget-throttled"
+
+  class << self
+    attr_accessor :tracker
+  end
+
+  def perform = self.class.tracker&.call
+end
+
+# Declares its budget on the class rather than per enqueue.
+class DeclaredBudgetJob
+  include Zizq::Job
+
+  zizq_queue "budget-declared"
+  zizq_budget "declared-budget",
+              cost: 2,
+              create_with: {
+                allocation: 100,
+                strategy: {
+                  type: :time_based,
+                  duration: 60
+                }
+              }
+
+  def perform
+  end
+end
+
 # --- Batched job fixtures (pro-only) ---
 #
 # The `notifications` positional arg is the batch target. Enqueues
@@ -138,6 +187,8 @@ class IntegrationTest < Minitest::Test
     # `Zizq.client.erase_all_data` is the server-side wipe.
     Zizq.client.erase_all_data
     IntegrationTestJob.mock_perform = nil
+    ConcurrencyProbeJob.tracker = nil
+    ThrottledProbeJob.tracker = nil
   end
 
   def teardown
@@ -981,5 +1032,393 @@ class IntegrationTest < Minitest::Test
       end
     skip "Batched jobs require a Pro license" if err.status == 403
     assert_equal 422, err.status
+  end
+
+  # --- Budgets (pro-only) ---
+  #
+  # `erase_all_data` wipes budgets too (the server deletes cron groups,
+  # then jobs, then budgets — so nothing references a budget by the time
+  # it is removed), which is what keeps these isolated from each other.
+
+  TIME_BASED = { type: :time_based, duration: 60 }.freeze
+
+  def test_budget_crud_round_trip
+    created =
+      Zizq.define_budget("emails", allocation: 100, strategy: TIME_BASED)
+    assert_equal "emails", created.key
+    assert_equal 100, created.allocation
+
+    fetched = Zizq.budget("emails")
+    assert_equal 100, fetched.allocation
+    assert_equal ["emails"], Zizq.budgets.map(&:key)
+
+    Zizq.update_budget("emails", strategy: { burst: 5 })
+    assert_equal 5, Zizq.budget("emails").burst
+
+    Zizq.delete_budget("emails")
+    assert_raises(Zizq::NotFoundError) { Zizq.budget("emails") }
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # The wire round trip is the point: `duration` goes out as integer
+  # milliseconds and has to come back as the seconds it was written in.
+  # A unit test with a stubbed response cannot catch a mismatch here.
+  def test_budget_durations_round_trip_in_seconds
+    Zizq.define_budget(
+      "timed",
+      allocation: 10,
+      strategy: {
+        type: :time_based,
+        duration: 1.5,
+        burst: 3
+      }
+    )
+
+    b = Zizq.budget("timed")
+    assert_equal :time_based, b.strategy_type
+    assert b.time_based?
+    assert_in_delta 1.5, b.duration
+    assert_equal 3, b.burst
+    # The burst is the ceiling a cost must fit inside, not the allocation.
+    assert_equal 3, b.capacity
+    # And it composes straight back into a write.
+    assert_equal({ type: :time_based, duration: 1.5, burst: 3 }, b.strategy)
+    Zizq.define_budget(
+      "timed",
+      allocation: 20,
+      strategy: b.strategy,
+      replace: true
+    )
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  def test_while_in_flight_budget_round_trips
+    Zizq.define_budget(
+      "mutex",
+      allocation: 1,
+      strategy: {
+        type: :while_in_flight
+      }
+    )
+
+    b = Zizq.budget("mutex")
+    assert b.while_in_flight?
+    assert_nil b.duration
+    assert_nil b.burst
+    assert_equal 1, b.capacity
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # `POST` refuses rather than overwriting, which is what lets every
+  # replica declare its budgets on boot without coordinating.
+  def test_define_budget_conflicts_and_replace_does_not
+    Zizq.define_budget("emails", allocation: 100, strategy: TIME_BASED)
+
+    assert_raises(Zizq::ConflictError) do
+      Zizq.define_budget("emails", allocation: 200, strategy: TIME_BASED)
+    end
+    assert_equal 100, Zizq.budget("emails").allocation
+
+    Zizq.define_budget(
+      "emails",
+      allocation: 200,
+      strategy: TIME_BASED,
+      replace: true
+    )
+    assert_equal 200, Zizq.budget("emails").allocation
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  def test_binding_at_enqueue_reads_back_on_the_job
+    Zizq.define_budget("emails", allocation: 100, strategy: TIME_BASED)
+
+    job =
+      Zizq.enqueue_raw(
+        queue: "integration",
+        type: "BoundJob",
+        payload: {
+        },
+        budgets: [{ key: "emails", cost: 3 }]
+      )
+
+    assert_equal [{ key: "emails", cost: 3 }], job.budgets
+    assert_equal [{ key: "emails", cost: 3 }],
+                 Zizq.client.get_job(job.id).budgets
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # `create_with` binds and creates in one call, so an application can
+  # bring its own throttles up without a provisioning step.
+  def test_class_declared_budget_creates_and_binds
+    job = Zizq.enqueue(DeclaredBudgetJob)
+
+    assert_equal [{ key: "declared-budget", cost: 2 }], job.budgets
+    assert_equal 100, Zizq.budget("declared-budget").allocation
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  def test_job_level_binding_methods
+    Zizq.define_budget("a", allocation: 100, strategy: TIME_BASED)
+    Zizq.define_budget("b", allocation: 100, strategy: TIME_BASED)
+
+    job = Zizq.enqueue_raw(queue: "integration", type: "BindMe", payload: {})
+    assert_empty job.budgets
+
+    job.bind_budget("a", cost: 2)
+    assert_equal [{ key: "a", cost: 2 }], job.budgets
+
+    assert_raises(Zizq::ConflictError) { job.bind_budget("a") }
+
+    job.set_budget_cost("a", 4)
+    assert_equal [{ key: "a", cost: 4 }], job.budgets
+
+    job.rebind_budget("a")
+    assert_equal [{ key: "a", cost: 1 }], job.budgets
+
+    job.replace_budgets([{ key: "a", cost: 1 }, { key: "b", cost: 5 }])
+    assert_equal %w[a b], job.budgets.map { |x| x[:key] }.sort
+
+    job.unbind_budget("b")
+    assert_equal ["a"], job.budgets.map { |x| x[:key] }
+
+    job.unbind_all_budgets
+    assert_empty job.budgets
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # A budget cannot be deleted while anything still draws on it, and
+  # `by_budgets_key` selects exactly what is in the way.
+  def test_drain_a_budget_before_deleting_it
+    Zizq.define_budget("emails", allocation: 100, strategy: TIME_BASED)
+
+    3.times do |i|
+      Zizq.enqueue_raw(
+        queue: "integration",
+        type: "Bound#{i}",
+        payload: {
+        },
+        budgets: [{ key: "emails" }]
+      )
+    end
+
+    assert_equal 3, Zizq.query.by_budgets_key("emails").count
+    assert_raises(Zizq::ConflictError) { Zizq.delete_budget("emails") }
+
+    result = Zizq.query.by_budgets_key("emails").unbind_budget("emails")
+    assert_equal 3, result[:changed]
+    assert_empty result[:blocked]
+
+    assert_equal 0, Zizq.query.by_budgets_key("emails").count
+    Zizq.delete_budget("emails")
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  def test_bulk_binding_over_a_query
+    Zizq.define_budget("emails", allocation: 100, strategy: TIME_BASED)
+    3.times do |i|
+      Zizq.enqueue_raw(queue: "integration", type: "Q#{i}", payload: {})
+    end
+
+    result = Zizq.query.by_queue("integration").bind_budget("emails", cost: 2)
+    assert_equal 3, result[:changed]
+
+    assert_equal 3, Zizq.query.by_budgets_key("emails").count
+
+    Zizq.query.by_budgets_key("emails").set_budget_cost("emails", 7)
+    costs =
+      Zizq.query.by_budgets_key("emails").map { |j| j.budgets.first[:cost] }
+    assert_equal [7, 7, 7], costs
+
+    assert_equal 3,
+                 Zizq.query.by_queue("integration").unbind_all_budgets[:changed]
+    assert_equal 0, Zizq.query.by_budgets_key("emails").count
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # --- Throttling (pro-only) ---
+  #
+  # Deliberately built so the assertions are about *counts*, not
+  # elapsed time. The rate-limit test uses a one-minute period, so the
+  # second token cannot arrive inside the few seconds the test runs
+  # however loaded the machine is; the concurrency test measures
+  # overlap rather than duration and has no timing component at all.
+
+  def test_while_in_flight_budget_never_runs_two_at_once
+    Zizq.define_budget(
+      "one-at-a-time",
+      allocation: 1,
+      strategy: {
+        type: :while_in_flight
+      }
+    )
+
+    5.times do |i|
+      Zizq.enqueue_raw(
+        queue: "budget-concurrency",
+        type: "ConcurrencyProbeJob",
+        payload: {
+          "args" => [],
+          "kwargs" => {
+          }
+        },
+        budgets: [{ key: "one-at-a-time" }]
+      )
+    end
+
+    mutex = Mutex.new
+    in_flight = 0
+    peak = 0
+    done = 0
+    worker =
+      Zizq::Worker.new(
+        thread_count: 4,
+        fiber_count: 1,
+        queues: ["budget-concurrency"]
+      )
+
+    ConcurrencyProbeJob.tracker =
+      lambda do
+        mutex.synchronize do
+          in_flight += 1
+          peak = [peak, in_flight].max
+        end
+        sleep 0.05
+        mutex.synchronize do
+          in_flight -= 1
+          done += 1
+          worker.stop if done >= 5
+        end
+      end
+
+    Timeout.timeout(60) { worker.run }
+
+    assert_equal 5, done
+    assert_equal 1, peak, "budget allowed #{peak} jobs in flight at once"
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # One token per minute with a burst of 1, so exactly one job can be
+  # afforded and the rest wait for a refill that will not arrive while
+  # the test runs. Asserting the count rather than the pacing leaves
+  # roughly a minute of slack for a loaded machine.
+  def test_time_based_budget_withholds_what_it_cannot_afford
+    Zizq.define_budget(
+      "one-per-minute",
+      allocation: 1,
+      strategy: {
+        type: :time_based,
+        duration: 60,
+        burst: 1
+      }
+    )
+
+    3.times do |i|
+      Zizq.enqueue_raw(
+        queue: "budget-throttled",
+        type: "ThrottledProbeJob",
+        payload: {
+          "args" => [],
+          "kwargs" => {
+          }
+        },
+        budgets: [{ key: "one-per-minute" }]
+      )
+    end
+
+    mutex = Mutex.new
+    performed = 0
+    worker =
+      Zizq::Worker.new(
+        thread_count: 2,
+        fiber_count: 1,
+        queues: ["budget-throttled"]
+      )
+    ThrottledProbeJob.tracker = -> { mutex.synchronize { performed += 1 } }
+
+    stopper =
+      Thread.new do
+        sleep 3
+        worker.stop
+      end
+    Timeout.timeout(60) { worker.run }
+    stopper.join
+
+    assert_equal 1,
+                 mutex.synchronize { performed },
+                 "expected the budget to afford exactly one job"
+    assert_equal 2, Zizq.query.by_queue("budget-throttled").count
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
+  end
+
+  # The positive control for the test above: a budget with room to
+  # spare must not hold anything back. The bucket starts full, so all
+  # three are affordable immediately and no waiting is involved.
+  def test_generous_budget_does_not_throttle
+    Zizq.define_budget(
+      "roomy",
+      allocation: 100,
+      strategy: {
+        type: :time_based,
+        duration: 1
+      }
+    )
+
+    3.times do |i|
+      Zizq.enqueue_raw(
+        queue: "budget-throttled",
+        type: "ThrottledProbeJob",
+        payload: {
+          "args" => [],
+          "kwargs" => {
+          }
+        },
+        budgets: [{ key: "roomy" }]
+      )
+    end
+
+    mutex = Mutex.new
+    performed = 0
+    worker =
+      Zizq::Worker.new(
+        thread_count: 2,
+        fiber_count: 1,
+        queues: ["budget-throttled"]
+      )
+    ThrottledProbeJob.tracker =
+      lambda do
+        mutex.synchronize do
+          performed += 1
+          worker.stop if performed >= 3
+        end
+      end
+
+    Timeout.timeout(60) { worker.run }
+
+    assert_equal 3, performed
+  rescue Zizq::ClientError => e
+    skip "Budgets require a Pro license" if e.status == 403
+    raise
   end
 end

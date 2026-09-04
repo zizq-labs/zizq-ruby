@@ -1,10 +1,10 @@
 # Zizq — Official Ruby Client
 
-This is the official Zizq client library for Ruby.
+Zizq (**/zɪsk/**) is a fast and durable job queue packed into a single native
+binary, built on an embedded LSM database — not on Redis, and not on your
+RDBMS. It works in any stack, crossing programming language boundaries.
 
-Zizq is a simple, zero dependency, single binary job queue system that is both
-fast and durable. It is designed to work in any stack through a simple HTTP
-API.
+This is the official Zizq client library for Ruby.
 
 [![CI](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml/badge.svg)](https://github.com/zizq-labs/zizq-ruby/actions/workflows/ci.yml)
 [![Gem Version](https://img.shields.io/gem/v/zizq.svg)](https://rubygems.org/gems/zizq)
@@ -21,6 +21,8 @@ API.
 * Configurable job retention policies
 * Recurring jobs (cron)
 * Job introspection and management APIs, with support for `jq` query filters
+* Concurrency control that doesn't impact other jobs
+* Rate limiting with configurable burst
 * Unique jobs (deduplicated)
 * Batched jobs (folded/merged)
 * Testing helpers
@@ -160,6 +162,75 @@ Zizq.enqueue_raw(
   queue: "comms",
   payload: { user_id: 42, template: "welcome" }
 )
+```
+
+### Concurrency control
+
+The Zizq server supports constraining the number of `in_flight` set of jobs for
+specific job types by binding a named _budget_ to those jobs.
+
+```ruby
+# Define a named budget called "notifications" that jobs can reference
+# (generally somewhere in your application startup code).
+Zizq.define_budget(
+  "notifications",
+  allocation: 10,
+  strategy: { type: :while_in_flight }
+)
+
+# Specify the budget on the Job class (or at enqueue time).
+class SendNotificationJob
+  include Zizq::Job
+
+  zizq_budget "notifications"
+
+  def perform(id)
+    # ...
+  end
+end
+
+# Those jobs execute no more than 10 at any given time. Other jobs continue to
+# flow normally.
+100.times do |n|
+  Zizq.enqueue(SendNotificationJob, n)
+end
+```
+
+### Rate limiting
+
+The Zizq server supports dispatching jobs to workers at a throttled rate by
+binding a named _budget_ to those jobs. Jobs that exceed the limit do not
+block other work. The server is smart enough to "park" them until the moment
+they are ready to dispatch.
+
+```ruby
+# Define a named budget called "image-service" that jobs can reference
+# (generally somewhere in your application startup code).
+Zizq.define_budget(
+  "image-service",
+  allocation: 1000,
+  strategy: {
+    type: :time_based,
+    duration: 1.minute # or just 60 without ActiveSupport
+  }
+)
+
+# Specify the budget on the Job class (or at enqueue time).
+class NormalizeImageJob
+  include Zizq::Job
+
+  zizq_budget "image-service"
+
+  def perform(id)
+    # ...
+  end
+end
+
+# Those jobs are delivered by the server at a rate of 1000/minute without
+# blocking other jobs. Your workers remain free of such knowledge.
+5000.times do |n|
+  Zizq.enqueue(NormalizeImageJob, n)
+end
 ```
 
 ### Cross-language and low-level dispatch

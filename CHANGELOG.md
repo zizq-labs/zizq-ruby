@@ -2,6 +2,80 @@
 
 ## 0.7.0 (Unreleased)
 
+- **Budgets** (Pro) — server-side rate limiting and concurrency control.
+  A budget is a named token bucket that jobs draw from, and a job that
+  cannot afford its cost waits rather than dispatching. Two strategies:
+
+      # A rate limit: 100 dispatches per minute
+      Zizq.define_budget(
+        "emails",
+        allocation: 100,
+        strategy: { type: :time_based, duration: 60 }
+      )
+
+      # A concurrency limit: at most 3 running at once
+      Zizq.define_budget(
+        "stripe",
+        allocation: 3,
+        strategy: { type: :while_in_flight }
+      )
+
+  `time_based` tokens accrue on a continuous drip, so an empty bucket
+  is half full after half the duration. `while_in_flight` has no clock
+  at all — its tokens are returned to the bucket when a job stops
+  running.
+
+  A bucket starts full, so `100` per minute really does permit two
+  hundred in the first minute before settling to its long-run rate.
+  `burst` caps how many tokens the bucket may hold and so caps that
+  spike; a `burst` of `1` paces dispatches evenly with no overshoot.
+
+  Jobs bind to budgets at enqueue, per class, or after the fact:
+
+      zizq_budget "emails", cost: 2          # on the job class
+
+      Zizq.enqueue(SendEmailJob) do |req|    # per enqueue
+        req.budgets = [{ key: "emails", cost: 2 }]
+      end
+
+      job.bind_budget("emails", cost: 2)     # on an existing job
+
+  `cost` is how many tokens one job consumes, defaulting to 1, so
+  jobs can weigh differently against the same budget. A binding can
+  carry `create_with:` to declare the budget if it does not exist,
+  binding and creating in one call — ignored when it already exists,
+  so an application declaring its budgets on boot won't accidentally
+  overwrite explicit tuning that has since occurred.
+
+  Budgets are managed with `Zizq.budgets`, `Zizq.budget`,
+  `Zizq.define_budget`, `Zizq.update_budget` and `Zizq.delete_budget`.
+  `define_budget` refuses an existing key with `Zizq::ConflictError`
+  unless passed `replace: true`, so it is safe to include in startup
+  code in horizontally scaled workloads. First caller wins.
+
+  Bindings are managed over a query or on a job:
+
+      Zizq.query.by_queue("emails").bind_budget("stripe", cost: 2)
+      Zizq.query.by_budgets_key("stripe").unbind_budget("stripe")
+
+  `by_budgets_key` filters jobs by the budgets they are bound to, and
+  works anywhere jobs can be filtered — `Zizq.query`, `count`,
+  `delete_all` and `update_all`.
+
+  Only queued (`scheduled`, `ready`) jobs can be rebound: an in-flight
+  job already debited tokens against its budgets, and terminal states
+  are always immutable. The bulk operations report those that were
+  blocked rather than skipping them silently:
+
+      Zizq.query.by_queue("emails").unbind_budget("stripe")
+      #=> { changed: 12, blocked: ["01hq...", "01hr..."] }
+
+  Cron entries can use budgets too, and `Resources::Job#budgets` reads
+  back whatever it is bound to.
+
+  Requires **Zizq 0.7.0 or newer** on the server, with a Pro licence.
+  Without one the server responds `403`.
+
 - **Schedule-level cron timezones are now stored on the server.** The
   `timezone:` passed to `Zizq.define_crontab` is sent as the schedule's
   own timezone instead of being copied onto every entry as it was
