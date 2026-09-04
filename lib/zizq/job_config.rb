@@ -417,19 +417,43 @@ module Zizq
     #     req
     #   end
     def zizq_enqueue_request(*args, **kwargs) #: (*untyped, **untyped) -> EnqueueRequest
-      EnqueueRequest.new(
-        type: name || raise(ArgumentError, "Cannot enqueue anonymous class"),
-        queue: zizq_queue,
-        payload: zizq_serialize(*args, **kwargs),
-        priority: zizq_priority,
-        retry_limit: zizq_retry_limit,
-        backoff: zizq_backoff,
-        retention: zizq_retention,
-        unique_while: zizq_unique ? zizq_unique_scope : nil,
-        unique_key: zizq_unique ? zizq_unique_key(*args, **kwargs) : nil,
-        batch: zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil,
-        budgets: zizq_budgets
-      )
+      req =
+        EnqueueRequest.new(
+          type: name || raise(ArgumentError, "Cannot enqueue anonymous class"),
+          queue: zizq_queue,
+          payload: zizq_serialize(*args, **kwargs),
+          priority: zizq_priority
+        )
+      zizq_apply_class_config(req, *args, **kwargs)
+    end
+
+    # Apply this class's declared configuration to an enqueue request.
+    #
+    # Everything set here is a property of the class rather than of one
+    # enqueue, so it applies the same way however the request was built.
+    # `zizq_enqueue_request` builds one entirely from the class and
+    # calls this. The ActiveJob adapter cannot: `job_id`, a
+    # `set(queue:)` override and a `set(wait:)` delay exist only on the
+    # job *instance*, so it constructs those fields itself and then
+    # calls this for the rest.
+    #
+    # Adding a field to the DSL means adding it here, and both paths
+    # pick it up. Setting it in only one of them is how a declaration
+    # silently stops reaching the server for half the callers.
+    #
+    # @rbs req: EnqueueRequest
+    # @rbs *args: untyped
+    # @rbs **kwargs: untyped
+    # @rbs return: EnqueueRequest
+    def zizq_apply_class_config(req, *args, **kwargs)
+      req.retry_limit = zizq_retry_limit
+      req.backoff = zizq_backoff
+      req.retention = zizq_retention
+      req.unique_while = zizq_unique ? zizq_unique_scope : nil
+      req.unique_key = zizq_unique ? zizq_unique_key(*args, **kwargs) : nil
+      req.batch = zizq_batched ? batch_for_enqueue(*args, **kwargs) : nil
+      req.budgets = zizq_budgets
+      req
     end
 
     private
