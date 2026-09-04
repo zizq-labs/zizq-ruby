@@ -90,6 +90,7 @@ module ActiveJob
       def build_enqueue_request(job)
         klass = job.class
 
+        # Prepare with instance-specific config first.
         req =
           Zizq::EnqueueRequest.new(
             queue: job.queue_name,
@@ -99,36 +100,9 @@ module ActiveJob
             ready_at: job.scheduled_at
           )
 
-        if klass.respond_to?(:zizq_unique) && klass.zizq_unique
-          req.unique_key = klass.zizq_unique_key(*job.arguments)
-          req.unique_while = klass.zizq_unique_scope
-        end
-
-        if klass.respond_to?(:zizq_batched) && klass.zizq_batched
-          expr = klass.zizq_batch_expressions
-          if expr
-            req.batch = {
-              key: klass.zizq_batch_key(*job.arguments),
-              when: expr[:when],
-              fold: expr[:fold]
-            }
-          end
-        end
-
-        req.retry_limit = klass.zizq_retry_limit if klass.respond_to?(
-          :zizq_retry_limit
-        ) && klass.zizq_retry_limit
-        req.backoff = klass.zizq_backoff if klass.respond_to?(:zizq_backoff) &&
-          klass.zizq_backoff
-        req.retention = klass.zizq_retention if klass.respond_to?(
-          :zizq_retention
-        ) && klass.zizq_retention
-
-        # Built field by field rather than from `zizq_enqueue_request`,
-        # so anything declared on the class has to be copied explicitly
-        # or it is silently dropped for ActiveJob callers.
-        if klass.respond_to?(:zizq_budgets) && klass.zizq_budgets.any?
-          req.budgets = klass.zizq_budgets
+        # Augment with class-level config if the class extends ActiveJobConfig
+        if klass.respond_to?(:zizq_apply_class_config)
+          klass.zizq_apply_class_config(req, *job.arguments)
         end
 
         req

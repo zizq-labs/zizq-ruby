@@ -177,12 +177,34 @@ class TestActiveJob < ZizqTestCase
     assert_equal({ completed: 0.0, dead: 86_400.0 }, req.retention)
   end
 
-  # The adapter builds its request field by field rather than through
-  # `zizq_enqueue_request`, so anything the DSL gains has to be copied
-  # here too or it is silently dropped for ActiveJob callers.
+  # Class-declared config reaches ActiveJob callers through
+  # `zizq_apply_class_config`, shared with `zizq_enqueue_request`, so a
+  # field added to the DSL arrives here without the adapter changing.
   def test_extended_request_include_budgets
     req = adapter_request(ExtendedActiveJob.new(42, template: "welcome"))
 
+    assert_equal [{ key: "emails", cost: 2 }], req.budgets
+  end
+
+  # The other half of that contract: `zizq_apply_class_config` must not
+  # touch the fields only the instance knows. `set(queue:)`,
+  # `set(priority:)` and `set(wait:)` are invisible to the class, so
+  # anything it overwrote would silently discard the caller's intent —
+  # note the class declares `queue_name = "emails"`, which is exactly
+  # what a clobber would restore.
+  def test_extended_request_keeps_instance_overrides
+    job = ExtendedActiveJob.new(42, template: "welcome")
+    job.queue_name = "urgent"
+    job.priority = 9
+    job.scheduled_at = Time.now + 3600
+
+    req = adapter_request(job)
+
+    assert_equal "urgent", req.queue
+    assert_equal 9, req.priority
+    refute_nil req.ready_at
+    # ...while the class-declared config still arrives.
+    assert_equal 5, req.retry_limit
     assert_equal [{ key: "emails", cost: 2 }], req.budgets
   end
 
