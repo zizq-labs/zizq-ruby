@@ -55,6 +55,14 @@
   came back with `base_ms` / `jitter_ms` / `completed_ms` / `dead_ms`
   keys rather than the seconds the application had enqueued with.
 
+- Fixed reading a cron schedule dropping each entry's **batch
+  configuration**. `Zizq.crontab("...").entries` rebuilt the job
+  template without it, so `entry.job.batch` was always `nil` however
+  the entry had been defined — and a read-then-redefine wrote the
+  entry back unbatched, quietly turning a folded job into one that
+  enqueues every time. Fetching a single entry with
+  `Zizq.crontab("...").entry("...")` was unaffected.
+
 - Fixed `Resources::Job#update` leaving a cleared field on the object
   it was called on.
 
