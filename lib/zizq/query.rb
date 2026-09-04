@@ -71,6 +71,7 @@ module Zizq
       priority: nil,
       ready_at: nil,
       attempts: nil,
+      budgets_key: nil,
       order: nil,
       limit: nil,
       page_size: nil
@@ -83,6 +84,7 @@ module Zizq
       @priority = priority
       @ready_at = ready_at
       @attempts = attempts
+      @budgets_key = budgets_key
       @order = order
       @limit = limit
       @page_size = page_size
@@ -162,6 +164,24 @@ module Zizq
     # @rbs return: Query
     def add_status(status)
       rebuild(status: Array(@status) + Array(status))
+    end
+
+    # Filter by budget (replaces any existing budget filter).
+    #
+    # Matches a job bound to any of the specified budgets.
+    #
+    # @rbs budgets_key: (String | Array[String])
+    # @rbs return: Query
+    def by_budgets_key(budgets_key)
+      rebuild(budgets_key:)
+    end
+
+    # Add a budget to the existing budget filter.
+    #
+    # @rbs budgets_key: String | Array[String]
+    # @rbs return: Query
+    def add_budgets_key(budgets_key)
+      rebuild(budgets_key: Array(@budgets_key) + Array(budgets_key))
     end
 
     # Filter by priority range (replaces any existing priority filter).
@@ -371,17 +391,7 @@ module Zizq
     def count(*args, &block)
       return super if block || !args.empty?
 
-      total =
-        Zizq.client.count_jobs(
-          id: @id,
-          queue: @queue,
-          type: @type,
-          status: @status,
-          filter: @jq_filter,
-          priority: @priority,
-          ready_at: @ready_at,
-          attempts: @attempts
-        )
+      total = Zizq.client.count_jobs(**filters)
 
       @limit ? [total, @limit].min : total
     end
@@ -450,6 +460,70 @@ module Zizq
       limit(1).delete_all
     end
 
+    # Bind every matching job to a budget, skipping over the ones already
+    # bound to it.
+    #
+    # Only queued (`scheduled`, `ready`) jobs can be rebound, so the result
+    # provides any that were in flight and were blocked — see the
+    # `Zizq::bulk_budget_change` type.
+    #
+    # @rbs key: String
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Zizq::bulk_budget_change
+    def bind_budget(key, cost: nil, create_with: nil)
+      Zizq.client.add_all_jobs_budget(key, where: filters, cost:, create_with:)
+    end
+
+    # Bind every matching job to a budget, replacing any existing
+    # binding to it.
+    #
+    # The binding is replaced whole, so a `cost` left unset returns to
+    # the default of 1 rather than keeping what was there.
+    #
+    # @rbs key: String
+    # @rbs cost: Integer?
+    # @rbs create_with: Zizq::budget_policy?
+    # @rbs return: Zizq::bulk_budget_change
+    def rebind_budget(key, cost: nil, create_with: nil)
+      Zizq.client.put_all_jobs_budget(key, where: filters, cost:, create_with:)
+    end
+
+    # Change what an existing binding costs, leaving the binding itself
+    # alone. Matching jobs not bound to this budget are skipped.
+    #
+    # @rbs key: String
+    # @rbs cost: Integer
+    # @rbs return: Zizq::bulk_budget_change
+    def set_budget_cost(key, cost)
+      Zizq.client.update_all_jobs_budget(key, cost:, where: filters)
+    end
+
+    # Unbind one budget from every matching job, leaving their other
+    # budgets alone.
+    #
+    # Paired with `by_budgets_key` this can be used to remove a budget
+    # binding from existing jobs before deleting the budget itself:
+    #
+    #   Zizq.query.by_budgets_key("emails").unbind_budget("emails")
+    #   Zizq.delete_budget("emails")
+    #
+    # @rbs key: String
+    # @rbs return: Zizq::bulk_budget_change
+    def unbind_budget(key)
+      Zizq.client.delete_all_jobs_budget(key, where: filters)
+    end
+
+    # Unbind *every* budget from every matching job.
+    #
+    # Beware: on an unfiltered query this unbinds every budget from
+    # every job on the server, reverting all jobs back to regular jobs.
+    #
+    # @rbs return: Zizq::bulk_budget_change
+    def unbind_all_budgets
+      Zizq.client.clear_all_jobs_budgets(where: filters)
+    end
+
     # Iterate over matching jobs, lazily paginating through results.
     #
     # Respects `limit` if set. Without a block, returns an `Enumerator`.
@@ -494,14 +568,7 @@ module Zizq
       if block_given?
         page =
           Zizq.client.list_jobs(
-            id: @id,
-            queue: @queue,
-            type: @type,
-            status: @status,
-            filter: @jq_filter,
-            priority: @priority,
-            ready_at: @ready_at,
-            attempts: @attempts,
+            **filters,
             limit: [
               @page_size,
               @limit,
@@ -551,16 +618,7 @@ module Zizq
       backoff: Zizq::UNCHANGED,
       retention: Zizq::UNCHANGED
     )
-      where = {
-        id: @id,
-        queue: @queue,
-        type: @type,
-        status: @status,
-        filter: @jq_filter,
-        priority: @priority,
-        ready_at: @ready_at,
-        attempts: @attempts
-      }
+      where = filters
 
       apply = {
         queue:,
@@ -612,16 +670,7 @@ module Zizq
     #
     # @rbs return: Integer
     def delete_all
-      where = {
-        id: @id,
-        queue: @queue,
-        type: @type,
-        status: @status,
-        filter: @jq_filter,
-        priority: @priority,
-        ready_at: @ready_at,
-        attempts: @attempts
-      }
+      where = filters
 
       if @limit || @page_size
         remaining = @limit
@@ -649,6 +698,27 @@ module Zizq
 
     private
 
+    # The filter arguments this query represents, as `Client` takes them.
+    #
+    # One definition rather than four: `count`, `each_page`,
+    # `update_all` and `delete_all` all send the same filter, and one
+    # added to only some of them silently widens the rest.
+    #
+    # @rbs return: Zizq::where_params
+    def filters
+      {
+        id: @id,
+        queue: @queue,
+        type: @type,
+        status: @status,
+        filter: @jq_filter,
+        priority: @priority,
+        ready_at: @ready_at,
+        attempts: @attempts,
+        budgets_key: @budgets_key
+      }
+    end
+
     # Build a new Query with the given overrides, preserving all other fields.
     #
     # @rbs return: Query
@@ -661,6 +731,7 @@ module Zizq
       priority: @priority,
       ready_at: @ready_at,
       attempts: @attempts,
+      budgets_key: @budgets_key,
       order: @order,
       limit: @limit,
       page_size: @page_size
@@ -674,6 +745,7 @@ module Zizq
         priority:,
         ready_at:,
         attempts:,
+        budgets_key:,
         limit:,
         order:,
         page_size:

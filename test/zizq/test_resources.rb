@@ -177,6 +177,45 @@ class TestResources < ZizqTestCase
     assert_empty job.budgets
   end
 
+  # `RESET` clears a field, and the server omits a cleared field from
+  # the response rather than sending null — so refreshing the receiver
+  # has to replace its data, not merge into it. Merging left the job
+  # reporting the backoff that had just been removed.
+  def test_job_update_clears_a_reset_field_on_the_receiver
+    stub_request(:patch, "#{URL}/jobs/j1").to_return(
+      status: 200,
+      body:
+        JSON.generate({ "id" => "j1", "type" => "Foo", "status" => "ready" }),
+      headers: {
+        "Content-Type" => "application/json"
+      }
+    )
+
+    job =
+      Zizq::Resources::Job.new(
+        @client,
+        {
+          "id" => "j1",
+          "type" => "Foo",
+          "status" => "ready",
+          "backoff" => {
+            "exponent" => 2.0,
+            "base_ms" => 1500,
+            "jitter_ms" => 250
+          },
+          "retention" => {
+            "dead_ms" => 90_000
+          }
+        }
+      )
+
+    returned = job.update(backoff: Zizq::RESET, retention: Zizq::RESET)
+
+    assert_nil returned.backoff
+    assert_nil job.backoff
+    assert_nil job.retention
+  end
+
   def test_job_to_h
     data = { "id" => "j1", "type" => "Foo", "queue" => "default" }
     job = Zizq::Resources::Job.new(@client, data)

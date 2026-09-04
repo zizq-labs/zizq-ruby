@@ -62,6 +62,34 @@ class TestQuery < ZizqTestCase
     Zizq::Query.new.by_status("ready").add_status("in_flight").to_a
   end
 
+  def test_by_budgets_key_sets_budget_filter
+    stub_list(query: { "budgets.key" => "emails" })
+    Zizq::Query.new.by_budgets_key("emails").to_a
+  end
+
+  def test_add_budgets_key_appends
+    stub_list(query: { "budgets.key" => "emails,stripe" })
+    Zizq::Query.new.by_budgets_key("emails").add_budgets_key("stripe").to_a
+  end
+
+  # `count`, `each_page`, `update_all` and `delete_all` share one filter
+  # builder, so a filter reaching one of them reaches all four.
+  def test_budget_filter_reaches_count
+    stub_request(:get, "#{URL}/jobs/count?budgets.key=emails").to_return(
+      json_response({ "count" => 3 })
+    )
+
+    assert_equal 3, Zizq::Query.new.by_budgets_key("emails").count
+  end
+
+  def test_budget_filter_reaches_delete_all
+    stub_request(:delete, "#{URL}/jobs?budgets.key=emails").to_return(
+      json_response({ "deleted" => 2 })
+    )
+
+    assert_equal 2, Zizq::Query.new.by_budgets_key("emails").delete_all
+  end
+
   def test_by_jq_filter_sets_filter
     stub_list(query: { "filter" => ".user_id == 42" })
     Zizq::Query.new.by_jq_filter(".user_id == 42").to_a
@@ -479,7 +507,81 @@ class TestQuery < ZizqTestCase
     assert_equal 3, count
   end
 
+  # --- budget bindings over a query ---
+
+  def test_bind_budget_scopes_to_the_query
+    stub_request(:post, "#{URL}/jobs/budgets/stripe").with(
+      query: {
+        "queue" => "emails"
+      },
+      body: JSON.generate({ cost: 2 })
+    ).to_return(bulk_response(changed: 4))
+
+    assert_equal(
+      { changed: 4, blocked: [] },
+      Zizq::Query.new.by_queue("emails").bind_budget("stripe", cost: 2)
+    )
+  end
+
+  def test_rebind_budget_scopes_to_the_query
+    stub_request(:put, "#{URL}/jobs/budgets/stripe").with(
+      query: {
+        "queue" => "emails"
+      }
+    ).to_return(bulk_response(changed: 1))
+
+    assert_equal(
+      { changed: 1, blocked: [] },
+      Zizq::Query.new.by_queue("emails").rebind_budget("stripe")
+    )
+  end
+
+  def test_set_budget_cost_scopes_to_the_query
+    stub_request(:patch, "#{URL}/jobs/budgets/stripe").with(
+      query: {
+        "status" => "ready"
+      },
+      body: JSON.generate({ cost: 5 })
+    ).to_return(bulk_response(changed: 3))
+
+    assert_equal(
+      { changed: 3, blocked: [] },
+      Zizq::Query.new.by_status("ready").set_budget_cost("stripe", 5)
+    )
+  end
+
+  # In-flight jobs are named rather than silently skipped.
+  def test_unbind_budget_reports_blocked_jobs
+    stub_request(:delete, "#{URL}/jobs/budgets/emails").with(
+      query: {
+        "budgets.key" => "emails"
+      }
+    ).to_return(bulk_response(changed: 7, blocked: %w[j1 j2]))
+
+    assert_equal(
+      { changed: 7, blocked: %w[j1 j2] },
+      Zizq::Query.new.by_budgets_key("emails").unbind_budget("emails")
+    )
+  end
+
+  def test_unbind_all_budgets_scopes_to_the_query
+    stub_request(:delete, "#{URL}/jobs/budgets").with(
+      query: {
+        "queue" => "emails"
+      }
+    ).to_return(bulk_response(changed: 9))
+
+    assert_equal(
+      { changed: 9, blocked: [] },
+      Zizq::Query.new.by_queue("emails").unbind_all_budgets
+    )
+  end
+
   private
+
+  def bulk_response(changed:, blocked: [])
+    json_response({ "changed" => changed, "blocked" => blocked })
+  end
 
   # Stub a GET /jobs request with optional query params.
   def stub_list(query: {}, body: page_body([]))
