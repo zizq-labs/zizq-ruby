@@ -270,6 +270,10 @@ module Zizq
         result.expression,
         timezone: result.timezone,
         job:
+          # Every field the template carries has to be listed here.
+          # One left out is not only absent from a read: a
+          # read-then-redefine writes the entry back without it,
+          # silently unbinding a budget or dropping a batch config.
           EnqueueRequest.new(
             type: result.job.type,
             queue: result.job.queue,
@@ -279,7 +283,9 @@ module Zizq
             backoff: result.job.backoff,
             retention: result.job.retention,
             unique_key: result.job.unique_key,
-            unique_while: result.job.unique_while
+            unique_while: result.job.unique_while,
+            batch: result.job.batch,
+            budgets: result.job.budgets
           ),
         paused: result.paused?,
         paused_at: result.paused_at,

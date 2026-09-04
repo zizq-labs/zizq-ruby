@@ -102,6 +102,83 @@ class TestCrontab < ZizqTestCase
     assert_equal "Europe/Rome", Zizq.crontab("default").entries["e1"].timezone
   end
 
+  # Same reasoning as the timezone above: a template's budgets are part
+  # of what the entry is, so a read has to bring them back.
+  def test_crontab_entries_keep_their_budgets
+    group =
+      CRON_GROUP.merge(
+        "entries" => [
+          CRON_ENTRY.merge(
+            "job" =>
+              CRON_ENTRY["job"].merge(
+                "budgets" => [{ "key" => "emails", "cost" => 2 }]
+              )
+          )
+        ]
+      )
+
+    stub_request(:get, "#{URL}/crons/default").to_return(json_response(group))
+
+    job = Zizq.crontab("default").entries["e1"].job
+    assert_equal [{ key: "emails", cost: 2 }], job.budgets
+  end
+
+  # `batch` was dropped the same way, which predates budgets.
+  def test_crontab_entries_keep_their_batch_config
+    batch = { "key" => "b", "when" => "true", "fold" => "." }
+    group =
+      CRON_GROUP.merge(
+        "entries" => [
+          CRON_ENTRY.merge("job" => CRON_ENTRY["job"].merge("batch" => batch))
+        ]
+      )
+
+    stub_request(:get, "#{URL}/crons/default").to_return(json_response(group))
+
+    job = Zizq.crontab("default").entries["e1"].job
+    assert_equal({ key: "b", when: "true", fold: "." }, job.batch)
+  end
+
+  # The failure that matters: reading a schedule and writing it back
+  # must not quietly unthrottle it or un-batch it.
+  def test_read_then_redefine_preserves_budgets_and_batch
+    batch = { "key" => "b", "when" => "true", "fold" => "." }
+    budgets = [{ "key" => "emails", "cost" => 2 }]
+    group =
+      CRON_GROUP.merge(
+        "entries" => [
+          CRON_ENTRY.merge(
+            "job" =>
+              CRON_ENTRY["job"].merge("batch" => batch, "budgets" => budgets)
+          )
+        ]
+      )
+
+    stub_request(:get, "#{URL}/crons/default").to_return(json_response(group))
+
+    sent = nil
+    stub_request(:put, "#{URL}/crons/default")
+      .with do |req|
+        sent = JSON.parse(req.body)
+        true
+      end
+      .to_return(json_response(group))
+
+    tab = Zizq.crontab("default")
+    existing = tab.entries.values
+    tab.redefine do |cron|
+      existing.each do |entry|
+        cron.define_entry(entry.name, entry.expression).enqueue_raw(
+          **entry.job.to_enqueue_params
+        )
+      end
+    end
+
+    written = sent["entries"][0]["job"]
+    assert_equal budgets, written["budgets"]
+    assert_equal batch, written["batch"]
+  end
+
   def test_crontab_materializes_only_once
     stub_request(:get, "#{URL}/crons/default").to_return(
       json_response(CRON_GROUP)
