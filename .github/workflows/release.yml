@@ -1,0 +1,166 @@
+# Publishing, split out from CI on purpose.
+#
+# A job gated on `environment: release` waits for a reviewer, and GitHub
+# fails that job automatically if nobody approves within 30 days. While
+# publishing lived in `ci.yml` that meant every merge to main left a
+# pending run which eventually failed, turning the README's CI badge red
+# even though every test had passed. The badge tracks `ci.yml`, so
+# moving publishing here keeps it honest: green means the tests pass.
+#
+# Releasing is now a deliberate act rather than something queued by each
+# merge. Nothing is rebuilt — the gem published here is the exact
+# artifact a CI run already built and tested.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_id:
+        description: >-
+          CI run to release from. Leave blank for the most recent
+          successful run on main.
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  # Needed to read the artifacts of another workflow's run.
+  actions: read
+
+# One release at a time. Two dispatches racing would both try to create
+# the same tag, and the loser would fail after the winner had already
+# pushed the gem.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      # Resolved before anything else so the rest of the job can rely on
+      # a run that both exists and passed. A run id given by hand is
+      # checked too — the point of releasing from a CI run is that its
+      # tests went green.
+      - name: Resolve the CI run
+        id: ci
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REQUESTED: ${{ inputs.run_id }}
+        run: |
+          set -euo pipefail
+
+          if [ -n "$REQUESTED" ]; then
+            run_id="$REQUESTED"
+          else
+            run_id="$(gh run list --repo "$REPO" \
+                        --workflow ci.yml --branch main \
+                        --status success --limit 1 \
+                        --json databaseId --jq '.[0].databaseId')"
+            if [ -z "$run_id" ] || [ "$run_id" = "null" ]; then
+              echo "No successful CI run found on main." >&2
+              exit 1
+            fi
+            echo "Using the latest successful CI run on main."
+          fi
+
+          read -r conclusion head_sha head_branch < <(
+            gh run view "$run_id" --repo "$REPO" \
+              --json conclusion,headSha,headBranch \
+              --jq '[.conclusion, .headSha, .headBranch] | @tsv'
+          )
+
+          if [ "$conclusion" != "success" ]; then
+            echo "CI run $run_id concluded '$conclusion', refusing to release from it." >&2
+            exit 1
+          fi
+
+          if [ "$head_branch" != "main" ]; then
+            echo "CI run $run_id is from '$head_branch', not main." >&2
+            exit 1
+          fi
+
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          echo "sha=$head_sha" >> "$GITHUB_OUTPUT"
+          echo "Releasing from CI run $run_id ($head_sha)."
+
+      # That run's commit, not main's HEAD. The two drift the moment
+      # anything merges after the build, and the release notes have to
+      # describe what is actually being published.
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.ci.outputs.sha }}
+
+      - name: Download the package built by that run
+        uses: actions/download-artifact@v8
+        with:
+          name: zizq-ruby-package
+          path: artifacts
+          run-id: ${{ steps.ci.outputs.run_id }}
+          github-token: ${{ github.token }}
+
+      # Read back from the artifact rather than recomputed, so a version
+      # bump merged after the build cannot rename what is published.
+      - name: Read the packaged version
+        id: version
+        run: |
+          set -euo pipefail
+          gem="$(ls artifacts/zizq-*.gem)"
+          version="$(basename "$gem" .gem | sed 's/^zizq-//')"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Publishing zizq $version"
+
+      - name: Refuse to release a version that already exists
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+
+          if gh release view "v${version}" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            echo "Release v${version} already exists. Bump the version first." >&2
+            exit 1
+          fi
+
+          if curl -sfI "https://rubygems.org/gems/zizq/versions/${version}" >/dev/null; then
+            echo "zizq ${version} is already on RubyGems." >&2
+            exit 1
+          fi
+
+      - name: Extract release notes from CHANGELOG
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          sed -n "/^## ${version}/,/^## /p" CHANGELOG.md | head -n -1 | tail -n +2 > release-notes.md
+
+          if [ ! -s release-notes.md ]; then
+            echo "No CHANGELOG section found for ${version}." >&2
+            exit 1
+          fi
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          gh release create "v${version}" \
+            --target "${{ steps.ci.outputs.sha }}" \
+            --title "v${version}" \
+            --notes-file release-notes.md \
+            "artifacts/zizq-${version}.gem" \
+            "artifacts/zizq-${version}.gem.sha256"
+
+      # Last, and deliberately so: RubyGems cannot be undone, where a
+      # GitHub release can. If this step fails the tag is deletable and
+      # the release can be retried.
+      - name: Publish to RubyGems
+        env:
+          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
+        run: |
+          set -euo pipefail
+          version="${{ steps.version.outputs.version }}"
+          gem push "./artifacts/zizq-${version}.gem"
