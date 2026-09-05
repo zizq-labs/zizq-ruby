@@ -6,8 +6,9 @@ on:
   pull_request:
     branches: [main]
 
+# Publishing lives in `release.yml`, so nothing here writes to the repo.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   typecheck:
@@ -169,43 +170,3 @@ jobs:
             echo "  Examples: ${{ needs.examples.result }}"
             exit 1
           fi
-
-  # --- Publish GitHub Release (main only, requires approval) ---
-
-  publish:
-    name: Publish Release
-    needs: [gate, package]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    environment: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-
-      - name: Download package artifact
-        uses: actions/download-artifact@v8
-        with:
-          name: zizq-ruby-package
-          path: artifacts
-
-      - name: Extract release notes from CHANGELOG
-        run: |
-          version=${{ needs.package.outputs.version }}
-          sed -n "/^## ${version}/,/^## /p" CHANGELOG.md | head -n -1 | tail -n +2 > release-notes.md
-
-      - name: Create GitHub Release
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          version=${{ needs.package.outputs.version }}
-          gh release create "v${version}" \
-            --title "v${version}" \
-            --notes-file release-notes.md \
-            "artifacts/zizq-${version}.gem" \
-            "artifacts/zizq-${version}.gem.sha256"
-
-      - name: Publish to RubyGems
-        env:
-          GEM_HOST_API_KEY: ${{ secrets.RUBYGEMS_API_KEY }}
-        run: |
-          version=${{ needs.package.outputs.version }}
-          gem push "./artifacts/zizq-${version}.gem"
