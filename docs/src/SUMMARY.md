@@ -8,6 +8,7 @@
 - [Cron Scheduling](./cron.md)
 - [Unique Jobs](./unique-jobs.md)
 - [Batched Jobs](./batched-jobs.md)
+- [Concurrency &amp; Rate Limiting](./budgets.md)
 - [Custom Dispatchers](./dispatchers.md)
 - [Using Middleware](./middleware.md)
 - [Using Active Job](./active-job.md)
