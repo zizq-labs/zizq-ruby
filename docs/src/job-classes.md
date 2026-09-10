@@ -425,6 +425,127 @@ For advanced cases you can override `zizq_batch_expressions` to return a
 `$existing` bound to the current pending payload and `$new` bound to the
 incoming payload. See [Batched Jobs](./batched-jobs.md) for the full details.
 
+#### Setting Up Concurrency or Rate Limits
+
+> [!TIP]
+> This section of the documentation deals mostly with how to define jobs that
+> use budgets. See [Concurrency &amp; Rate Limits](./budgets.md) for more
+> detailed documentation on using this feature.
+
+This requires a pro license on the server. Zizq is able to restrict the
+throughput of specific jobs both from a concurrency limiting perspective, and
+from a rate limiting perspective. It does this through a server-side feature
+known as budgets.
+
+Budgets are a shared resource allocating a fixed number of tokens to under a
+named strategy. Jobs are bound to one or more budgets and draw tokens from it
+when they are dispatched. Those tokens are released back to the budget's token
+pool based on its particular strategy.
+
+Here is an example of how a named budget can be created in preparation for jobs
+to reference:
+
+> Ruby:
+>
+> ```ruby
+> Zizq.define_budget(
+>   "image-service",
+>   allocation: 1000,
+>   strategy: { type: :time_based, duration: 60 }
+> )
+> ```
+
+The above permits 1000 job dispatches every 60 seconds. If a job that is bound
+to this budget cannot withdraw enough tokens from the budget, it waits without
+blocking other jobs.
+
+Use `zizq_budget` on your job classes to bind jobs to budgets.
+
+> Ruby:
+>
+> ```ruby
+> class ProcessImageJob
+>   include Zizq::Job
+>
+>   zizq_budget "image-service"
+>
+>   def perform(attachment_id)
+>   end
+> end
+> ```
+
+The above job must debit 1 token from the budget before it can be dispatched.
+It is possible to give jobs an explicitly different cost:
+
+> Ruby:
+>
+> ```ruby
+> class ProcessImageJob
+>   include Zizq::Job
+>
+>   zizq_budget "image-service", cost: 4
+>
+>   def perform(attachment_id)
+>   end
+> end
+> ```
+
+Jobs may also bind to more than one budget simultaneously, in which case they
+must satisfy _both_ budgets before they can be dispatched. Other jobs are not
+impacted.
+
+> Ruby:
+>
+> ```ruby
+> class ProcessImageJob
+>   include Zizq::Job
+>
+>   zizq_budget "image-service", cost: 4
+>   zizq_budget "cpu-intensive"
+>
+>   def perform(attachment_id)
+>   end
+> end
+> ```
+
+Here `"cpu-intensive"` may be a `while_in_flight` budget that limits
+concurrency to 10 jobs at any given time. In this case both the rate limit
+and the concurrency limit must both be simultaneously satisfied. The server
+handles both.
+
+##### Using `create_with` to Create Budgets Just-in-time
+
+Rather than budgets being created ahead-of-time, it is also possible for jobs
+to provide a definition for the budget should it not already exist. This data
+is used at enqueue time so that if the budget does not yet exist, it is lazily
+created atomically with the job itself. Subsequent enqueues continue to use the
+first budget that was created. This will never overwrite an existing budget
+(which may have since been intentionally reconfigured).
+
+> Ruby:
+>
+> ```ruby
+> class ProcessImageJob
+>   include Zizq::Job
+>
+>   zizq_budget "image-service", create_with: {
+>     allocation: 1000,
+>     strategy: { type: :time_based, :duration: 60 }
+>   }
+>
+>   zizq_budget "cpu-intensive", create_with: {
+>     allocation: 10,
+>     strategy: { type: :while_in_flight }
+>   }
+>
+>   def perform(attachment_id)
+>   end
+> end
+> ```
+
+The [Concurrency &amp; Rate Limiting](./budgets.md) page deals more with the
+possible inputs here.
+
 ### Dynamic Job Configuration { #dynamic-config }
 
 When the client generates parameters to send to the Zizq server, it does this
