@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.8.0
+
+- No functional changes. Version bumped to align with Zizq server 0.8.0.
+
 ## 0.7.0
 
 - **Budgets** (Pro) — server-side rate limiting and concurrency control.

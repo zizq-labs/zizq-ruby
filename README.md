@@ -36,13 +36,13 @@ This is the official Zizq client library for Ruby.
 Add it to your application's `Gemfile`:
 
 ```ruby
-gem 'zizq', '~> 0.7.0'
+gem 'zizq', '~> 0.8.0'
 ```
 
 Or install it manually:
 
 ```shell
-$ gem install zizq -v 0.7.0
+$ gem install zizq -v 0.8.0
 ```
 
 Ruby **3.2.8 or newer** is required. Client and server share version
